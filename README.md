@@ -24,7 +24,7 @@ Most parameters are configurable, but the interface is somewhat unintuitive at t
 
 | ![external reflection](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-materials4.png) | 
 |:--:| 
-| *External reflection** |
+| *External reflection* |
 
 &nbsp;
 &nbsp;
