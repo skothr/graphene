@@ -4,7 +4,7 @@
 
 Interactive simulation of a subset of Maxwell's equations in 3D. Part of an academic project involving current generated in graphene via the motion of an electrolytic solution.
 
-The field equations are solved over an Eulerian grid given initial conditions and user input, and results are rendered via a ray marching algorithm (uses CUDA).
+The field equations are solved over an Eulerian grid given initial conditions and user input, and results are rendered with a ray marching algorithm (uses CUDA).
 
 Most parameters are configurable, but the interface is somewhat unintuitive at the moment (currently being redesigned). But with the right tuning, many patterns can be generated similar to those seen in physical electromagnetic phenomena.
 
