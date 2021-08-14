@@ -10,14 +10,14 @@ Most parameters are configurable, but the interface is somewhat unintuitive at t
 
 | ![simple 2D wave interference](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-materials7.png) | 
 |:--:| 
-| *Simple 2D wave interference (signals drawn in with Ctrl+Click)** |
+| *Simple 2D wave interference (signals drawn in with Ctrl+Click)* |
 
 &nbsp;
 &nbsp;
 
 | ![refraction due to different material properties](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-materials-lens.png) | 
 |:--:| 
-| *Refraction/lensing due to different material properties (materials drawn in with Alt+Click)** |
+| *Refraction/lensing due to different material properties (materials drawn in with Alt+Click)* |
 
 &nbsp;
 &nbsp;
