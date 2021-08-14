@@ -62,10 +62,12 @@ Most parameters are configurable, but the interface is somewhat unintuitive at t
 ## Basic dependencies
     sudo apt install build-essential cmake libglew-dev libglfw3-dev nlohmann-json3-dev
 
-### Also requires CUDA and a compatible NVIDIA graphics card
-#### Install NVIDIA driver on Ubuntu
+#### Also requires CUDA and a compatible NVIDIA graphics card:
+##### Install NVIDIA driver on Ubuntu
     $ sudo apt-get purge *nvidia*
     $ sudo apt autoremove
     $ sudo apt install nvidia-driver-460
-  #### Install CUDA
+##### Install CUDA
     $ sudo apt install nvidia-cuda-toolkit
+## Build
+    $ ./make-release
