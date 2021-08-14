@@ -64,7 +64,7 @@ Most parameters are configurable, but the interface is somewhat unintuitive at t
 
 #### Also requires CUDA and a compatible NVIDIA graphics card:
 ##### Install NVIDIA driver on Ubuntu
-    $ sudo apt-get purge *nvidia*
+    $ sudo apt purge *nvidia*
     $ sudo apt autoremove
     $ sudo apt install nvidia-driver-460
 ##### Install CUDA
