@@ -43,9 +43,9 @@ Most parameters are configurable, but the interface is somewhat unintuitive at t
 &nbsp;
 &nbsp;
 
-| ![emerging patterns similar to physical phenomena](https://raw.githubusercontent.com/skothr/graphene/main/images/vector-field-photon4.png) | 
+| ![emergent patterns similar to physical phenomena](https://raw.githubusercontent.com/skothr/graphene/main/images/vector-field-photon4.png) | 
 |:--:|
-| *Emerging patterns with similarities to physical phenomena (e.g. shape of a photon)* |
+| *Emergent patterns with similarities to physical phenomena (e.g. shape of a photon)* |
 
 &nbsp;
 &nbsp;
