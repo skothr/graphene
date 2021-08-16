@@ -17,18 +17,32 @@ template<typename T> struct Ray
 template<typename T>
 struct CameraDesc
 {
+  typedef typename DimType<T,2>::VECTOR_T VT2;
   typedef typename DimType<T,3>::VECTOR_T VT3;
 
-  VT3 pos; // world position
+
+  VT3 pos = VT3{0.0, 0.0, 0.0}; // world position
   
   // orthonormal basis vectors
-  VT3 dir;
-  VT3 right;
-  VT3 up;
-  T fov  = 60.0;   // field of view (degrees)
+  VT3 dir   = VT3{0.0,  1.0,  0.0};
+  VT3 right = VT3{1.0,  0.0,  0.0};
+  VT3 up    = VT3{0.0,  0.0, -1.0};
   
+  T fov  = 60.0;   // field of view (degrees)
   T near = 0.01;   // near plane
   T far  = 1000.0; // far plane
+  
+  // sp --> screen pos [0.0, 1.0]
+  __host__ __device__ Ray<T> castRay(const VT2 &sp, const VT2 &aspect) const
+  {
+    double tf2 = tan(fov/2.0*(M_PI/180.0));
+    Ray<T> ray;
+    ray.pos = pos;
+    ray.dir = normalize(dir +
+                        right * 2.0*(sp.x-0.5)*tf2*aspect.x +
+                        up    * 2.0*(sp.y-0.5)*tf2*aspect.y );
+    return ray;
+  }  
 };
 
 // full camera description (for use on host)
@@ -37,33 +51,40 @@ struct Camera
 {
   typedef typename DimType<T,2>::VECTOR_T VT2;
   typedef typename DimType<T,3>::VECTOR_T VT3;
-  
+
+  VT3 upBasis = VT3{(T)0, (T)1, (T)0};  
   union
   { // camera description (union for easy access)
-    CameraDesc<T> desc;
     struct { VT3 pos; VT3 dir; VT3 right; VT3 up; T fov; T near; T far; };
+    CameraDesc<T> desc;
   };
   Matrix<T> view; Matrix<T> viewT; Matrix<T> proj; Matrix<T> VP;   // 4x4 transformation matrices
   Matrix<T> viewInv;
 
-  VT3 focus   = VT3{(T)0, (T)0, (T)0};
-  VT3 upBasis = VT3{(T)0, (T)1, (T)0};
+  Camera() { }
   
-  Camera() : view(4,4), viewT(4,4), proj(4,4), VP(4,4), viewInv(4,4) { view.identity(); viewT.identity(); proj.zero(); VP.identity(); viewInv.identity(); }
+  // sp --> screen pos [0.0, 1.0]
+  Ray<T> castRay(const VT2 &sp, const VT2 &aspect) const { return desc.castRay(VT2{sp.x, 1.0-sp.y}, aspect); }  
 
   Vec2f worldToView(const Vector<T, 3> &wp, bool *clipped=nullptr)
   {
     // Vec4d wp4 = Vec4d(wp.x, wp.y, wp.z, 1.0f);
-    Matrix<T> vp  = proj ^ (view ^ viewT ^ Matrix<T>({wp.x, wp.y, wp.z, (T)1.0}));
+    Matrix<T> vp = Matrix<T>(4, 1); vp.setCol(0, {wp.x-pos.x, wp.y-pos.y, wp.z-pos.z, (T)1.0});
+    Matrix<T> result = (proj^(view^vp)); // NOTE: something wrong with Matrix implementation -- result needs to be separate object
     // clip
-    if(clipped) { *clipped = (vp[0][3] < 0.0); }
+    if(clipped)
+      {
+        *clipped =  result[0][0]/result[3][0] < -1.5 || result[0][0]/result[3][0] > 1.5;
+        *clipped |= result[1][0]/result[3][0] < -1.5 || result[1][0]/result[3][0] > 1.5;
+        *clipped |= result[2][0]/result[3][0] < -1.5 || result[2][0]/result[3][0] > 1.5;
+      }
     // normalize
-    return (Vec2f(-vp[0][0], vp[1][0]) / vp[3][0] + 1) / 2;
+    return (Vec2f(result[0][0], (result[2][0] > 0 ? 1 : -1)*result[1][0]) / result[3][0] + 1.0) / 2.0;
   }
-  // Vec3d viewToWorld(const Vec3d &wp)  // TODO -- inverse matrices
+  // Vec3d viewToWorld(const Vec3d &wp)  // TODO -- inverse matrices (?)
   // {
   //   Vec4d wp4 = Vec4d(wp.x, wp.y, wp.z, 1.0f);
-  //   Vec4d vp  = viewInv ^ wp;
+  //   Vec4d result  = viewInv ^ wp;
   //   return Vec3d(vp.x, vp.y, vp.z);
   // }
   
@@ -75,25 +96,21 @@ struct Camera
     up    = normalize(cross(right, dir));
     
     // create view matrix
-    view.identity(); viewInv.identity();
-    view.setRow(0, {right.x, right.y, right.z,  1}); //0.0}); //viewInv.setRow(0, {right.x, right.y, right.z, 0.0});
-    view.setRow(1, {up.x,    up.y,    up.z,     1}); //0.0}); //viewInv.setRow(1, {up.x,    up.y,    up.z,    0.0});
-    view.setRow(2, {dir.x,   dir.y,   dir.z,    1}); //0.0}); //viewInv.setRow(2, {dir.x,   dir.y,   dir.z,   0.0});
-
-    // translate to camera position
-    viewT.identity();
-    viewT[0][3] = pos.x; viewT[1][3] = pos.y; viewT[2][3] = pos.z;
-
-    // view = view ^ viewT;
+    view.resize(4, 4);
+    view.setRow(0, {right.x, right.y, right.z, 0}); //-pos.x});
+    view.setRow(1, {up.x,    up.y,    up.z,    0}); //-pos.y});
+    view.setRow(2, {dir.x,   dir.y,   dir.z,   0}); //-pos.z});
+    view.setRow(3, {0.0,     0.0,     0.0,     1.0});
     
     // create perspective projection matrix
-    proj.zero();
+    proj.resize(4, 4); proj.zero();
     T S = 1.0/tan((fov/2.0)*M_PI/180.0);
     proj[0][0] = S; // X basis offset
     proj[1][1] = S; // Y basis offset
     proj[2][2] = -(far + near)/(far - near);
     proj[2][3] = -2*far*near/(far - near);
     proj[3][2] = -1.0;
+    proj[3][3] = 0.0;
 
     // std::cout << "VIEW:\n"  << view.toString() << "\n"
     //           << "VIEWT:\n" << viewT.toString() << "\n"
@@ -124,5 +141,44 @@ struct Camera
   }
   
 };
+
+
+
+
+// vector type shorthand for declarations
+template<typename T> using VT2_t = typename DimType<T,2>::VECTOR_T;
+template<typename T> using VT3_t = typename DimType<T,3>::VECTOR_T;
+
+#define TOL 0.0001 // tolerance/epsilon to make sure ray fully intersects
+
+template<typename T>
+__host__  __device__ inline T planeIntersect(const VT3_t<T> &p, const VT3_t<T> &n, const Ray<T> &ray)
+{
+  T denom = dot(n, ray.dir);
+  T t = -1.0;
+  if(abs(denom) > TOL) { t = dot((p - ray.pos), n) / denom; }
+  return t; // no intersection if t < 0
+}
+
+// render 3D --> raytrace field
+//  - field assumed to be size (1,1,1) in 3D space
+//  - return value < 0 means ray missed, value == 0 means ray started inside cube
+// returns {tmin, tmax}
+template<typename T>
+__host__ __device__ inline VT2_t<T> cubeIntersect(const VT3_t<T> &pos, const VT3_t<T> &size, const Ray<T> &ray)
+{
+  typedef VT2_t<T> VT2; typedef VT3_t<T> VT3;
+  T tnx = (pos.x - ray.pos.x)          / ray.dir.x;
+  T tpx = (pos.x - ray.pos.x + size.x) / ray.dir.x;
+  T tny = (pos.y - ray.pos.y)          / ray.dir.y;
+  T tpy = (pos.y - ray.pos.y + size.y) / ray.dir.y;
+  T tnz = (pos.z - ray.pos.z)          / ray.dir.z;
+  T tpz = (pos.z - ray.pos.z + size.z) / ray.dir.z;
+  T tmin = max(max(min(tnx, tpx), min(tny, tpy)), min(tnz, tpz));
+  T tmax = min(min(max(tnx, tpx), max(tny, tpy)), max(tnz, tpz));
+  return (tmin < 0 ? VT2_t<T>{0,0} : (tmin > tmax) ? VT2_t<T>{-1.0,-1.0} : VT2_t<T>{tmin, tmax});
+}
+
+
 
 #endif // RAYTRACE_H

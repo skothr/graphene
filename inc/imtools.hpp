@@ -67,16 +67,19 @@ inline void TextSub(const std::string &text, ImFont *superFont=nullptr, bool nor
     Vec2f tSize0 = ImGui::CalcTextSize(text.c_str());
 
     if(superFont) { ImGui::PushFont(superFont); }
-    {
-      Vec2f tSize = ImGui::CalcTextSize(text.c_str());
-      ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(-spacing.x, tSize.y*0.6f));
-      ImGui::TextUnformatted(text.c_str());
-      ImGui::SetCursorPos(p0 + Vec2f(tSize.x, 0.0f));
-    }
+    Vec2f sSize = ImGui::CalcTextSize(text.c_str());
+    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(-spacing.x, sSize.y*0.6f));
+    ImGui::TextUnformatted(text.c_str());
+    ImGui::SetCursorPos(p0 + Vec2f(sSize.x, 0.0f));
     if(superFont) { ImGui::PopFont(); }
     // remove extra spacing (?)
     ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) - Vec2f(spacing.x, 0.0f));
-    if(normalSpacing) { ImGui::TextUnformatted(""); } // next line
+    if(normalSpacing)
+      {
+        ImGui::TextUnformatted("");
+        ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f)); // vertical space for subscript
+      } // next line
+    
   }
   ImGui::PopStyleVar();
 
@@ -87,14 +90,19 @@ inline void TextSub(const std::string &text, ImFont *superFont=nullptr, bool nor
 // combined text with plain, superscript, and subscript (denoted using keys)
 inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
 {
-  // convert ^(X) to superscript
+  if(superFont) { ImGui::PushFont(superFont); }
+  Vec2f sSize = ImGui::CalcTextSize(text.c_str());
+  if(superFont) { ImGui::PopFont(); }
 
+  
+  // extra vertical space for subscript
+  ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f));
+  
   Vec2f spacing = Vec2f(ImGui::GetStyle().ItemSpacing.x, 0.0f);  
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Vec2f(0,0));
   Vec2f p0    = ImGui::GetCursorPos();
   Vec2f tSize = ImGui::CalcTextSize(text.c_str());
   
-  bool first = true; // first text draw doesn't need a ImGui::SameLine()
   std::string str = text;
   while(!text.empty())
     {
@@ -148,11 +156,14 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
         }
       if(!found)
         { // rest is plain text
-          ImGui::TextUnformatted(str.c_str()); first = false;
+          ImGui::TextUnformatted(str.c_str());
           str = ""; break;
         }
     }
   ImGui::PopStyleVar();
+
+  // extra vertical space for subscript
+  ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f));
 }
 
 
@@ -171,7 +182,7 @@ inline bool Checkbox(const std::string &label, bool* v, const Vec2f &size=Vec2f(
   ImGuiWindow* window = ImGui::GetCurrentWindow();
   if(window->SkipItems) { return false; }
 
-  ImGuiContext& g = *GImGui;
+  // ImGuiContext& g = *GImGui;
   const ImGuiStyle& style = ImGui::GetStyle();
   const ImGuiID     id    = window->GetID(label.c_str());
   const Vec2f label_size  = ImGui::CalcTextSize(label.c_str(), NULL, true);
@@ -227,7 +238,7 @@ inline void AddTextVertical(ImDrawList* DrawList, const char *text, Vec2f pos, c
   ImFont *font = GImGui->Font;
   const ImFontGlyph *glyph;
   char c;
-  ImGuiContext& g = *GImGui;
+  // ImGuiContext& g = *GImGui;
   Vec2f textSize = ImGui::CalcTextSize(text);
   pos.x += textSize.y;
   
@@ -297,7 +308,7 @@ inline void drawLine(ImDrawList *drawList, Vec2f p0, Vec2f p1,              // s
         }
     }
   // draw inner line  
-  if(lWidth > 0.01 && color.w > 0.01)
+  if(color.w > 0.01)
     { // draw line body (connecting specified points)
       if(shear0 > 0.1f) { drawList->AddTriangleFilled(p00, p01, p10, ImColor(color)); }
       if(shear1 > 0.1f) { drawList->AddTriangleFilled(p10, p01, p11, ImColor(color)); }

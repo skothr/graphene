@@ -6,12 +6,10 @@
 #include <helper_functions.h>
 #include <iostream>
 
-// CUDA initialization (TODO: use to check for any compatible devices)
+// CUDA initialization
 extern bool gCudaInitialized;
 extern int  gDevId;
 bool initCudaDevice(int devId=-1);
-
-
 
 
 #endif // CUDA_TOOLS_H

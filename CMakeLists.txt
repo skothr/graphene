@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.6)
 cmake_policy(SET CMP0072 NEW)   # opengl policy (to get rid of warning)
 set(OpenGL_GL_PREFERENCE GLVND) #
 
-project(graphene VERSION 0.0.1) # project name and version
+project(graphene VERSION 0.0.2) # project name and version
 configure_file(inc/version/version.hpp.in ../inc/version/version.hpp)
 
 set(TARGET graphene)
@@ -28,7 +28,7 @@ if(GRPH_ENABLE_CUDA) # enable CUDA
   add_definitions(-DENABLE_CUDA)
   enable_language(CUDA)
   if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 11)
+    set(CMAKE_CUDA_STANDARD 11)         # CUDA 11
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
   endif()
   
@@ -39,7 +39,9 @@ if(GRPH_ENABLE_CUDA) # enable CUDA
     ${CUDA_TOOLKIT_ROOT_DIR}/include
     )
   add_library(grphcuda STATIC
+    src/cuda/draw.cu
     src/cuda/field.cu
+    src/cuda/render.cu
     )
   set_target_properties(grphcuda PROPERTIES CXX_STANDARD 17)
   set(CUDA_LIBRARIES grphcuda)

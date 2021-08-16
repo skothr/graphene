@@ -9,17 +9,9 @@
 #include "vector-operators.h"
 
 
-// extern bool gCudaInitialized;
-// extern int  gDevId;
-
-// // setup
-// bool initDevice(int devId=-1);
-// extern "C" void fillTex(float4 *data, int w, int h, float4 color);
-
-// struct CudaFieldTex;
-// extern bool writeTexture(const std::string &path, CudaFieldTex *tex);
-
-// device helpers
+//
+//// 2D ////
+//
 
 // currently implements WRAP addressing
 template<typename T>
@@ -58,7 +50,6 @@ __device__ T tex2DD(T *tex, float x, float y, int w, int h)
 //
 //// 3D ////
 //
-
 
 // currently implements WRAP addressing
 template<typename T>

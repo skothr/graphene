@@ -3,7 +3,6 @@
 bool gCudaInitialized = false;
 int  gDevId = -1;
 
-
 bool initCudaDevice(int devId)
 {
   if(!gCudaInitialized || (devId > 0 && devId != gDevId))

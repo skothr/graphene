@@ -17,7 +17,7 @@ struct Matrix
   std::vector<std::vector<T>> data; // mat[ROW][COL] or mat.data[ROW][COL]
 
   // initialization
-  Matrix(int nRows=0, int nCols=0)                                { resize(nRows, nCols); }
+  Matrix(int nRows=0, int nCols=0)                             { resize(nRows, nCols); }
   Matrix(int nRows, int nCols, T value)                        { resize(nRows, nCols, value); }
   Matrix(const std::vector<T> &data_, bool column=true)
   {

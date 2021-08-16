@@ -539,6 +539,8 @@ struct Vector<T, 4>
     return total;
   }
 };
+
+
 template<typename T, int N>
 inline Vector<T, N> operator-(const Vector<T, N> &v)
 {
@@ -546,15 +548,15 @@ inline Vector<T, N> operator-(const Vector<T, N> &v)
   for(int i = 0; i < N; i++) { result.data[i] = -v[i]; }
   return result;
 }
-template<typename T, int N>
-inline Vector<T, N> operator*(T scalar, const Vector<T, N> &v)
+template<typename T, typename U, int N>
+inline Vector<T, N> operator*(U scalar, const Vector<T, N> &v)
 {
   Vector<T, N> result;
   for(int i = 0; i < N; i++) { result.data[i] = scalar * v[i]; }
   return result;
 }
-template<typename T, int N>
-inline Vector<T, N> operator/(T scalar, const Vector<T, N> &v)
+template<typename T, typename U, int N>
+inline Vector<T, N> operator/(U scalar, const Vector<T, N> &v)
 {
   Vector<T, N> result;
   for(int i = 0; i < N; i++) { result.data[i] = scalar / v[i]; }
@@ -568,14 +570,14 @@ inline Vector<T, N> operator/(T scalar, const Vector<T, N> &v)
 
 
 // SCALAR <, > VECTOR (AND)
-template<typename T, int N>
-inline bool operator> (T scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <= v.data[i]) { return false; } } return true; }
-template<typename T, int N>
-inline bool operator< (T scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar >= v.data[i]) { return false; } } return true; }
-template<typename T, int N>
-inline bool operator>=(T scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <  v.data[i]) { return false; } } return true; }
-template<typename T, int N>
-inline bool operator<=(T scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar >  v.data[i]) { return false; } } return true; }
+template<typename T, typename U, int N>
+inline bool operator> (U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <= v.data[i]) { return false; } } return true; }
+template<typename T, typename U, int N>
+inline bool operator< (U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar >= v.data[i]) { return false; } } return true; }
+template<typename T, typename U, int N>
+inline bool operator>=(U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <  v.data[i]) { return false; } } return true; }
+template<typename T, typename U, int N>
+inline bool operator<=(U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar >  v.data[i]) { return false; } } return true; }
 
 
 

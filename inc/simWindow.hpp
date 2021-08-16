@@ -14,6 +14,7 @@
 #include "units.hpp"
 #include "physics.h"
 #include "raytrace.h"
+#include "cuda-vbo.h"
 
 
 #define FPS_UPDATE_INTERVAL 0.1 // FPS update interval (seconds)
@@ -21,14 +22,14 @@
 #define RENDER_BASE_PATH "./rendered"
 
 #define CFT float // field base type (float/double (/int?))
-#define STATE_BUFFER_SIZE 4
+#define STATE_BUFFER_SIZE 2
 
 // font settings
 #define SMALL_FONT_HEIGHT 13.0f
 #define MAIN_FONT_HEIGHT  14.0f
 #define TITLE_FONT_HEIGHT 19.0f
-#define SUPER_FONT_HEIGHT 11.0f
-#define FONT_OVERSAMPLE   8
+#define SUPER_FONT_HEIGHT 10.5f
+#define FONT_OVERSAMPLE   1
 #define FONT_PATH "./res/fonts/"
 #define FONT_NAME "UbuntuMono"
 #define FONT_PATH_REGULAR     (FONT_PATH FONT_NAME "-R.ttf" )
@@ -65,25 +66,21 @@ struct SimParams
   ////////////////////////////////////////
   // physics
   ////////////////////////////////////////
-  bool  updateQ      = false;        // toggle charge field update step
-  bool  updateE      = false;        // toggle electric field update step
-  bool  updateB      = false;        // toggle magnetic field update step
+  bool  updateQ      = true;        // toggle charge   field update step
+  bool  updateE      = true;        // toggle electric field update step
+  bool  updateB      = true;        // toggle magnetic field update step
   
   int3  fieldRes = int3{256, 256, 4}; // desired resolution (number of cells) of charge field
   int2  texRes   = int2{1024, 1024};  // desired resolution (number of cells) of rendered texture
 
-  float3 fieldPos  = float3{0.0f, 0.0f, 0.0f}; // (m) 3D position of field (min index to max index)
-
-  float dt = 0.01f; // physics timestep
-  ChargeParams cp = ChargeParams(true,                      // boundary reflect
-                                 dt,                        // dt (overwritten by SimParams.dt)
-                                 float3{0.1f, 0.1f, 0.1f},  // cell size
-                                 float3{0.0f, 0.0f, 0.0f}); // border size (?)
+  //float3 fieldPos  = float3{0.0f, 0.0f, 0.0f}; // (m) 3D position of field (min index to max index)
+  FieldParams<CFT> cp;   // cuda field params
+  
   ////////////////////////////////////////
   // microstepping
   ////////////////////////////////////////
-  int      uSteps  = 1;  // number of microsteps performed between each rendered frame
-  float    dtFrame = dt; // total timestep over one frame
+  int      uSteps  = 1;    // number of microsteps performed between each rendered frame
+  float    dtFrame = 0.1; // total timestep over one frame
 
   ////////////////////////////////////////
   // initial conditions for reset
@@ -111,7 +108,8 @@ struct SimParams
   bool showEMField    = true;
   bool showMatField   = false;
   bool show3DField    = true;
-  bool drawAxes       = false; // 3D axes (WIP)
+  bool drawAxes       = true; // 3D axes (WIP)
+  bool drawOutline    = true; // 3D outline of field (WIP)
   
   bool drawVectors     = false; // draws vector field on screen
   bool borderedVectors = true;  // uses fancy bordered polygons instead of standard GL_LINES (NOTE: slower)   TODO: optimize with VBO
@@ -172,6 +170,7 @@ class SimWindow
 {
 private:
   bool mInitialized = false;
+  bool mFirstFrame  = true;
 
   CLOCK_T::time_point tNow;  // FPS current frame time
   CLOCK_T::time_point tLast; // FPS last frame time
@@ -201,13 +200,14 @@ private:
   bool m3DRightClicked  = false;
     
   // simulation
-  SimParams  mParams;
-  SimInfo    mInfo;
-  Units<CFT> mUnits;
+  SimParams    mParams;
+  SimInfo      mInfo;
+  Units<float> mUnits;
+  CudaTexture  mEMTex;
+  CudaTexture  mMatTex;
+  CudaTexture  m3DTex;
+  CudaVBO      mVecBuffer;
   std::deque<FieldBase*> mStates; // N-buffered states (e.g. for Runge-Kutta integration)
-  CudaTexture mEMTex;
-  CudaTexture mMatTex;
-  CudaTexture m3DTex;
 
   ImDrawList *mFieldDrawList = nullptr;
 
@@ -230,7 +230,7 @@ private:
   
   Vec2f  mMouseSimPos;
 
-  ChargeField<float> mSignalField;
+  EMField<float> mSignalField;
   bool mNewSignal = false;
   
   Vec2f simToScreen2D(const Vec2f &pSim,    const Rect2f &simView, const Rect2f &screenView, bool vector=false);
@@ -312,7 +312,6 @@ public:
     
   void draw(const Vec2f &frameSize=Vec2f(0,0));
   void update();
-    
   void renderToFile();
 };
 

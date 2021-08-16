@@ -224,6 +224,7 @@ int main(int argc, char* argv[])
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       glfwSwapBuffers(window);
 
+      // render simulation to file separately
       // simWindow->renderToFile();
     }
 
