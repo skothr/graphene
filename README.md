@@ -17,7 +17,7 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 | ![refraction due to different material properties](https://raw.githubusercontent.com/skothr/graphene/dev/images/convex-lens-3d-2.png) | 
 |:--:| 
-| *Refraction/lensing due to different material properties (materials drawn in with Alt+Click)* |
+| *Refraction through a convex lens with a higher index of refraction (materials drawn in with Alt+Click)* |
 
 &nbsp;
 &nbsp;
