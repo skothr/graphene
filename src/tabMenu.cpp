@@ -99,7 +99,7 @@ void TabMenu::draw()
 
         // ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Vec2f(0,0));
         // ImGui::PopStyleVar();
-        ImGui::BeginChild("##tabMenuOuter", outerSize, false);
+        ImGui::BeginChild("##tabMenuOuter", outerSize, true);
         {
           // draw title
           Vec2f tSize;
@@ -113,7 +113,7 @@ void TabMenu::draw()
             }
         
           Vec2f innerSize = Vec2f(tab.width, mLength - tSize.y - style.ItemSpacing.y);
-          ImGui::BeginChild("##tabMenuInner", innerSize, true);
+          ImGui::BeginChild("##tabMenuInner", innerSize, false);
           {
             ImGui::BeginGroup(); tab.drawMenu(); ImGui::EndGroup();
             if(tab.fixedWidth < 0) { tab.width = ImGui::GetItemRectMax().x - ImGui::GetItemRectMin().x; }

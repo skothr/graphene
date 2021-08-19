@@ -14,8 +14,9 @@
 #include "units.hpp"
 #include "physics.h"
 #include "raytrace.h"
+#include "render.cuh"
+#include "display.hpp"
 #include "cuda-vbo.h"
-
 
 #define FPS_UPDATE_INTERVAL 0.1 // FPS update interval (seconds)
 #define CLOCK_T std::chrono::steady_clock
@@ -51,6 +52,8 @@ struct ImDrawList;
 class  SettingBase;
 class  SettingForm;
 class  TabMenu;
+template<typename T> class DrawInterface;
+template<typename T> class DisplayInterface;
 
 // parameters for overall simulation
 struct SimParams
@@ -60,81 +63,25 @@ struct SimParams
   ////////////////////////////////////////
   bool debug         = false;        // toggle debugging (e.g. syncs device between steps for error checking)
   bool verbose       = false;        // toggle verbose printout
-  bool vsync         = false;        // vertical sync refresh
-  bool running       = false;        // play/pause
-  
-  ////////////////////////////////////////
-  // physics
-  ////////////////////////////////////////
-  bool  updateQ      = true;        // toggle charge   field update step
-  bool  updateE      = true;        // toggle electric field update step
-  bool  updateB      = true;        // toggle magnetic field update step
-  
-  int3  fieldRes = int3{256, 256, 4}; // desired resolution (number of cells) of charge field
-  int2  texRes   = int2{1024, 1024};  // desired resolution (number of cells) of rendered texture
-
-  //float3 fieldPos  = float3{0.0f, 0.0f, 0.0f}; // (m) 3D position of field (min index to max index)
-  FieldParams<CFT> cp;   // cuda field params
-  
-  ////////////////////////////////////////
-  // microstepping
-  ////////////////////////////////////////
-  int      uSteps  = 1;    // number of microsteps performed between each rendered frame
-  float    dtFrame = 0.1; // total timestep over one frame
 
   ////////////////////////////////////////
   // initial conditions for reset
   ////////////////////////////////////////
-    
-  std::string initQPStr  = "0"; // "1";
-  std::string initQNStr  = "0"; // "1-cos((r^2)/500)";
-  std::string initQPVStr = "0";
-  std::string initQNVStr = "0";
-  std::string initEStr   = "cos((len(r)^2)/512)";
-  std::string initBStr   = "sin(t*137)";
-
-  Expression<float>  *initQPExpr  = nullptr;
-  Expression<float>  *initQNExpr  = nullptr;
-  Expression<float3> *initQPVExpr = nullptr;
-  Expression<float3> *initQNVExpr = nullptr;
-  Expression<float3> *initEExpr   = nullptr;
-  Expression<float3> *initBExpr   = nullptr;
+  FieldParams<CFT> cp;   // cuda field params
 
   ////////////////////////////////////////
   // on-screen rendering
   ////////////////////////////////////////
-  
-  EmRenderParams rp;          // field render params
-  bool showEMField    = true;
-  bool showMatField   = false;
-  bool show3DField    = true;
-  bool drawAxes       = true; // 3D axes (WIP)
-  bool drawOutline    = true; // 3D outline of field (WIP)
-  
-  bool drawVectors     = false; // draws vector field on screen
-  bool borderedVectors = true;  // uses fancy bordered polygons instead of standard GL_LINES (NOTE: slower)   TODO: optimize with VBO
-  bool smoothVectors   = true;  // uses bilinear interpolation, centering at samples mouse instead of exact cell centers
+  RenderParams<CFT>     rp; // field render params
+  VectorFieldParams<CFT> vp; // vector draw params
 
-  int vecMRadius   = 64;    // draws vectors for cells within radius around mouse
-  int vecSpacing   = 1;     // base spacing 
-  int vecCRadius   = 1024;  // only draws maximum of this radius number of vectors, adding spacing
-  
-  float vecMultE   = 10.0f; // E length multiplier
-  float vecMultB   = 10.0f; // B length multiplier
 
-  float vecLineW   = 0.1f;  // line width
-  float vecAlpha   = 0.25f;  // line opacity
-  
-  float vecBorderW = 0.0f;  // border width
-  float vecBAlpha  = 0.0f;  // border opacity
   
   ////////////////////////////////////////
-  // mouse interaction
+  // microstepping
   ////////////////////////////////////////
-  SignalPen<float>   signalPen;
-  MaterialPen<float> materialPen;
-  int zLayer2D = 0;
-  
+  int uSteps  = 1;    // number of microsteps performed between each rendered frame
+  CFT dtFrame = 0.1; // total timestep over one frame
   ////////////////////////////////////////
   // params for rendering to files
   ////////////////////////////////////////
@@ -149,20 +96,24 @@ struct SimParams
 
 struct SimInfo
 {
-  float t     = 0.0f; // simulation time passed since initial state
-  float fps   = 0.0f; // render fps
-  int   frame = 0;    // number of frames rendered since initial state
-  int   uStep = 0;    // keeps track of microsteps betweeen frames
+  CFT t     = 0.0f; // simulation time passed since initial state
+  CFT fps   = 0.0f; // render fps
+  int frame = 0;    // number of frames rendered since initial state
+  int uStep = 0;    // keeps track of microsteps betweeen frames
 };
 
 struct ScreenView
 {
   Rect2f r;
-  bool   hovered      = false;
-  bool   clicked      = false;
-  bool   rightClicked = false;
-  Vec2f  clickPos;
-  Vec3f  mposSim;
+  bool   hovered       = false;
+  bool   leftClicked   = false;
+  bool   rightClicked  = false;
+  bool   middleClicked = false;
+  bool   shiftClick    = false;
+  bool   ctrlClick     = false;
+  bool   altClick      = false;
+  Vec2f           clickPos;
+  Vector<CFT, 3>  mposSim;
 };
 
 
@@ -179,8 +130,7 @@ private:
   int    nFrames = 0;        // number of frames this interval
   double fpsLast = 0.0;      // previous FPS value
 
-  float mSingleStepMult = 0.0f; // for single stepping while paused
-
+  
   GLFWwindow *mWindow    = nullptr;
   bool        mClosing   = false;
   Vec2f mFrameSize;
@@ -202,7 +152,11 @@ private:
   // simulation
   SimParams    mParams;
   SimInfo      mInfo;
-  Units<float> mUnits;
+  
+  Units<CFT> mUnits;
+
+  float mSingleStepMult = 0.0f; // for single stepping with up/down arrow keys while paused
+  
   CudaTexture  mEMTex;
   CudaTexture  mMatTex;
   CudaTexture  m3DTex;
@@ -211,26 +165,25 @@ private:
 
   ImDrawList *mFieldDrawList = nullptr;
 
-  //                          1/R    1/R^2  theta  sin(t)  cos(t)
-  std::vector<bool> Qopt   = {false, false, false, false,  false};
-  std::vector<bool> QPVopt = {false, false, false, false,  false};
-  std::vector<bool> QNVopt = {false, false, false, false,  false};
-  std::vector<bool> Eopt   = {false, false, false, true,   false};
-  std::vector<bool> Bopt   = {false, false, false, false,  true };
   std::vector<SettingBase*> mSettings;
-  SettingForm *mSettingFormOld = nullptr;
-  UnitsInterface<CFT> *mUnitsForm = nullptr;
+  FieldInterface<CFT>   *mFieldUI    = nullptr;
+  UnitsInterface<CFT>   *mUnitsUI    = nullptr;
+  DrawInterface<CFT>    *mDrawUI     = nullptr;
+  DisplayInterface<CFT> *mDisplayUI  = nullptr;
+  SettingForm           *mFlagUI     = nullptr;
   TabMenu *mTabs = nullptr;
 
-  Camera<double> mCamera;
+  Camera<CFT> mCamera;
   Rect2f mSimView2D; // view in sim space
   ScreenView mEMView;
   ScreenView mMatView;
   ScreenView m3DView;
   
   Vec2f  mMouseSimPos;
+  float3 mSigMPos; // 3D pos of active signal pen
+  float3 mMatMPos; // 3D pos of active material pen
 
-  EMField<float> mSignalField;
+  EMField<CFT> mSignalField;
   bool mNewSignal = false;
   
   Vec2f simToScreen2D(const Vec2f &pSim,    const Rect2f &simView, const Rect2f &screenView, bool vector=false);
@@ -269,14 +222,6 @@ private:
   bool   mGlAlpha        = true;
   unsigned char *mTexData  = nullptr;
   unsigned char *mTexData2 = nullptr;
-
-  // CUDA fill expressions
-  CudaExpression<float>  *mFillQP  = nullptr;
-  CudaExpression<float>  *mFillQN  = nullptr;
-  CudaExpression<float3> *mFillQPV = nullptr;
-  CudaExpression<float3> *mFillQNV = nullptr;
-  CudaExpression<float3> *mFillE   = nullptr;
-  CudaExpression<float3> *mFillB   = nullptr;
   
   void initGL(const Vec2i &texSize);
   void cleanupGL();

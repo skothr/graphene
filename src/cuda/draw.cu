@@ -1,4 +1,4 @@
-#include "draw.hpp"
+#include "draw.cuh"
 
 #include <cuda_runtime.h>
 #include <cufft.h>
@@ -15,7 +15,6 @@
 #define BLOCKDIM_Z 1
 
 
-
 // TODO: better overlap detection
 // inline __device__ float3 pointInCircle(const float3 cp, const float3 lp, float cr) { }
 // // returns intersections
@@ -30,13 +29,18 @@
 //   T discrim = cRad*cRad*lDist_2 - lD*lD;Q
 //   if(discrim <= 0) { return 0.0f; }
 // }
-
+// {
+//  T rad = radius; // / sum(cp.u.dL)/3;
+//  T rMax = pen.radius + 1/(T)sqrt(2.0); // circle radius plus maximum possible intersection radius from cell (center to corner)
+//  if(dist2 <= rMax*rMax)
+// }
 
 
 //// ADD SIGNAL ////
 
 // add field containing signals
-template<typename T> __global__ void addSignal_k(EMField<T> signal, EMField<T> dst, FieldParams<T> cp)
+template<typename T>
+__global__ void addSignal_k(EMField<T> signal, EMField<T> dst, FieldParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
   int iy = blockIdx.y*blockDim.y + threadIdx.y;
@@ -44,8 +48,8 @@ template<typename T> __global__ void addSignal_k(EMField<T> signal, EMField<T> d
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
       int i = dst.idx(ix, iy, iz);
-      dst.Q[i]   += signal.Q[i];   // * cp.u.dt;  // NOTE: should be multiplied by FPS, not dt, for FPS invariance (?)
-      dst.QPV[i] += signal.QPV[i]; // * cp.u.dt;  //      --> (dL?)
+      dst.Q[i]   += signal.Q[i];   // * cp.u.dt;
+      dst.QPV[i] += signal.QPV[i]; // * cp.u.dt;
       dst.QNV[i] += signal.QNV[i]; // * cp.u.dt;
       dst.E[i]   += signal.E[i];   // * cp.u.dt;
       dst.B[i]   += signal.B[i];   // * cp.u.dt;
@@ -53,38 +57,28 @@ template<typename T> __global__ void addSignal_k(EMField<T> signal, EMField<T> d
 }
 
 // draw in signals based on pen location and parameters
-template<typename T> __global__ void addSignal_k(typename DimType<T, 3>::VECTOR_T pSrc, EMField<T> dst, SignalPen<T> pen, FieldParams<T> cp)
+template<typename T>
+__global__ void addSignal_k(typename DimType<T, 3>::VECTOR_T pSrc, EMField<T> dst, SignalPen<T> pen, FieldParams<T> cp)
 {
-  typedef typename DimType<T, 2>::VECTOR_T VT2;
   typedef typename DimType<T, 3>::VECTOR_T VT3;
   long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long iy = blockIdx.y*blockDim.y + threadIdx.y;
   long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
-      unsigned long long i = dst.idx(ix, iy, iz);
-      VT3 pCell = VT3{(T)ix,(T)iy,(T)iz} + VT3{0.5, 0.5, 0.5};
-      if(pen.cellAlign) { pCell = floor(pCell); pSrc = floor(pSrc); }
-      
-      VT3 diff  = (pCell - pSrc);// + (pen.cellAlign ? 1.0f : 0.0f);
-      T   dist2 = dot(diff, diff);
-
-      T rad = pen.radius;///sum(cp.u.dL/3);
-      //T rMax = pen.radius + 1/(T)sqrt(2.0); // circle radius plus maximum possible intersection radius from cell (center to corner)
-      //if(dist2 <= rMax*rMax)
-      if((!pen.square && dist2 <= rad*rad) || (pen.square && abs(diff.x) <= rad+0.5f &&
-                                                             abs(diff.y) <= rad+0.5f &&
-                                               abs(diff.z) <= rad+0.5f))
+      VT3 pCell = VT3{(T)ix+0.5f, (T)iy+0.5f, (T)iz+0.5f};
+      VT3 diff; VT3 dist2; // output by penOverlaps()
+      if(penOverlaps(pCell, pSrc, diff, dist2, &pen, cp, 0.0f))
         {
-          T dist = sqrt(dist2);
-          VT3 n  = (dist == 0 ? diff : diff/dist);
+          VT3 dist = sqrt(dist2);
+          VT3 n  = (length(dist) == 0 ? diff : diff/length(dist));
 
-          T rMult   = (dist  != 0.0f ? 1.0f / dist  : 1.0f);
-          T r2Mult  = (dist2 != 0.0f ? 1.0f / dist2 : 1.0f);
+          T rMult   = (length(dist)  != 0.0f ? 1.0f / length(dist)  : 1.0f);
+          T r2Mult  = (length(dist2) != 0.0f ? 1.0f / length(dist2) : 1.0f);
           T cosMult = cos(2.0f*M_PI*pen.frequency*cp.t);
           T sinMult = sin(2.0f*M_PI*pen.frequency*cp.t);
           T tMult   = atan2(n.y, n.x);
-
+          
           T   QoptMult   =   pen.mult*((pen.Qopt   & IDX_R   ? rMult   : 1)*(pen.Qopt   & IDX_R2  ? r2Mult  : 1)*(pen.Qopt   & IDX_T ? tMult : 1) *
                                        (pen.Qopt   & IDX_COS ? cosMult : 1)*(pen.Qopt   & IDX_SIN ? sinMult : 1));
           VT3 QPVoptMult = n*pen.mult*((pen.QPVopt & IDX_R   ? rMult   : 1)*(pen.QPVopt & IDX_R2  ? r2Mult  : 1)*(pen.QPVopt & IDX_T ? tMult : 1) *
@@ -96,8 +90,8 @@ template<typename T> __global__ void addSignal_k(typename DimType<T, 3>::VECTOR_
           T   BoptMult   =   pen.mult*((pen.Bopt   & IDX_R   ? rMult   : 1)*(pen.Bopt   & IDX_R2  ? r2Mult  : 1)*(pen.Bopt   & IDX_T ? tMult : 1) *
                                        (pen.Bopt   & IDX_COS ? cosMult : 1)*(pen.Bopt   & IDX_SIN ? sinMult : 1));
 
-          dst.Q  [i] += pen.Qmult   * QoptMult;                 // * cp.u.dt;  // NOTE: should be multiplied by FPS, not dt, for FPS invariance (?)
-          dst.QPV[i] += pen.QPVmult * QPVoptMult; // / cp.u.dL; // * cp.u.dt;  //      --> (dL?)
+          unsigned long long i = dst.idx(ix, iy, iz);
+          dst.Q  [i] += pen.Qmult   * QoptMult;                 // * cp.u.dt;
           dst.QNV[i] += pen.QNVmult * QNVoptMult; // / cp.u.dL; // * cp.u.dt;
           dst.E  [i] += pen.Emult   * EoptMult;   // / cp.u.dL; // * cp.u.dt;
           dst.B  [i] += pen.Bmult   * BoptMult;   // / cp.u.dL; // * cp.u.dt;
@@ -133,21 +127,6 @@ template<typename T> void addSignal(const typename DimType<T,3>::VECTOR_T &pSrc,
   else { std::cout << "==> WARNING: Skipped addSignal(srcPoint) (" << dst.size << ")\n"; }
 }
 
-// template instantiation
-template void addSignal<float>(EMField<float> &signal, EMField<float> &dst, const FieldParams<float> &cp);
-template void addSignal<float>(const float3 &pSrc, EMField<float> &dst, const SignalPen<float> &pen, const FieldParams<float> &cp);
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -156,43 +135,43 @@ template void addSignal<float>(const float3 &pSrc, EMField<float> &dst, const Si
 //// ADD MATERIAL ////
 template<typename T> __global__ void addMaterial_k(typename DimType<T, 3>::VECTOR_T pSrc, EMField<T> dst, MaterialPen<T> pen, FieldParams<T> cp)
 {
-  typedef typename DimType<T, 2>::VECTOR_T VT2;
   typedef typename DimType<T, 3>::VECTOR_T VT3;
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
   int iy = blockIdx.y*blockDim.y + threadIdx.y;
   int iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
-      int i = dst.idx(ix, iy, iz);
-      //T rMax = pen.radius + 1/(T)sqrt(2.0); // circle radius plus maximum possible intersection radius from cell (center to corner)
-
-      //T   rad = pen.radius;// / sum(cp.cu.dL/3);
       VT3 pCell = VT3{(T)ix+0.5f, (T)iy+0.5f, (T)iz+0.5f};
-      VT3 diff  = pCell - pSrc;
-      T   dist2 = dot(diff, diff);
-      if((!pen.square && dist2 <= pen.radius*pen.radius) || (pen.square && (abs(diff.x) <= pen.radius+0.5f &&
-                                                                            abs(diff.y) <= pen.radius+0.5f &&
-                                                                            abs(diff.z) <= pen.radius+0.5f)))
-        { dst.mat[i] = Material<T>(pen.mult*pen.permittivity, pen.mult*pen.permeability, pen.mult*pen.conductivity, pen.vacuum); }
+      VT3 diff; VT3 dist2; // output by penOverlaps()
+      if(penOverlaps(pCell, pSrc, diff, dist2, &pen, cp, 0.0f))
+        {
+          int i = dst.idx(ix, iy, iz);
+          dst.mat[i] = Material<T>(pen.mult*pen.material.permittivity, pen.mult*pen.material.permeability,
+                                   pen.mult*pen.material.conductivity, pen.material.vacuum());
+        }
     }
 }
 
 // wrapper functions
-template<typename T>
-void addMaterial(const typename DimType<T,3>::VECTOR_T &pSrc, EMField<T> &dst, const MaterialPen<T> &pen, const FieldParams<T> &cp)
-{
-  if(dst.size.x > 0 && dst.size.y > 0)
-    {
-      dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
-      dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
-                (int)ceil(dst.size.y/(float)BLOCKDIM_Y),
-                (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
-      addMaterial_k<<<grid, threads>>>(pSrc, dst, pen, cp);
-      cudaDeviceSynchronize(); getLastCudaError("====> ERROR: addMaterial_k failed!");
-    }
-  else { std::cout << "==> WARNING: Skipped addMaterial(srcPoint) (" << dst.size << ")\n"; }
-}
+ template<typename T>
+          void addMaterial(const typename DimType<T,3>::VECTOR_T &pSrc, EMField<T> &dst, const MaterialPen<T> &pen, const FieldParams<T> &cp)
+ {
+   if(dst.size.x > 0 && dst.size.y > 0)
+     {
+       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
+       dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
+                 (int)ceil(dst.size.y/(float)BLOCKDIM_Y),
+                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
+       addMaterial_k<<<grid, threads>>>(pSrc, dst, pen, cp);
+       cudaDeviceSynchronize(); getLastCudaError("====> ERROR: addMaterial_k failed!");
+     }
+   else { std::cout << "==> WARNING: Skipped addMaterial(srcPoint) (" << dst.size << ")\n"; }
+ }
+
+
 
 // template instantiation
-template void addMaterial<float>(const float3 &pSrc, EMField<float> &dst, const MaterialPen<float> &pen, const FieldParams<float> &cp);
+template void addSignal  <float>(EMField<float> &signal, EMField<float> &dst, const FieldParams<float> &cp);
+template void addSignal  <float>(const float3 &pSrc,     EMField<float> &dst, const SignalPen  <float> &pen, const FieldParams<float> &cp);
+template void addMaterial<float>(const float3 &pSrc,     EMField<float> &dst, const MaterialPen<float> &pen, const FieldParams<float> &cp);
 

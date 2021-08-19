@@ -35,7 +35,7 @@ struct CameraDesc
   // sp --> screen pos [0.0, 1.0]
   __host__ __device__ Ray<T> castRay(const VT2 &sp, const VT2 &aspect) const
   {
-    double tf2 = tan(fov/2.0*(M_PI/180.0));
+    T tf2 = tan(fov/2.0*(M_PI/180.0));
     Ray<T> ray;
     ray.pos = pos;
     ray.dir = normalize(dir +
@@ -52,7 +52,7 @@ struct Camera
   typedef typename DimType<T,2>::VECTOR_T VT2;
   typedef typename DimType<T,3>::VECTOR_T VT3;
 
-  VT3 upBasis = VT3{(T)0, (T)1, (T)0};  
+  VT3 upBasis = VT3{(T)0, (T)1, (T)0};
   union
   { // camera description (union for easy access)
     struct { VT3 pos; VT3 dir; VT3 right; VT3 up; T fov; T near; T far; };
@@ -64,28 +64,28 @@ struct Camera
   Camera() { }
   
   // sp --> screen pos [0.0, 1.0]
-  Ray<T> castRay(const VT2 &sp, const VT2 &aspect) const { return desc.castRay(VT2{sp.x, 1.0-sp.y}, aspect); }  
+  Ray<T> castRay(const VT2 &sp, const VT2 &aspect) const { return desc.castRay(VT2{sp.x, (T)1.0-sp.y}, aspect); }  
 
-  Vec2f worldToView(const Vector<T, 3> &wp, bool *clipped=nullptr)
+  Vec2f worldToView(const Vector<T, 3> &wp, const Vector<T, 2> &aspect, bool *clipped=nullptr)
   {
-    // Vec4d wp4 = Vec4d(wp.x, wp.y, wp.z, 1.0f);
     Matrix<T> vp = Matrix<T>(4, 1); vp.setCol(0, {wp.x-pos.x, wp.y-pos.y, wp.z-pos.z, (T)1.0});
     Matrix<T> result = (proj^(view^vp)); // NOTE: something wrong with Matrix implementation -- result needs to be separate object
     // clip
     if(clipped)
       {
-        *clipped =  result[0][0]/result[3][0] < -1.5 || result[0][0]/result[3][0] > 1.5;
-        *clipped |= result[1][0]/result[3][0] < -1.5 || result[1][0]/result[3][0] > 1.5;
-        *clipped |= result[2][0]/result[3][0] < -1.5 || result[2][0]/result[3][0] > 1.5;
+        T a = std::max(max(aspect), max(1.0/aspect));
+        *clipped =  result[0][0]/result[3][0] < -a || result[0][0]/result[3][0] > a;
+        *clipped |= result[1][0]/result[3][0] < -a || result[1][0]/result[3][0] > a;
+        *clipped |= result[2][0] > 1.0; // NOTE: some lines not properly clipped
       }
     // normalize
-    return (Vec2f(result[0][0], (result[2][0] > 0 ? 1 : -1)*result[1][0]) / result[3][0] + 1.0) / 2.0;
+    return (Vec2f(result[0][0], -result[1][0]) / result[3][0] + 1.0) / 2.0;
   }
-  // Vec3d viewToWorld(const Vec3d &wp)  // TODO -- inverse matrices (?)
+  // Vector<T, 3> viewToWorld(const Vector<T, 3> &wp)  // TODO -- inverse matrices (?)
   // {
-  //   Vec4d wp4 = Vec4d(wp.x, wp.y, wp.z, 1.0f);
-  //   Vec4d result  = viewInv ^ wp;
-  //   return Vec3d(vp.x, vp.y, vp.z);
+  //   Vector<T, 4> wp4 = Vector<T, 4>(wp.x, wp.y, wp.z, 1.0f);
+  //   Vector<T, 4> result  = viewInv ^ wp;
+  //   return Vector<T, 3>(vp.x, vp.y, vp.z);
   // }
   
   void calculate() // recalculate matrices
@@ -111,14 +111,6 @@ struct Camera
     proj[2][3] = -2*far*near/(far - near);
     proj[3][2] = -1.0;
     proj[3][3] = 0.0;
-
-    // std::cout << "VIEW:\n"  << view.toString() << "\n"
-    //           << "VIEWT:\n" << viewT.toString() << "\n"
-    //           << "PROJ:\n"  << proj.toString() << "\n";
-    
-    // combine matrices
-    VP = proj ^ (view);// ^ viewT);
-    // std::cout << "VP:\n" << VP.toString() << "\n\n";
   }
 
   void rotate(VT2 angles) // angles --> { pitch, yaw, roll } (rotation around x, y, and z bases)
@@ -145,14 +137,12 @@ struct Camera
 
 
 
-// vector type shorthand for declarations
-template<typename T> using VT2_t = typename DimType<T,2>::VECTOR_T;
-template<typename T> using VT3_t = typename DimType<T,3>::VECTOR_T;
 
-#define TOL 0.0001 // tolerance/epsilon to make sure ray fully intersects
+#define TOL 0.0005f // tolerance/epsilon to make sure ray fully intersects
 
 template<typename T>
-__host__  __device__ inline T planeIntersect(const VT3_t<T> &p, const VT3_t<T> &n, const Ray<T> &ray)
+__host__  __device__ inline T planeIntersect(const typename DimType<T,3>::VECTOR_T &p,
+                                             const typename DimType<T,3>::VECTOR_T &n, const Ray<T> &ray) 
 {
   T denom = dot(n, ray.dir);
   T t = -1.0;
@@ -164,20 +154,40 @@ __host__  __device__ inline T planeIntersect(const VT3_t<T> &p, const VT3_t<T> &
 //  - field assumed to be size (1,1,1) in 3D space
 //  - return value < 0 means ray missed, value == 0 means ray started inside cube
 // returns {tmin, tmax}
-template<typename T>
-__host__ __device__ inline VT2_t<T> cubeIntersect(const VT3_t<T> &pos, const VT3_t<T> &size, const Ray<T> &ray)
+template<typename T> __device__ inline typename DimType<T,2>::VECTOR_T cubeIntersect(const typename DimType<T,3>::VECTOR_T &pos,
+                                                                                     const typename DimType<T,3>::VECTOR_T &size, const Ray<T> &ray)
 {
-  typedef VT2_t<T> VT2; typedef VT3_t<T> VT3;
+  typedef typename DimType<T,2>::VECTOR_T VT2;
+  typedef typename DimType<T,3>::VECTOR_T VT3;
   T tnx = (pos.x - ray.pos.x)          / ray.dir.x;
   T tpx = (pos.x - ray.pos.x + size.x) / ray.dir.x;
   T tny = (pos.y - ray.pos.y)          / ray.dir.y;
   T tpy = (pos.y - ray.pos.y + size.y) / ray.dir.y;
   T tnz = (pos.z - ray.pos.z)          / ray.dir.z;
   T tpz = (pos.z - ray.pos.z + size.z) / ray.dir.z;
-  T tmin = max(max(min(tnx, tpx), min(tny, tpy)), min(tnz, tpz));
-  T tmax = min(min(max(tnx, tpx), max(tny, tpy)), max(tnz, tpz));
-  return (tmin < 0 ? VT2_t<T>{0,0} : (tmin > tmax) ? VT2_t<T>{-1.0,-1.0} : VT2_t<T>{tmin, tmax});
+  T tmin = max(max(min((T)tnx, (T)tpx), min((T)tny, (T)tpy)), min((T)tnz, (T)tpz));
+  T tmax = min(min(max((T)tnx, (T)tpx), max((T)tny, (T)tpy)), max((T)tnz, (T)tpz));
+  return (tmin < 0 ? VT2{0,0} : (tmin > tmax) ? VT2{-1.0,-1.0} : VT2{tmin, tmax});
 }
+
+
+
+template<typename T>
+__host__ inline Vector<T,2> cubeIntersectHost(const Vector<T,3> &pos, const Vector<T,3> &size, const Ray<T> &ray)
+{
+  typedef typename DimType<T,2>::VECTOR_T VT2;
+  typedef typename DimType<T,3>::VECTOR_T VT3;
+  T tnx = (pos.x - ray.pos.x)          / ray.dir.x;
+  T tpx = (pos.x - ray.pos.x + size.x) / ray.dir.x;
+  T tny = (pos.y - ray.pos.y)          / ray.dir.y;
+  T tpy = (pos.y - ray.pos.y + size.y) / ray.dir.y;
+  T tnz = (pos.z - ray.pos.z)          / ray.dir.z;
+  T tpz = (pos.z - ray.pos.z + size.z) / ray.dir.z;
+  T tmin = std::max(std::max(std::min((T)tnx, (T)tpx), std::min((T)tny, (T)tpy)), std::min((T)tnz, (T)tpz));
+  T tmax = std::min(std::min(std::max((T)tnx, (T)tpx), std::max((T)tny, (T)tpy)), std::max((T)tnz, (T)tpz));
+  return (tmin < 0 ? VT2{0,0} : (tmin > tmax) ? VT2{-1.0,-1.0} : VT2{tmin, tmax});
+}
+
 
 
 

@@ -1,4 +1,4 @@
-#ifndef MATRIX_HPP
+#ifndef MATRIX_HPPxxx
 #define MATRIX_HPP
 
 #include <cmath>

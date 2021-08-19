@@ -15,7 +15,7 @@
 using json = nlohmann::json;
 #define JSON_SPACES 4
 
-#define DEFAULT_FORMAT "%.6f"\
+#define DEFAULT_FORMAT "%.6f"
 
 
 typedef std::function<void(void)> SettingUpdateCB;
@@ -830,6 +830,7 @@ public:
   void add(SettingBase *setting) { mContents.push_back(setting); }
   const bool& open() const  { return mCOpen; }
   bool& open() { return mCOpen; }
+  void setOpen(bool copen) { mCOpen = copen; }
 
   // pass to contents (TODO: replace with column organization)
   virtual void setLabelColWidth(float w) override { SettingBase::setLabelColWidth(w); for(auto s : mContents) { s->setLabelColWidth(w); } }
@@ -918,7 +919,7 @@ inline bool SettingGroup::drawContents(float scale, bool busy, bool &changed, bo
     if(mHorizontal)
       { // draw each row horizontally (grouped by column for alignment)
         int numPerCol = (int)std::ceil(mContents.size() / mNumColumns);
-        int row = 0;
+        //int row = 0;
         for(int i = 0; i < mContents.size(); i++)
           {
             SettingBase *s = mContents[numPerCol - (i % numPerCol)];

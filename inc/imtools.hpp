@@ -94,7 +94,6 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
   Vec2f sSize = ImGui::CalcTextSize(text.c_str());
   if(superFont) { ImGui::PopFont(); }
 
-  
   // extra vertical space for subscript
   ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f));
   
@@ -163,7 +162,7 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
   ImGui::PopStyleVar();
 
   // extra vertical space for subscript
-  ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f));
+  //ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f));
 }
 
 

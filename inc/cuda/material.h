@@ -19,11 +19,15 @@ struct Material
   __host__ __device__ Material(T permit, T permeab, T conduct, bool vacuum_=true)
     : permittivity(permit), permeability(permeab), conductivity(conduct), nonVacuum(!vacuum_) { }
 
-  __host__ __device__ bool vacuum() const { return !nonVacuum; }
+  __host__ __device__ bool vacuum() const      { return !nonVacuum; }
+  __host__            void setVacuum(bool vac) { nonVacuum = !vac; }
+
+  // index of refraction
+  __host__ __device__ T  n(T e0, T u0) const { return sqrt((permittivity/e0) * (permeability/u0)); }
   
   // NOTE:
   //   E(t) = alphaE*E(t-1) + betaE*dE/dt
-  //   B(t) = alphaB*B(t-1) + betaB*dB/dt
+  //   B(t) = alphaB*B(t-1) + betaB*dB/td
   struct Factors { T alphaE; T betaE; T alphaB; T betaB; };
   __host__ __device__ Factors getFactors(T dt, T cellSize) const
   {

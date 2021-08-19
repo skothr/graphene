@@ -542,9 +542,6 @@ __host__ __device__  inline double min(double2 v) { return fminf(v.x, v.y); }
 __host__ __device__  inline double min(double3 v) { return fminf(v.x, fminf(v.y, v.z)); }
 __host__ __device__  inline double min(double4 v) { return fminf(v.x, fminf(v.y, fminf(v.z, v.w))); }
 
-// __host__ __device__  inline int     min(int    u, int    v) { return (u < v ? u : v); }
-// __host__ __device__  inline float   min(float  u, float  v) { return (u < v ? u : v); }
-// __host__ __device__  inline double  min(double u, double v) { return (u < v ? u : v); }
 
 // FLOOR
 __host__ __device__  inline float2  floor(const float2  &v) { return float2 {  floorf(v.x), floorf(v.y) }; }
@@ -939,7 +936,7 @@ inline __device__ __host__ uint4 clamp(uint4 v, uint4 a, uint4 b) { return make_
 
 
 // ISNAN
-template<typename T> __device__ inline bool isnan(T v)                { return isnan(v); }
+template<typename T> __device__ inline bool isnan(T v)                { return v != v; }
 template<>           __device__ inline bool isnan<float2> (float2 v)  { return (isnan(v.x) || isnan(v.y)); }
 template<>           __device__ inline bool isnan<float3> (float3 v)  { return (isnan(v.x) || isnan(v.y) || isnan(v.z)); }
 template<>           __device__ inline bool isnan<float4> (float4 v)  { return (isnan(v.x) || isnan(v.y) || isnan(v.z) || isnan(v.w)); }

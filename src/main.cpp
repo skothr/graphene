@@ -207,8 +207,8 @@ int main(int argc, char* argv[])
       ImGui::NewFrame();
       {
         glfwGetFramebufferSize(window, &frameSize.x, &frameSize.y); // get frame size
-        simWindow->update();        // step simulation
         simWindow->draw(frameSize); // draw UI
+        simWindow->update();        // step simulation
       }
       ImGui::EndFrame();
       
