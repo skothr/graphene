@@ -6,7 +6,7 @@ Interactive simulation of a subset of Maxwell's equations in 3D. Part of an acad
 
 The field equations are solved over an Eulerian grid given initial conditions and user input, and results are rendered with a ray marching algorithm (uses CUDA).
 
-Most parameters are configurable, but the interface is somewhat unintuitive at the moment (currently being redesigned). But with the right tuning, many patterns can be generated similar to those seen in physical electromagnetic phenomena.
+Most parameters are configurable in the settings. With the right tuning, many patterns can be generated similar to those seen in physical electromagnetic phenomena.
 
 | ![simple 2D wave interference](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-materials7.png) | 
 |:--:| 
@@ -15,7 +15,7 @@ Most parameters are configurable, but the interface is somewhat unintuitive at t
 &nbsp;
 &nbsp;
 
-| ![refraction due to different material properties](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-materials-lens.png) | 
+| ![refraction due to different material properties](https://raw.githubusercontent.com/skothr/graphene/dev/images/convex-lens-3d-2.png) | 
 |:--:| 
 | *Refraction/lensing due to different material properties (materials drawn in with Alt+Click)* |
 
