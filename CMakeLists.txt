@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.6)
 cmake_policy(SET CMP0072 NEW)   # opengl policy (to get rid of warning)
 set(OpenGL_GL_PREFERENCE GLVND) #
 
-project(graphene VERSION 0.0.2) # project name and version
+project(graphene VERSION 0.0.3) # project name and version
 configure_file(inc/version/version.hpp.in ../inc/version/version.hpp)
 
 set(TARGET graphene)
