@@ -117,7 +117,7 @@ __device__ typename DimType<T,4>::VECTOR_T rayTraceField(EMField<T> &src, const 
             }
 
           // scale blending based on distance travelled to next intersection
-          col.w *= (t-tLast);
+          col.w *= (t-tLast)/sum(cs);
           fluidBlend(color, col, rp);
           
           fp = fp2;

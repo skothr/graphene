@@ -107,9 +107,9 @@ FieldInterface<T>::FieldInterface(FieldParams<T> *cp_, const std::function<void(
   mSettings.push_back(sREF); simGroup->add(sREF);
 
   
-  auto *sUQ = new Setting<bool> ("Update Q", "updateQ", &updateQ); mSettings.push_back(sUQ); stepGroup->add(sUQ);
   auto *sUE = new Setting<bool> ("Update E", "updateE", &updateE); mSettings.push_back(sUE); stepGroup->add(sUE);
   auto *sUB = new Setting<bool> ("Update B", "updateB", &updateB); mSettings.push_back(sUB); stepGroup->add(sUB);
+  auto *sUQ = new Setting<bool> ("Update Q", "updateQ", &updateQ); mSettings.push_back(sUQ); stepGroup->add(sUQ);
 
   // init
   auto *sQPINIT  = new Setting<std::string>("q+ init",  "qpInit",  &initQPStr, initQPStr,

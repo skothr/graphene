@@ -225,7 +225,7 @@ int main(int argc, char* argv[])
       glfwSwapBuffers(window);
 
       // render simulation to file separately
-      // simWindow->renderToFile();
+      simWindow->renderToFile();
     }
 
   cleanup();

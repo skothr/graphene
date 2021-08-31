@@ -23,6 +23,9 @@
 #define RENDER_BASE_PATH "./rendered"
 
 #define CFT float // field base type (float/double (/int?))
+#define CFV2 typename DimType<CFT, 2>::VECTOR_T
+#define CFV3 typename DimType<CFT, 3>::VECTOR_T
+#define CFV4 typename DimType<CFT, 4>::VECTOR_T
 #define STATE_BUFFER_SIZE 2
 
 // font settings
@@ -61,33 +64,24 @@ struct SimParams
   ////////////////////////////////////////
   // flags
   ////////////////////////////////////////
-  bool debug         = false;        // toggle debugging (e.g. syncs device between steps for error checking)
-  bool verbose       = false;        // toggle verbose printout
+  bool debug   = false;        // toggle debugging (e.g. syncs device between steps for error checking)
+  bool verbose = false;        // toggle verbose printout
 
-  ////////////////////////////////////////
-  // initial conditions for reset
-  ////////////////////////////////////////
-  FieldParams<CFT> cp;   // cuda field params
-
-  ////////////////////////////////////////
-  // on-screen rendering
-  ////////////////////////////////////////
-  RenderParams<CFT>     rp; // field render params
+  FieldParams<CFT>       cp; // cuda field params
+  RenderParams<CFT>      rp; // cuda render params
   VectorFieldParams<CFT> vp; // vector draw params
 
-
-  
   ////////////////////////////////////////
   // microstepping
   ////////////////////////////////////////
   int uSteps  = 1;    // number of microsteps performed between each rendered frame
   CFT dtFrame = 0.1; // total timestep over one frame
+
   ////////////////////////////////////////
   // params for rendering to files
   ////////////////////////////////////////
-  // RenderParams render;             // handles flags and multipliers dictating how the simulation state is rendered
   bool outAlpha       = false;     // if true, outputs an alpha channel if supported by file format
-  int  pngCompression = 4;         // PNG compression level (if path ends with .png)
+  int  pngCompression = 10;        // PNG compression level (if path ends with .png)
   int2 outSize = int2{1920, 1080}; // output video size
   std::string simName = "unnamed"; // directory name/file prefix
   std::string outExt  = ".png";    // image file extension
@@ -155,7 +149,7 @@ private:
   
   Units<CFT> mUnits;
 
-  float mSingleStepMult = 0.0f; // for single stepping with up/down arrow keys while paused
+  CFT mSingleStepMult = 0.0; // for single stepping with up/down arrow keys while paused
   
   CudaTexture  mEMTex;
   CudaTexture  mMatTex;
@@ -179,9 +173,9 @@ private:
   ScreenView mMatView;
   ScreenView m3DView;
   
-  Vec2f  mMouseSimPos;
-  float3 mSigMPos; // 3D pos of active signal pen
-  float3 mMatMPos; // 3D pos of active material pen
+  Vec2f mMouseSimPos;
+  CFV3  mSigMPos; // 3D pos of active signal pen
+  CFV3  mMatMPos; // 3D pos of active material pen
 
   EMField<CFT> mSignalField;
   bool mNewSignal = false;
@@ -198,8 +192,8 @@ private:
 
   void resetViews();
   
-  void handleInput    (ScreenView &view);
-  void handleInput3D  (ScreenView &view);
+  void handleInput2D(ScreenView &view);
+  void handleInput3D(ScreenView &view);
   void drawVectorField(const Rect2f &sr);
     
   std::map<int, bool>        mKeysDown;
@@ -214,7 +208,9 @@ private:
   // images output as: [mBaseDir]/[mSimName]/[mSimName]-[mParams.frame].png
   std::string mBaseDir     = RENDER_BASE_PATH;
   std::string mImageDir    = mBaseDir + "/" + mParams.simName;
-    
+  
+  SettingForm *mFileOutSettings = nullptr;
+  
   GLuint mRenderFB       = 0;
   GLuint mRenderTex      = 0;
   GLenum mDrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
@@ -225,10 +221,13 @@ private:
   
   void initGL(const Vec2i &texSize);
   void cleanupGL();
+  void render(const Vec2f &frameSize=Vec2f(0,0), const std::string &id="");
+  void handleInput(const Vec2f &frameSize=Vec2f(0,0), const std::string &id="");
 
   bool checkBaseRenderPath();
   bool checkSimRenderPath();
-    
+  bool fileOutInterface();
+  
 public:
   // fonts (public)
   ImFontConfig *fontConfig = nullptr;
@@ -242,7 +241,7 @@ public:
   SimWindow(GLFWwindow *window);
   ~SimWindow();
     
-  bool init();  //const SimParams<float2> &p=SimParams<float2>());
+  bool init();
   void cleanup();
   void quit()          { mClosing = true; }
   bool closing() const { return mClosing; }
@@ -253,7 +252,6 @@ public:
   void resetMaterials();
   void resetSim();
   void togglePause();
-  //SimParams<float2>* params() { return &mParams; }
     
   void draw(const Vec2f &frameSize=Vec2f(0,0));
   void update();

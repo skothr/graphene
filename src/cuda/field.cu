@@ -217,7 +217,7 @@ __global__ void updateCharge_k(EMField<T> src, EMField<T> dst, FieldParams<T> cp
       
       dst.E[i0]   = src.E[i0];
       dst.B[i0]   = src.B[i0];
-      dst.Q[i0]   = Q0 + Q01/4.0;
+      dst.Q[i0]   = Q0 + Q01/6.0;
       dst.QPV[i0] = pv;
       dst.QNV[i0] = nv;
       dst.mat[i0] = src.mat[i0];
@@ -257,7 +257,7 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
                               max(0, min(src.size.y-1, ip0.y + yOffset)),
                               max(0, min(src.size.z-1, ip0.z + zOffset)));
               dst.E[i0]   = src.E[i];
-              dst.B[i0]   = src.B[i0];
+              dst.B[i0]   = src.B[i];
               dst.Q[i0]   = src.Q[i0];
               dst.QPV[i0] = src.QPV[i0];
               dst.QNV[i0] = src.QNV[i0];
@@ -265,18 +265,8 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
               return;
             }
         }
-      // else
-      //   {
-      //     // ip0.x = min(src.size.x-(int)cp.bs.x, max((int)cp.bs.x-1, ip0.x));
-      //     // ip0.y = min(src.size.y-(int)cp.bs.y, max((int)cp.bs.y-1, ip0.y));
-      //     // ip0.z = min(src.size.z-(int)cp.bs.z, max((int)cp.bs.z-1, ip0.z));
-      //     ip0 = int3{ max(0, min(src.size.x-1, ip0.x)),
-      //                 max(0, min(src.size.y-1, ip0.y)),
-      //                 max(0, min(src.size.z-1, ip0.z))};
-      //   }
       
       int3 ip1 = int3{min(src.size.x-1, max(0, ip0.x-1)), min(src.size.y-1, max(0, ip0.y-1)), min(src.size.z-1, max(0, ip0.z-1))};
-      //int i = src.E.idx(ip0.x, ip0.y, ip0.z);
       VT3 E00 = src.E[i0];
       VT3 B00 = src.B[i0];
       
@@ -303,17 +293,13 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
       VT3 newE = f.alphaE*E00 + f.betaE*dEdt;
       // TODO: solve for divergence?
       
-      if(isnan(newE.x) || isinf(newE.x) || isnan(newE.y) || isinf(newE.y) || isnan(newE.z) || isinf(newE.z)) { newE *= 1e-10;   }
       if(isnan(newE.x) || isinf(newE.x) || isnan(newE.y) || isinf(newE.y) || isnan(newE.z) || isinf(newE.z)) { newE = VT3{0.0,0.0,0.0}; }
       
       // // lorentz (E)
       VT3 newQPV = QPV00 + (Q00.x-Q00.y)*newE*cp.u.dt;
-      // if(isnan(newQPV.x) || isinf(newQPV.x) || isnan(newQPV.y) || isinf(newQPV.y) || isnan(newQPV.z) || isinf(newQPV.z)) { newQPV = normalize(QPV00); }
       if(isnan(newQPV.x) || isinf(newQPV.x) || isnan(newQPV.y) || isinf(newQPV.y) || isnan(newQPV.z) || isinf(newQPV.z)) { newQPV = VT3{0.0,0.0,0.0}; }
       VT3 newQNV = QNV00 - (Q00.x-Q00.y)*newE*cp.u.dt;
-      // if(isnan(newQNV.x) || isinf(newQNV.x) || isnan(newQNV.y) || isinf(newQNV.y) || isnan(newQNV.z) || isinf(newQNV.z)) { newQNV = normalize(QNV00); }
       if(isnan(newQNV.x) || isinf(newQNV.x) || isnan(newQNV.y) || isinf(newQNV.y) || isnan(newQNV.z) || isinf(newQNV.z)) { newQNV = VT3{0.0,0.0,0.0}; }
-      // VT3 newQPV = src.QPV[i0]; VT3 newQNV = src.QNV[i0];
       
       dst.E[i0]   = newE;
       dst.QPV[i0] = newQPV;
@@ -353,7 +339,7 @@ __global__ void updateMagnetic_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
                               max(0, min(src.size.y-1, ip0.y + yOffset)),
                               max(0, min(src.size.z-1, ip0.z + zOffset)));
               dst.B[i0] = src.B[i];
-              dst.E[i0]   = src.E[i0];
+              dst.E[i0]   = src.E[i];
               dst.Q[i0]   = src.Q[i0];
               dst.QPV[i0] = src.QPV[i0];
               dst.QNV[i0] = src.QNV[i0];
@@ -361,18 +347,8 @@ __global__ void updateMagnetic_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
               return;
             }
         }
-      // else
-      //   {
-      //     // ip0.x = max((int)cp.bs.x, min(src.size.x-(int)cp.bs.x-1, ip0.x));
-      //     // ip0.y = max((int)cp.bs.y, min(src.size.y-(int)cp.bs.y-1, ip0.y));
-      //     // ip0.z = max((int)cp.bs.z, min(src.size.z-(int)cp.bs.z-1, ip0.z));
-      //     ip0 = int3{ max(0, min(src.size.x-1, ip0.x)),
-      //                 max(0, min(src.size.y-1, ip0.y)),
-      //                 max(0, min(src.size.z-1, ip0.z))};
-      //   }
       
       int3 ip1 = int3{max(0, min(src.size.x-1, ip0.x+1)), max(0, min(src.size.y-1, ip0.y+1)), max(0, min(src.size.z-1, ip0.z+1)) };
-      // int i = src.B.idx(ip0.x, ip0.y, ip0.z);
       
       VT3 B00         = src.B[i0];
       VT3 E00         = src.E[i0];
@@ -391,18 +367,13 @@ __global__ void updateMagnetic_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
                        (Ezp.x-E00.x) - (Exp.z-E00.z),   // dEx/dZ - dEz/dX
                        (Exp.y-E00.y) - (Eyp.x-E00.x) }; // dEy/dX - dEx/dY
       VT3 newB = f.alphaB*B00 - f.betaB*dBdt;
-      
-      if(isnan(newB.x) || isinf(newB.x) || isnan(newB.y) || isinf(newB.y) || isnan(newB.z) || isinf(newB.z)) { newB = B00*1e-10;   }
       if(isnan(newB.x) || isinf(newB.x) || isnan(newB.y) || isinf(newB.y) || isnan(newB.z) || isinf(newB.z)) { newB = VT3{0.0,0.0,0.0}; }
       
       // // lorentz (v x B)
       VT3 newQPV = QPV00 + (Q00.x-Q00.y)*cross(QPV00, newB)*cp.u.dt;
-      // if(isnan(newQPV.x) || isinf(newQPV.x) || isnan(newQPV.y) || isinf(newQPV.y) || isnan(newQPV.z) || isinf(newQPV.z)) { newQPV = normalize(QPV00); }
       if(isnan(newQPV.x) || isinf(newQPV.x) || isnan(newQPV.y) || isinf(newQPV.y) || isnan(newQPV.z) || isinf(newQPV.z)) { newQPV = VT3{0.0,0.0,0.0}; }
       VT3 newQNV = QNV00 - (Q00.x-Q00.y)*cross(QNV00, newB)*cp.u.dt;
-      // if(isnan(newQNV.x) || isinf(newQNV.x) || isnan(newQNV.y) || isinf(newQNV.y) || isnan(newQNV.z) || isinf(newQNV.z)) { newQNV = normalize(QNV00); }
       if(isnan(newQNV.x) || isinf(newQNV.x) || isnan(newQNV.y) || isinf(newQNV.y) || isnan(newQNV.z) || isinf(newQNV.z)) { newQNV = VT3{0.0,0.0,0.0}; }
-      // VT3 newQPV = src.QPV[i0]; VT3 newQNV = src.QNV[i0];
         
       dst.B[i0]   = newB;
       dst.QPV[i0] = newQPV;

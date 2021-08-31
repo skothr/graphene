@@ -21,10 +21,12 @@ struct Pen
   bool cellAlign  = true;  // snap offset to center of cell
   bool square     = false; // draw with square pen
   int  depth      = 0;     // depth of pen center from view surface
-  VT3  radius0    = VT3{10.0, 10.0f, 10.0f};  // base pen size in fluid cells
-  VT3  radius1    = VT3{0.0,  0.0f, 0.0f};  // if > 0, pen shape will be the intersection of circles radius0 and radius1
-  VT3  rDist      = VT3{0.0,  0.0f, 0.0f};  // positional difference between intersecting circles
-  T    mult       = 1.0;   // signal multiplier
+  VT3  radius0    = VT3{10.0, 10.0, 10.0};  // base pen size in fluid cells
+  VT3  radius1    = VT3{ 0.0,  0.0,  0.0};  // if > 0, pen shape will be the intersection of circles radius0 and radius1
+  VT3  rDist      = VT3{ 0.0,  0.0,  0.0};  // positional difference between intersecting circles
+  T    mult       = 1.0;                // multiplier (signal/material)
+  T    sizeMult   = 1.0;                // multiplier (pen size)
+  VT3  xyzMult    = VT3{1.0, 1.0, 1.0}; // multiplier (pen size, each dimension)
   virtual PenType type() const { return PEN_NONE; }
 };
 
@@ -48,11 +50,11 @@ struct SignalPen : public Pen<T>
   T frequency  = 0.1;  // Hz(1/t in sim time) for sin/cos mult flags
   T wavelength = 10.0; // in dL units (cells per period)
 
-  VT2 Qmult   = VT2{0.0, 0.0};       // base field values to add
-  VT3 QPVmult = VT3{0.0, 0.0,  0.0};
-  VT3 QNVmult = VT3{0.0, 0.0,  0.0};
-  VT3 Emult   = VT3{0.0, 0.0,  1.0};
-  VT3 Bmult   = VT3{0.0, 0.0, -1.0};
+  VT2 Qmult   = VT2{0.0,  0.0};       // base field values to add
+  VT3 QPVmult = VT3{0.0,  0.0,  0.0};
+  VT3 QNVmult = VT3{0.0,  0.0,  0.0};
+  VT3 Emult   = VT3{0.0,  0.0,  1.0};
+  VT3 Bmult   = VT3{0.0,  0.0, -1.0};
   int Qopt; int QPVopt; int QNVopt; int Eopt; int Bopt; // parameteric option flags (IDX_*)
   
   SignalPen() : Qopt(IDX_NONE), QPVopt(IDX_NONE), QNVopt(IDX_NONE), Eopt(IDX_SIN), Bopt(IDX_COS) { }
@@ -63,8 +65,8 @@ template<typename T>
 struct MaterialPen : public Pen<T>
 {
   virtual PenType type() const override { return PEN_MATERIAL; }
+  
   Material<T> material;
-
   MaterialPen() : material(2.4, 1.3, 0.001, false) { }
 };
 
@@ -92,13 +94,12 @@ __device__ inline bool penOverlaps(typename DimType<T, 3>::VECTOR_T &pCell, type
   
   if(pen->cellAlign) { pCell = floor(pCell); pSrc = floor(pSrc); }
 
-  VT3 diff0  = ((pSrc + pen->rDist/T(2))-pCell);
+  VT3 diff0  = ((pSrc + pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
   VT3 dist0_2 = diff0*diff0;
-  VT3 diff1  = ((pSrc - pen->rDist/T(2))-pCell);
+  VT3 diff1  = ((pSrc - pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
   VT3 dist1_2 = diff1*diff1;
-  
   diff = diff0;
-    dist_2 = dist0_2;
+  dist_2 = dist0_2;
 
   VT3 r0 = pen->radius0+radOffset;
   VT3 r1 = pen->radius1+radOffset;
@@ -118,13 +119,12 @@ __device__ inline bool penOverlaps2(typename DimType<T, 3>::VECTOR_T &pCell,  ty
   
   if(pen->cellAlign) { pCell = floor(pCell); pSrc = floor(pSrc); }
   
-  diff0  = ((pSrc + pen->rDist/T(2))-pCell);
+  diff0  = ((pSrc + pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
   dist0_2 = diff0*diff0;
-  diff1  = ((pSrc - pen->rDist/T(2))-pCell);
+  diff1  = ((pSrc - pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
   dist1_2 = diff1*diff1;
-  
   diff = diff0;
-    dist_2 = dist0_2;
+  dist_2 = dist0_2;
   
   VT3 r0 = pen->radius0+radOffset;
   VT3 r1 = pen->radius1+radOffset;

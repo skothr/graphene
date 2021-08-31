@@ -66,7 +66,7 @@ struct Camera
   // sp --> screen pos [0.0, 1.0]
   Ray<T> castRay(const VT2 &sp, const VT2 &aspect) const { return desc.castRay(VT2{sp.x, (T)1.0-sp.y}, aspect); }  
 
-  Vec2f worldToView(const Vector<T, 3> &wp, const Vector<T, 2> &aspect, bool *clipped=nullptr)
+  Vec2f worldToView(const Vector<T, 3> &wp, const Vector<T, 2> &aspect, Vector<int, 3> *clipped=nullptr)
   {
     Matrix<T> vp = Matrix<T>(4, 1); vp.setCol(0, {wp.x-pos.x, wp.y-pos.y, wp.z-pos.z, (T)1.0});
     Matrix<T> result = (proj^(view^vp)); // NOTE: something wrong with Matrix implementation -- result needs to be separate object
@@ -74,12 +74,20 @@ struct Camera
     if(clipped)
       {
         T a = std::max(max(aspect), max(1.0/aspect));
-        *clipped =  result[0][0]/result[3][0] < -a || result[0][0]/result[3][0] > a;
-        *clipped |= result[1][0]/result[3][0] < -a || result[1][0]/result[3][0] > a;
-        *clipped |= result[2][0] > 1.0; // NOTE: some lines not properly clipped
+        clipped->x = (result[0][0]/result[3][0] < -a ? -1 : (result[0][0]/result[3][0] > a ? 1 : 0));
+        clipped->y = (result[1][0]/result[3][0] < -a ? -1 : (result[1][0]/result[3][0] > a ? 1 : 0));
+        clipped->z = (result[2][0] > -near ? -1 : (result[2][0] < -far ? 1 : 0));
       }
+    if(result[2][0] > -near ? -1 : (result[2][0] < -far ? 1 : 0)) { result[0][0] *= -1; result[1][0] *= -1; }
     // normalize
     return (Vec2f(result[0][0], -result[1][0]) / result[3][0] + 1.0) / 2.0;
+  }
+  Vec2f worldToView(const Vector<T, 3> &wp, const Vector<T, 2> &aspect, bool *clipped=nullptr)
+  {
+    Vec3i vClipped; Vec2f result = worldToView(wp, aspect, &vClipped);
+    // clip (single bool)
+    if(clipped) { *clipped = vClipped.x != 0 || vClipped.y != 0 || vClipped.z != 0; }
+    return result;
   }
   // Vector<T, 3> viewToWorld(const Vector<T, 3> &wp)  // TODO -- inverse matrices (?)
   // {

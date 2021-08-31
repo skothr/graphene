@@ -19,6 +19,7 @@ using json = nlohmann::json;
 
 
 typedef std::function<void(void)> SettingUpdateCB;
+typedef std::function<bool(void)> SettingEnabledCB;
 // e.g. ==> [](bool busy, bool changed) -> bool { changed |= InputInt([...]); return busy; }}
 typedef std::function<bool(bool busy, bool &changed)> SettingCustomDraw;
 
@@ -37,10 +38,13 @@ protected:
   float mInputColW = 150; // width of column with setting input widget(s)
     
 public:
-  SettingUpdateCB   updateCallback = nullptr; // called when value is updated
-  SettingCustomDraw drawCustom     = nullptr; // custom draw callback (instead of using template overload below) 
-  SettingBase(const std::string &name, const std::string &id, const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr)
-    : mName(name), mId(id), updateCallback(updateCb), drawCustom(drawFunc) { }
+  SettingUpdateCB   updateCallback  = nullptr; // called when value is updated
+  SettingCustomDraw drawCustom      = nullptr; // custom draw callback (instead of using template overload below) 
+  SettingEnabledCB  enabledCallback = nullptr; // custom draw callback (instead of using template overload below) 
+  SettingBase(const std::string &name, const std::string &id, const SettingUpdateCB &updateCb=nullptr,
+              const SettingCustomDraw &drawFunc=nullptr,
+              const SettingEnabledCB &enableFunc=nullptr)
+    : mName(name), mId(id), updateCallback(updateCb), drawCustom(drawFunc), enabledCallback(enableFunc) { }
   virtual ~SettingBase() { }
 
   virtual bool isGroup() const { return false; }
@@ -62,18 +66,21 @@ public:
   // TODO: improve flexibility
   bool draw(float scale, bool busy, bool &changed, bool visible)
   {
-    if(!isGroup())
+    if(!enabledCallback || enabledCallback())
       {
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(mName.c_str());
-        ImGui::SameLine(mLabelColW*scale);
-        ImGui::SetNextItemWidth(mInputColW*scale);
-      }
+        if(!isGroup())
+          {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(mName.c_str());
+            ImGui::SameLine(mLabelColW*scale);
+            ImGui::SetNextItemWidth(mInputColW*scale);
+          }
 
-    ImGui::BeginGroup(); 
-    if(drawCustom) { busy = drawCustom(busy, changed); }
-    else           { busy = onDraw(scale, busy, changed, visible); }
-    ImGui::EndGroup();
+        ImGui::BeginGroup(); 
+        if(drawCustom) { busy = drawCustom(busy, changed); }
+        else           { busy = onDraw(scale, busy, changed, visible); }
+        ImGui::EndGroup();
+      }
     return busy;
   }
 
@@ -118,16 +125,19 @@ public:
   
   // construction
   Setting(const std::string &name, const std::string &id, T *ptr, const T &defaultVal=T(),
-          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr)
-    : SettingBase(name, id, updateCb, drawFunc), mData(ptr), mDefault(*mData) { }
+          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
+          const SettingEnabledCB &enableFunc=nullptr)
+    : SettingBase(name, id, updateCb, drawFunc, enableFunc), mData(ptr), mDefault(*mData) { }
   
   Setting(const std::string &name, const std::string &id, const T &val, const T &defaultVal=T(),
-          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr)
-    : Setting(name, id, new T(val), defaultVal, updateCb, drawFunc) { mDelete = true; }
+          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
+          const SettingEnabledCB &enableFunc=nullptr)
+    : Setting(name, id, new T(val), defaultVal, updateCb, drawFunc, enableFunc) { mDelete = true; }
   
   Setting(const std::string &name, const std::string &id,
-          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr)
-    : Setting(name, id, T(), T(), updateCb, drawFunc) { }
+          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
+          const SettingEnabledCB &enableFunc=nullptr)
+    : Setting(name, id, T(), T(), updateCb, drawFunc, enableFunc) { }
   
   // destruction
   virtual ~Setting() { if(mDelete && mData) { delete mData; } }

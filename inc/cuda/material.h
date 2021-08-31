@@ -5,15 +5,16 @@
 #include <cuda.h>
 #include <iostream>
 
+// ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω
 
 //// EM MATERIAL PROPERTIES ////
 template<typename T>
 struct Material
 {
   bool nonVacuum = false; // if false, use user-defined vacuum properties in ChargeParams instead (defined this way so memset(material, 0) clears it to vacuum) 
-  union { T permittivity = 1.0f; T epsilon; }; // epsilon -- electric permittivity (E)
-  union { T permeability = 1.0f; T mu;      }; // mu      -- magnetic permeability (B)
-  union { T conductivity = 0.0f; T sigma;   }; // sigma   -- material conductivity (Q)
+  union { T permittivity = 1.0f; T epsilon; }; // ε  epsilon -- electric permittivity (E)
+  union { T permeability = 1.0f; T mu;      }; // μ  mu      -- magnetic permeability (B)
+  union { T conductivity = 0.0f; T sigma;   }; // σ  sigma   -- material conductivity (Q)
 
   __host__ __device__ Material() { }
   __host__ __device__ Material(T permit, T permeab, T conduct, bool vacuum_=true)
@@ -25,18 +26,18 @@ struct Material
   // index of refraction
   __host__ __device__ T  n(T e0, T u0) const { return sqrt((permittivity/e0) * (permeability/u0)); }
   
-  // NOTE:
+  // NOTE: Yee's method (~?)
   //   E(t) = alphaE*E(t-1) + betaE*dE/dt
   //   B(t) = alphaB*B(t-1) + betaB*dB/td
   struct Factors { T alphaE; T betaE; T alphaB; T betaB; };
   __host__ __device__ Factors getFactors(T dt, T cellSize) const
   {
-    // E --  (1 / (1 + dt[s/(2mu)])) /
+    // E1 = ((1 - dt[σ/(2μ)]) / (1 + dt[σ/(2μ)]))*E0 + dt*(dL / (μ + dt[σ/2]))*dE/dt
     T cE     = dt * conductivity/(2*permeability);
     T dE     = 1  / (1 + cE);
     T alphaE = dE * (1 - cE);
     T betaE  = dt/cellSize * dE/permeability;
-    // B
+    // B1 = ((1 - dt[σ/(2ε)]) / (1 + dt[σ/(2ε)]))*E0 + dt*(dL / (ε + dt[σ/2]))*dE/dt
     T cB     = dt * conductivity/(2*permittivity);
     T dB     = 1  / (1 + cB);
     T alphaB = dB * (1 - cB);
