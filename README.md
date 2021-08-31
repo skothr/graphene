@@ -60,7 +60,7 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 # Installation (Ubuntu)
 ## Basic dependencies
-    sudo apt install build-essential cmake libglew-dev libglfw3-dev nlohmann-json3-dev
+    $ sudo apt install build-essential cmake libglew-dev libglfw3-dev nlohmann-json3-dev
 #### Also requires CUDA and a compatible NVIDIA graphics card:
 ##### Install NVIDIA driver on Ubuntu
     $ sudo apt purge *nvidia*
