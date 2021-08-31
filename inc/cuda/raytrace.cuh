@@ -10,8 +10,8 @@
 #define BG_COLOR      VT4{0.1, 0.1, 0.1, 1.0} // color of background behind field
 #define FAIL_COLOR    VT4{1.0, 0.0, 1.0, 1.0} // color returned on failure/error
 
-#define HIGHLIGHT_COLOR float4{0.8, 0.8, 0.8, 0.1}
-#define HIGHLIGHT_W 1.0f
+#define SIG_HIGHLIGHT_COLOR float4{0.5, 1.0, 0.5, 0.1}
+#define MAT_HIGHLIGHT_COLOR float4{1.0, 0.5, 0.5, 0.1}
 
 #ifdef ENABLE_CUDA
 
@@ -86,10 +86,10 @@ __device__ typename DimType<T,4>::VECTOR_T rayTraceField(EMField<T> &src, const 
           VT3 diff; VT3 diff0; VT3 diff1;  VT3 dist_2; VT3 dist0_2; VT3 dist1_2;
           if(rp.sigPenHighlight &&
              penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, 0.0f) &&
-             !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, -1.0f)) { col += HIGHLIGHT_COLOR; }
+             !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, -1.0f)) { col += SIG_HIGHLIGHT_COLOR; }
           if(rp.matPenHighlight &&
              penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, 0.0f) &&
-             !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, -1.0f)) { col += HIGHLIGHT_COLOR; }
+             !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, -1.0f)) { col += MAT_HIGHLIGHT_COLOR; }
 
           // calculate next grid intersection
           T tLast = t;

@@ -64,6 +64,8 @@ struct MaterialPen : public Pen<T>
 {
   virtual PenType type() const override { return PEN_MATERIAL; }
   Material<T> material;
+
+  MaterialPen() : material(2.4, 1.3, 0.001, false) { }
 };
 
 
