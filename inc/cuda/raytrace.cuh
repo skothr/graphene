@@ -68,11 +68,11 @@ __device__ typename DimType<T,4>::VECTOR_T rayTraceField(EMField<T> &src, const 
     {
       VT3 wp = ray.pos + ray.dir*(t+tol); // world-space pos of primary intersection
       VT3 fp = (wp - fPos) / fSize * fs;
+
       // cube marching
       VT4 color = VT4{0.0, 0.0, 0.0, 0.0};
       int iterations = 0;
       while((t < tp.y || tp.x == (T)0)  &&
-            //color.x >= 0.0 && color.y >= 0.0 && color.z >= 0.0 && color.w >= 0.0 &&
             color.x <= 1.0 && color.y <= 1.0 && color.z <= 1.0 && // && color.w <= 1.0 &&
             iterations < maxDim)
         {
@@ -80,7 +80,8 @@ __device__ typename DimType<T,4>::VECTOR_T rayTraceField(EMField<T> &src, const 
           unsigned long long i = src.idx((unsigned long long)fp.x, (unsigned long long)fp.y, (unsigned long long)fp.z);
 
           float4 col = renderCell(src, i, rp);
-          
+
+          // highlight if active pen
           VT3 pCell = fp; VT3 pSrc = rp.penPos;
           VT3 diff; VT3 diff0; VT3 diff1;  VT3 dist_2; VT3 dist0_2; VT3 dist1_2;
           if(rp.sigPenHighlight &&
@@ -88,12 +89,10 @@ __device__ typename DimType<T,4>::VECTOR_T rayTraceField(EMField<T> &src, const 
              !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, -1.0f)) { col += HIGHLIGHT_COLOR; }
           if(rp.matPenHighlight &&
              penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, 0.0f) &&
-             !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, -1.0f)
-             // penAxisBorder(pSrc, diff0, diff1, (Pen<T>*)&testM, HIGHLIGHT_W)
-             ) { col += HIGHLIGHT_COLOR; }
-         
-          fluidBlend(color, col, rp);
-          
+             !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, -1.0f)) { col += HIGHLIGHT_COLOR; }
+
+          // calculate next grid intersection
+          T tLast = t;
           VT3 fp2 = fp;
           int iterations2 = 0;
           while((T)floor(fp2.x) == (T)floor(fp.x) &&
@@ -111,11 +110,16 @@ __device__ typename DimType<T,4>::VECTOR_T rayTraceField(EMField<T> &src, const 
               step = fmod(step, VT3{(T)1, (T)1, (T)1});  // (TODO: necessary?)
               step = abs(step/fs)*fSize; // convert to world coordinates
               step = abs(step/ray.dir);  // project distance onto ray
-              t += min(step.x, min(step.y, step.z)) + 10.0*tol;
+              t += min(step.x, min(step.y, step.z)) + 1.0*tol;
               VT3 wp2 = ray.pos + ray.dir*(t+tol);
               fp2 = (wp2 - fPos) / fSize * fs;
               iterations2++;
             }
+
+          // scale blending based on distance travelled to next intersection
+          col.w *= (t-tLast);
+          fluidBlend(color, col, rp);
+          
           fp = fp2;
           iterations++;
         }
