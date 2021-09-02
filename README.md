@@ -57,6 +57,13 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 &nbsp;
 &nbsp;
 
+| ![broccoli...?](https://raw.githubusercontent.com/skothr/graphene/main/images/hex-qub.png) | 
+|:--:|
+| *...?* |
+
+&nbsp;
+&nbsp;
+
 
 # Installation (Ubuntu)
 ## Basic dependencies
