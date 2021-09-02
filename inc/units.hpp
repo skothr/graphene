@@ -14,8 +14,10 @@ template<typename T>
 struct Units
 {
   // discretization
-  T dt = 0.1;  // TIME   (field update timestep)
+  T dt = 0.25; // TIME   (field update timestep)
   T dL = 1.0;  // LENGTH (field cell size)
+  // NOTE: dL/dt > 2 usually explodes *
+  
   // EM
   T e  = 1.0;  // CHARGE (elementary charge)
   T a  = 1.0/137.0; // fine structure constant

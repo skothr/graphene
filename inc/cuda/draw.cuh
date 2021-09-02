@@ -18,11 +18,11 @@ struct Pen
 {
   using VT3 = typename DimType<T, 3>::VECTOR_T;
   bool active     = true;
-  bool cellAlign  = true;  // snap offset to center of cell
+  bool cellAlign  = false; // snap offset to center of cell
   bool square     = false; // draw with square pen
   int  depth      = 0;     // depth of pen center from view surface
-  VT3  radius0    = VT3{10.0, 10.0, 10.0};  // base pen size in fluid cells
-  VT3  radius1    = VT3{ 0.0,  0.0,  0.0};  // if > 0, pen shape will be the intersection of circles radius0 and radius1
+  VT3  radius0    = VT3{20.0, 20.0, 20.0};  // base pen size in fluid cells
+  VT3  radius1    = VT3{ 0.0,  0.0,  0.0};  // if x,y,z > 0, pen shape will be the intersection of circles radius0 and radius1
   VT3  rDist      = VT3{ 0.0,  0.0,  0.0};  // positional difference between intersecting circles
   T    mult       = 1.0;                // multiplier (signal/material)
   T    sizeMult   = 1.0;                // multiplier (pen size)
@@ -57,7 +57,7 @@ struct SignalPen : public Pen<T>
   VT3 Bmult   = VT3{0.0,  0.0, -1.0};
   int Qopt; int QPVopt; int QNVopt; int Eopt; int Bopt; // parameteric option flags (IDX_*)
   
-  SignalPen() : Qopt(IDX_NONE), QPVopt(IDX_NONE), QNVopt(IDX_NONE), Eopt(IDX_SIN), Bopt(IDX_COS) { }
+  SignalPen() : Qopt(IDX_NONE), QPVopt(IDX_NONE), QNVopt(IDX_NONE), Eopt(IDX_SIN), Bopt(IDX_COS) { this->mult = 10.0; }
   
 };
 
@@ -94,20 +94,19 @@ __device__ inline bool penOverlaps(typename DimType<T, 3>::VECTOR_T &pCell, type
   
   if(pen->cellAlign) { pCell = floor(pCell); pSrc = floor(pSrc); }
 
-  VT3 diff0  = ((pSrc + pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
+  VT3 diff0  = ((pSrc + (pen->sizeMult*pen->xyzMult)*pen->rDist/T(2))-pCell);
   VT3 dist0_2 = diff0*diff0;
-  VT3 diff1  = ((pSrc - pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
+  VT3 diff1  = ((pSrc - (pen->sizeMult*pen->xyzMult)*pen->rDist/T(2))-pCell);
   VT3 dist1_2 = diff1*diff1;
   diff = diff0;
   dist_2 = dist0_2;
 
-  VT3 r0 = pen->radius0+radOffset;
-  VT3 r1 = pen->radius1+radOffset;
-  return ((!pen->square && (dist0_2.x/(r0.x*r0.x)+dist0_2.y/(r0.y*r0.y)+dist0_2.z/(r0.z*r0.z) <= 1.0f) &&
-             (r1.x <= 0 || r1.y <= 0 || r1.z <= 0 || (dist1_2.x/(r1.x*r1.x)+dist1_2.y/(r1.y*r1.y)+dist1_2.z/(r1.z*r1.z) <= 1.0f))) ||
-            (pen->square && (abs(diff.x) <= r0.x+0.5f &&
-                             abs(diff.y) <= r0.y+0.5f &&
-                             abs(diff.z) <= r0.z+0.5f)));
+  VT3 r0 = pen->radius0 * (pen->sizeMult*pen->xyzMult) + radOffset;
+  VT3 r1 = pen->radius1 * (pen->sizeMult*pen->xyzMult) + radOffset;
+  return ((!pen->square &&                         (dist0_2.x/(r0.x*r0.x) + dist0_2.y/(r0.y*r0.y) + dist0_2.z/(r0.z*r0.z) <= 1.0f) &&
+           (r1.x <= 0 || r1.y <= 0 || r1.z <= 0 || (dist1_2.x/(r1.x*r1.x) + dist1_2.y/(r1.y*r1.y) + dist1_2.z/(r1.z*r1.z) <= 1.0f))) ||
+          ( pen->square &&                         (abs(diff0.x) <= r0.x+0.5f && abs(diff0.y) <= r0.y+0.5f && abs(diff0.z) <= r0.z+0.5f) &&
+           (r1.x <= 0 || r1.y <= 0 || r1.z <= 0 || (abs(diff1.x) <= r1.x+0.5f && abs(diff1.y) <= r1.y+0.5f && abs(diff1.z) <= r1.z+0.5f))));
 }
 template<typename T>
 __device__ inline bool penOverlaps2(typename DimType<T, 3>::VECTOR_T &pCell,  typename DimType<T, 3>::VECTOR_T &pSrc,
@@ -118,21 +117,19 @@ __device__ inline bool penOverlaps2(typename DimType<T, 3>::VECTOR_T &pCell,  ty
   typedef typename DimType<T, 3>::VECTOR_T VT3;
   
   if(pen->cellAlign) { pCell = floor(pCell); pSrc = floor(pSrc); }
-  
-  diff0  = ((pSrc + pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
+  diff0  = ((pSrc + (pen->sizeMult*pen->xyzMult)*pen->rDist/T(2))-pCell);
   dist0_2 = diff0*diff0;
-  diff1  = ((pSrc - pen->rDist/T(2))-pCell) / (pen->sizeMult*pen->xyzMult);
+  diff1  = ((pSrc - (pen->sizeMult*pen->xyzMult)*pen->rDist/T(2))-pCell);
   dist1_2 = diff1*diff1;
   diff = diff0;
   dist_2 = dist0_2;
   
-  VT3 r0 = pen->radius0+radOffset;
-  VT3 r1 = pen->radius1+radOffset;
-  return ((!pen->square && (dist0_2.x/(r0.x*r0.x) + dist0_2.y/(r0.y*r0.y) + dist0_2.z/(r0.z*r0.z) <= 1.0f) &&
+  VT3 r0 = pen->radius0 * (pen->sizeMult*pen->xyzMult) + radOffset;
+  VT3 r1 = pen->radius1 * (pen->sizeMult*pen->xyzMult) + radOffset;
+  return ((!pen->square &&                         (dist0_2.x/(r0.x*r0.x) + dist0_2.y/(r0.y*r0.y) + dist0_2.z/(r0.z*r0.z) <= 1.0f) &&
            (r1.x <= 0 || r1.y <= 0 || r1.z <= 0 || (dist1_2.x/(r1.x*r1.x) + dist1_2.y/(r1.y*r1.y) + dist1_2.z/(r1.z*r1.z) <= 1.0f))) ||
-          (pen->square && (abs(diff.x) <= r0.x+0.5f &&
-                           abs(diff.y) <= r0.y+0.5f &&
-                           abs(diff.z) <= r0.z+0.5f)));
+          ( pen->square &&                         (abs(diff0.x) <= r0.x+0.5f && abs(diff0.y) <= r0.y+0.5f && abs(diff0.z) <= r0.z+0.5f) &&
+           (r1.x <= 0 || r1.y <= 0 || r1.z <= 0 || (abs(diff1.x) <= r1.x+0.5f && abs(diff1.y) <= r1.y+0.5f && abs(diff1.z) <= r1.z+0.5f))));
 }
 
 // returns true if point with given distances are at the edge of the pen (hollow shell)
@@ -152,8 +149,9 @@ __device__ inline bool penAxisBorder(const typename DimType<T, 3>::VECTOR_T &pSr
   VT3 dist1XY = VT3{diff1.x, diff1.y, 0.0f};
   VT3 dist1YZ = VT3{diff1.x, 0.0f, diff1.z};
   VT3 dist1ZX = VT3{0.0f, diff1.y, diff1.z};
-  
-  return (penBorder(dist0XY, dist1XY, pen, width) || penBorder(dist0YZ, dist1YZ, pen, width) || penBorder(dist0ZX, dist1ZX, pen, width));
+
+  T w = width*min(pen->sizeMult*pen->xyzMult);
+  return (penBorder(dist0XY, dist1XY, pen, w) || penBorder(dist0YZ, dist1YZ, pen, w) || penBorder(dist0ZX, dist1ZX, pen, w));
 }
 
 #endif // DRAW_CUH

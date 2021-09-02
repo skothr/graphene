@@ -38,13 +38,17 @@ __global__ void renderFieldEM_k(EMField<T> src, CudaTexture dst, RenderParams<T>
         {
           int fi = src.idx(fp.x, fp.y, iz);
           T qLen = (src.Q[fi].x - src.Q[fi].y); T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
-          VT4 col = rp.brightness*rp.opacity*(qLen*rp.Qmult*rp.Qcol + eLen*rp.Emult*rp.Ecol + bLen*rp.Bmult*rp.Bcol);
+          VT4 col = rp.brightness*rp.opacity*(qLen*rp.Qmult*rp.Qcol +
+                                              eLen*rp.Emult*rp.Ecol +
+                                              bLen*rp.Bmult*rp.Bcol);
 
           VT3 pCell = VT3{(T)fp.x, (T)fp.y, (T)iz}; VT3 pSrc = rp.penPos;
           VT3 diff; VT3 diff0; VT3 diff1;  VT3 dist_2; VT3 dist0_2; VT3 dist1_2;
-          if(rp.sigPenHighlight && penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, 0.0f) &&
+          if(rp.sigPenHighlight &&
+             penOverlaps2 (pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, 0.0f) &&
              !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, -1.0f)) { col += SIG_HIGHLIGHT_COLOR; }
-          if(rp.matPenHighlight && penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, 0.0f) &&
+          if(rp.matPenHighlight &&
+             penOverlaps2 (pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, 0.0f) &&
              !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, -1.0f)) { col += MAT_HIGHLIGHT_COLOR; }
           
           fluidBlend(color, col, rp);
@@ -83,9 +87,11 @@ __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, Render
          
           VT3 pCell = VT3{(T)fp.x, (T)fp.y, (T)iz}; VT3 pSrc = rp.penPos;
           VT3 diff; VT3 diff0; VT3 diff1;  VT3 dist_2; VT3 dist0_2; VT3 dist1_2;
-          if(rp.sigPenHighlight && penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, 0.0f) &&
+          if(rp.sigPenHighlight &&
+             penOverlaps2 (pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, 0.0f) &&
              !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.sigPen, cp, -1.0f)) { col += SIG_HIGHLIGHT_COLOR; }
-          if(rp.matPenHighlight && penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, 0.0f) &&
+          if(rp.matPenHighlight &&
+             penOverlaps2 (pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, 0.0f) &&
              !penOverlaps2(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, -1.0f)) { col += MAT_HIGHLIGHT_COLOR; }
 
          fluidBlend(color, col, rp);

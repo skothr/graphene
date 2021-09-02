@@ -201,17 +201,18 @@ int main(int argc, char* argv[])
       // handle events
       glfwPollEvents();
       if(simWindow->closing()) { glfwSetWindowShouldClose(window, GLFW_TRUE); }
-      // start imgui frame
+      
+      
+      // imgui frame
       ImGui_ImplOpenGL3_NewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
       {
         glfwGetFramebufferSize(window, &frameSize.x, &frameSize.y); // get frame size
         simWindow->draw(frameSize); // draw UI
-        simWindow->update();        // step simulation
       }
       ImGui::EndFrame();
-      
+
       //// RENDERING ////
       glUseProgram(0);
       ImGui::Render();
@@ -222,10 +223,13 @@ int main(int argc, char* argv[])
       glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-      glfwSwapBuffers(window);
-
-      // render simulation to file separately
+      
+      // render simulation to file (if enabled)
       simWindow->renderToFile();
+      // step simulation
+      simWindow->update();
+
+      glfwSwapBuffers(window);
     }
 
   cleanup();

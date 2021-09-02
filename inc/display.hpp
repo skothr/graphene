@@ -12,17 +12,17 @@ struct VectorFieldParams
 {
   // vector field
   bool  drawVectors     = false; // draws vector field on screen
-  bool  borderedVectors = true;  // uses fancy bordered polygons instead of standard GL_LINES (NOTE: slower)   TODO: optimize with VBO
-  bool  smoothVectors   = true;  // uses bilinear interpolation, centering at samples mouse instead of exact cell centers
-  int   vecMRadius      = 64;    // draws vectors for cells within radius around mouse
+  bool  borderedVectors = false; // uses fancy bordered polygons instead of standard GL_LINES (NOTE: slower)   TODO: optimize with VBO
+  bool  smoothVectors   = false; // uses bilinear interpolation, centering at samples mouse instead of exact cell centers
+  int   vecMRadius      = 256;   // draws vectors for cells within radius around mouse
   int   vecSpacing      = 1;     // base spacing 
   int   vecCRadius      = 1024;  // only draws maximum of this radius number of vectors, adding spacing  
   float vecMultE        = 10.0f; // E length multiplier
   float vecMultB        = 10.0f; // B length multiplier
-  float vecLineW        = 0.1f;  // line width
-  float vecAlpha        = 0.25f; // line opacity
-  float vecBorderW      = 0.0f;  // border width
-  float vecBAlpha       = 0.0f;  // border opacity
+  float vecLineW        = 0.4f;  // line width
+  float vecAlpha        = 0.5f;  // line opacity
+  float vecBorderW      = 1.0f;  // border width
+  float vecBAlpha       = 1.0f;  // border opacity
 };
 
 template<typename T>
@@ -32,9 +32,9 @@ struct DisplayInterface
   bool showEMField    = true;
   bool showMatField   = false;
   bool show3DField    = true;
-  bool drawAxes       = true;  // 3D axes
-  bool drawOutline    = true;  // 3D outline of field
-  bool vsync          = false; // vertical sync refresh
+  bool drawAxes       = true; // 3D axes
+  bool drawOutline    = true; // 3D outline of field
+  bool vsync          = true; // vertical sync refresh
   
   // main parameters
   RenderParams<T>      *rp = nullptr; bool rpDelete = false;
@@ -75,25 +75,24 @@ DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParam
   mSettings.push_back(sVS);  mForm->add(sVS);
 
   // render params
-  auto *sRZL = new Setting<int2> ("Z Range", "zRange", &rp->zRange, rp->zRange,
-                                 [&]()
-                                 {
-                                   if(zSize)
-                                     {
-                                       if(rp->zRange.y >= *zSize)      { rp->zRange.y = *zSize-1; }
-                                       if(rp->zRange.x > rp->zRange.y) { rp->zRange.x = rp->zRange.y; }
-                                     }
-                                 });
+  auto *sRZL = new Setting<int2> ("Z Range", "zRange", &rp->zRange, rp->zRange);
+  sRZL->drawCustom = [this](bool busy, bool &changed) -> bool
+                     {
+                       changed |= RangeSlider("##zSlider", &rp->zRange.x, &rp->zRange.y, 0, (zSize ? *zSize-1 : 0), Vec2f(250, 20));
+                       return busy;
+                     };
   sRZL->setMin(int2{0,0});
   mSettings.push_back(sRZL); mForm->add(sRZL);
   
-  auto *sRCO  = new Setting<float> ("3D Opacity",    "opacity",    &rp->opacity);
+  auto *sRCO  = new Setting<float> ("Opacity",    "opacity",    &rp->opacity);
   sRCO->setFormat(0.01f, 0.1f, "%0.4f");
   mSettings.push_back(sRCO); mForm->add(sRCO);
-  auto *sRCBR = new Setting<float> ("3D Brightness", "brightness", &rp->brightness);
+  auto *sRCBR = new Setting<float> ("Brightness", "brightness", &rp->brightness);
   sRCBR->setFormat(0.01f, 0.1f, "%0.4f");
   mSettings.push_back(sRCBR); mForm->add(sRCBR);
-  auto *sRCQ  = new Setting<float4>("Q Color",       "renderColQ", &rp->Qcol);
+  auto *sRCS = new Setting<bool> ("Surfaces",     "surfaces",   &rp->surfaces);
+  mSettings.push_back(sRCS); mForm->add(sRCS);
+  auto *sRCQ  = new Setting<float4>("Q Color",    "renderColQ", &rp->Qcol);
   sRCQ->drawCustom = [sRCQ, this](bool busy, bool &changed) -> bool
                      {
                        sRCQ->onDraw(1.0f, busy, changed, true); // color picker
@@ -156,15 +155,12 @@ DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParam
   sVLA->setFormat(0.01f, 0.1f, "%0.4f"); sVLA->setMin(0.0f); sVLA->setMax(1.0f);
   mSettings.push_back(sVLA); vecGroup->add(sVLA);
 
-  if(vp->borderedVectors)
-    {
-      auto *sVBW = new Setting<float>("Border Width", "bWidth",  &vp->vecBorderW);
-      sVBW->setFormat(0.1f, 1.0f, "%0.4f");
-      mSettings.push_back(sVBW); vecGroup->add(sVBW);  
-      auto *sVBA = new Setting<float>("Border Alpha", "vecBAlpha",  &vp->vecBAlpha);
-      sVBA->setFormat(0.01f, 0.1f, "%0.4f"); sVBA->setMin(0.0f); sVBA->setMax(1.0f);
-      mSettings.push_back(sVBA); vecGroup->add(sVBA);
-    }
+  auto *sVBW = new Setting<float>("Border Width", "bWidth",  &vp->vecBorderW);
+  sVBW->setFormat(0.1f, 1.0f, "%0.4f");
+  mSettings.push_back(sVBW); vecGroup->add(sVBW);  
+  auto *sVBA = new Setting<float>("Border Alpha", "vecBAlpha",  &vp->vecBAlpha);
+  sVBA->setFormat(0.01f, 0.1f, "%0.4f"); sVBA->setMin(0.0f); sVBA->setMax(1.0f);
+  mSettings.push_back(sVBA); vecGroup->add(sVBA);
   mForm->add(vecGroup);
 }
 

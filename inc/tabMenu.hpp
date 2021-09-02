@@ -32,8 +32,6 @@ private:
 
   float mLength       = 0.0f; // direction of text/tabs
   float mBarWidth     = 0.0f; // thickness of bar
-  //bool  mVertical     = false;
-  //bool  mFlipSide     = false; // if true, horizontal menus open on top and vertical menus open on left
   bool  mCollapsible  = false;
   
 public:
@@ -49,10 +47,7 @@ public:
   
   void setBarWidth(int w);
   void setLength(int l);
-  //void setVertical(bool vertical=true, bool flipMenu=false);
-  //void swapIfVertical(Vec2f &v);
   void setCollapsible(bool collapsible=true);
-
   
   int add(TabDesc desc);
   void remove(const std::string &label);

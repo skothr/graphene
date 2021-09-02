@@ -145,15 +145,15 @@ DrawInterface<T>::DrawInterface(Units<T> *units)
   auto *sMPRD = new Setting<VT3>  ("R Offset",        "mPenRDist",  &matPen.rDist);
   sMPRD->setFormat(VT3{1.0f, 1.0f, 1.0f}, VT3{10.0f, 10.0f, 10.0f}, "%1.4f");
   mSettings.push_back(sMPRD);  matGroup->add(sMPRD);
-  auto *sMPD  = new Setting<int>  ("Depth",           "mPenDepth",  &matPen.depth);
-  sMPD->setFormat(1, 8, "");
-  mSettings.push_back(sMPD);  matGroup->add(sMPD);
   auto *sMSM  = new Setting<T>    ("Size Multiplier", "mPenSizeMult", &matPen.sizeMult);
   sMSM->setFormat(0.1f, 1.0f, "%0.4f");
   mSettings.push_back(sMSM);  matGroup->add(sMSM);
   auto *sMXM   = new Setting<VT3> ("XYZ Multiplier",  "mPenXYZMult", &matPen.xyzMult);
   sMXM->setFormat(VT3{0.1f, 0.1f, 0.1f}, VT3{1.0f, 1.0f, 1.0f}, "%0.4f");
   mSettings.push_back(sMXM);  matGroup->add(sMXM);
+  auto *sMPD  = new Setting<int>  ("Depth",           "mPenDepth",  &matPen.depth);
+  sMPD->setFormat(1, 8, "");
+  mSettings.push_back(sMPD);  matGroup->add(sMPD);
   auto *sMPS  = new Setting<bool> ("Square",          "mPenSquare", &matPen.square);
   mSettings.push_back(sMPS);  matGroup->add(sMPS);
   auto *sMPAL = new Setting<bool> ("Align to Cell",   "mPenAlign",  &matPen.cellAlign);

@@ -40,11 +40,10 @@ struct RenderParams
   bool matPenHighlight = false; // if true, highlight matPen area of effect
   VT3  penPos;              // pen location
   
-  // 2D parameters
   int2 zRange = int2{0, 0}; // blends layers from highest to lowest (front to back / top down)
-  // 3D parameters
   T opacity    = 0.05;
   T brightness = 2.0;
+  bool surfaces = true; // if true, quits marching if any color component >= 1 (interesting, brings out surface features)
 };
 
 

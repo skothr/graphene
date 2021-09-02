@@ -9,9 +9,10 @@ TabMenu::TabMenu(int barWidth, int length, bool collapsible)
 
 Vec2f TabMenu::getSize() const
 {
-  float width  = mBarWidth + (mSelected >= 0 ? (mTabs[mSelected].width + TABMENU_MENU_PADDING) : 0);
+  ImGuiStyle &style = ImGui::GetStyle();
+  float width  = mBarWidth + (mSelected >= 0 ? (mTabs[mSelected].width + 2.0f*style.WindowPadding.x + TABMENU_MENU_PADDING) : 0);
   float length = mLength;
-  return Vec2f(width, length); //(mVertical ? Vec2f(width, length) : Vec2f(length, width));
+  return Vec2f(width, length);
 }
 
 float TabMenu::getBarWidth() const
@@ -31,9 +32,6 @@ float TabMenu::getTabLength() const
   for(auto &tab : mTabs) { tabL = std::max(tabL, ImGui::CalcTextSize(tab.label.c_str()).x); }
   return tabL + 2.0f*TABMENU_TAB_PADDING;
 }
-
-//void TabMenu::setVertical(bool vertical, bool flipMenu) { mVertical = vertical; mFlipSide = flipMenu; }
-// void TabMenu::swapIfVertical(Vec2f &v) { if(mVertical) { std::swap(v.x, v.y); } }
 
 void TabMenu::setBarWidth(int w) { mBarWidth = w; }
 void TabMenu::setLength(int l)   { mLength   = l; }
@@ -71,19 +69,14 @@ void TabMenu::draw()
   float barW = mBarWidth;
   float tabL = getTabLength();
   Vec2f spacing = ImGui::GetStyle().ItemSpacing;
+
+  ImGuiWindowFlags outerFlags = (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse); // outer child flags
+  ImGuiWindowFlags innerFlags = ImGuiWindowFlags_None;                                               // inner child flags
+  ImGuiWindowFlags tabFlags   = (ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse); // tab bar child flags
   
   Vec2f sp0 = ImGui::GetCursorScreenPos();
   ImGui::BeginGroup();
   {
-    // // offset tab bar if menu open
-    // if(mSelected >= 0)
-    //   {
-    //     TabDesc &tab = mTabs[mSelected];
-    //     if(tab.fixedWidth >= 0)      { tab.width = tab.fixedWidth; }
-    //     if(tab.width < tab.minWidth) { tab.width = tab.minWidth; }
-    //     ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) - Vec2f(tab.width+mBarWidth, 0.0f));
-    //   }
-
     // update tab menu widths
     for(auto &tab : mTabs)
       {
@@ -95,11 +88,8 @@ void TabMenu::draw()
     if(mSelected >= 0)
       {
         TabDesc &tab = mTabs[mSelected];
-        Vec2f outerSize = Vec2f(tab.width, std::max(mLength, style.ItemSpacing.y+tabL)*mTabs.size());
-
-        // ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Vec2f(0,0));
-        // ImGui::PopStyleVar();
-        ImGui::BeginChild("##tabMenuOuter", outerSize, true);
+        Vec2f outerSize = Vec2f(tab.width+2.0f*style.WindowPadding.x, std::max(mLength, style.ItemSpacing.y + tabL*mTabs.size()));
+        ImGui::BeginChild("##tabMenuOuter", outerSize, true, outerFlags);
         {
           // draw title
           Vec2f tSize;
@@ -111,23 +101,23 @@ void TabMenu::draw()
               ImGui::TextUnformatted(tab.title.c_str());
               if(tab.titleFont) { ImGui::PopFont(); }
             }
-        
-          Vec2f innerSize = Vec2f(tab.width, mLength - tSize.y - style.ItemSpacing.y);
-          ImGui::BeginChild("##tabMenuInner", innerSize, false);
+          // scrollable inner child
+          Vec2f innerSize = Vec2f(tab.width, mLength - tSize.y - 2.0f*style.WindowPadding.y - style.ItemSpacing.y);
+          ImGui::BeginChild("##tabMenuInner", innerSize, true, innerFlags);
           {
             ImGui::BeginGroup(); tab.drawMenu(); ImGui::EndGroup();
             if(tab.fixedWidth < 0) { tab.width = ImGui::GetItemRectMax().x - ImGui::GetItemRectMin().x; }
             if(tab.minWidth  >= 0) { tab.width = std::min(tab.width, tab.minWidth); }
-            ImGui::SetWindowSize(Vec2f(tab.width, innerSize.y));
+            innerSize = Vec2f(tab.width, mLength - tSize.y - 2.0f*style.WindowPadding.y);
+            ImGui::SetWindowSize(innerSize);
           }
           ImGui::EndChild();
         }
         ImGui::EndChild();
-        
         ImGui::SameLine();
       }
     // draw tabs
-    ImGui::BeginChild("##tabBar", Vec2f(barW, std::max(mLength, style.ItemSpacing.y+tabL)*mTabs.size()), false);
+    ImGui::BeginChild("##tabBar", Vec2f(barW, std::max(mLength, style.ItemSpacing.y + tabL*mTabs.size())), false, tabFlags);
     {
       for(int i = 0; i < mTabs.size(); i++)
         {

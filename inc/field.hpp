@@ -14,6 +14,7 @@ struct FieldInterface
   int3 fieldRes = int3{256, 256, 16}; // desired resolution (number of cells) of charge field
   int2 texRes2D = int2{1024, 1024};   // desired resolution (number of cells) of rendered texture
   int2 texRes3D = int2{1024, 1024};   // desired resolution (number of cells) of rendered texture
+  bool texRes3DMatch = true;          // matches resolution of viewport
   
   FieldParams<T> *cp; // cuda field params
 
@@ -100,6 +101,8 @@ FieldInterface<T>::FieldInterface(FieldParams<T> *cp_, const std::function<void(
   sTRES3->setFormat(int2{64, 64}, int2{128, 128});
   sTRES3->setMin(int2{1,1}); sTRES3->setMax(int2{2048,2048});
   mSettings.push_back(sTRES3); simGroup->add(sTRES3);
+  auto *sTRES3M = new Setting<bool> ("   (Match Viewport)", "texRes3DMatch",   &texRes3DMatch);
+  mSettings.push_back(sTRES3M); simGroup->add(sTRES3M);
   
   auto *sFPP = new Setting<float3> ("Position", "fPos", &cp->fp);
   mSettings.push_back(sFPP); simGroup->add(sFPP);
@@ -113,22 +116,22 @@ FieldInterface<T>::FieldInterface(FieldParams<T> *cp_, const std::function<void(
 
   // init
   auto *sQPINIT  = new Setting<std::string>("q+ init",  "qpInit",  &initQPStr, initQPStr,
-                                            [&]() {  if(mFillQP)  { if(mFillQP)  { cudaFree(mFillQP);  mFillQP  = nullptr; } } });
+                                            [&]() {  if(initQPStr.empty())  { initQPStr  = "0"; } if(mFillQP)  { cudaFree(mFillQP);  mFillQP  = nullptr; } });
   mSettings.push_back(sQPINIT); initGroup->add(sQPINIT);
-  auto *sQNINIT  = new Setting<std::string>("q- init",  "qnInit",  &initQNStr, initQPStr,
-                                            [&]() {  if(mFillQN)  { if(mFillQN)  { cudaFree(mFillQN);  mFillQN  = nullptr; } } });
+  auto *sQNINIT  = new Setting<std::string>("q- init",  "qnInit",  &initQNStr, initQNStr,
+                                            [&]() {  if(initQNStr.empty())  { initQNStr  = "0"; } if(mFillQN)  { cudaFree(mFillQN);  mFillQN  = nullptr; } });
   mSettings.push_back(sQNINIT); initGroup->add(sQNINIT);
-  auto *sQPVINIT = new Setting<std::string>("Vq+ init", "qpvInit", &initQPVStr, initQPStr,
-                                            [&]() {  if(mFillQPV) { if(mFillQPV) { cudaFree(mFillQNV); mFillQPV = nullptr; } } });
+  auto *sQPVINIT = new Setting<std::string>("Vq+ init", "qpvInit", &initQPVStr, initQPVStr,
+                                            [&]() {  if(initQPVStr.empty()) { initQPVStr = "0"; } if(mFillQPV) { cudaFree(mFillQPV); mFillQPV = nullptr; } });
   mSettings.push_back(sQPVINIT); initGroup->add(sQPVINIT);
-  auto *sQNVINIT = new Setting<std::string>("Vq- init", "qnvInit", &initQNVStr, initQPStr,
-                                            [&]() {  if(mFillQNV) { if(mFillQNV) { cudaFree(mFillQNV); mFillQNV = nullptr; } } });
+  auto *sQNVINIT = new Setting<std::string>("Vq- init", "qnvInit", &initQNVStr, initQNVStr,
+                                            [&]() {  if(initQNVStr.empty()) { initQNVStr = "0"; } if(mFillQNV) { cudaFree(mFillQNV); mFillQNV = nullptr; } });
   mSettings.push_back(sQNVINIT); initGroup->add(sQNVINIT);
   auto *sEINIT   = new Setting<std::string>("E init",   "EInit",   &initEStr, initEStr,
-                                            [&]() {  if(mFillE)   { if(mFillE)   { cudaFree(mFillE);   mFillE   = nullptr; } } });
+                                            [&]() {  if(initEStr.empty())   { initEStr   = "0"; } if(mFillE)   { cudaFree(mFillE);   mFillE   = nullptr; } });
   mSettings.push_back(sEINIT); initGroup->add(sEINIT);
   auto *sBINIT   = new Setting<std::string>("B init",   "BInit",   &initBStr, initBStr,
-                                            [&]() {  if(mFillB)   { if(mFillB)   { cudaFree(mFillB);   mFillB   = nullptr; } } });
+                                            [&]() {  if(initBStr.empty())   { initBStr   = "0"; } if(mFillB)   { cudaFree(mFillB);   mFillB   = nullptr; } });
   mSettings.push_back(sBINIT); initGroup->add(sBINIT);
 
 

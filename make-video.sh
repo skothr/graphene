@@ -2,13 +2,14 @@
 
 IMAGE_DIR="./rendered"
 
-DEFAULT_EXTENSION=".png"
-DEFAULT_OUTPUT="output.mp4"
-
-
 PREFIX=$1    # e.g. PREFIX=test-sequence1 --> rendered/test-sequence1/test-sequence1-0000.hdr [...]
 EXTENSION=$2
 OUTPUT=$3
+
+
+DEFAULT_EXTENSION=".png"
+DEFAULT_OUTPUT="${PREFIX}.mp4"
+
 
 # check PREFIX
 if [ "${PREFIX}" == "" ]; then
@@ -88,9 +89,9 @@ fi
 
 CODEC="libx265"
 
+# lossy
 #CMD="ffmpeg -i ${F_PREFIX}-%05d${EXTENSION}.png -c:v libx264 -vf fps=${FPS} -pix_fmt yuv420p ${IMAGE_DIR}/${OUTPUT}"
-
-# lossless test
+# lossless
 CMD="ffmpeg -i ${F_PREFIX}-%05d${EXTENSION} -c:v $CODEC -vf fps=$FPS -s 1920x1080 -pix_fmt yuv420p10le -preset veryslow $IMAGE_DIR/$OUTPUT"
 
 echo ""
@@ -100,8 +101,3 @@ echo ""
 echo ""
 
 eval $CMD
-
-#ffmpeg -i ${IMAGE_DIR}/${F_PREFIX}-%05d${EXTENSION} -c:v libx264 -vf fps=${FPS} -pix_fmt yuv420p ${IMAGE_DIR}/${OUTPUT}
-
-# (old command with more options):
-#    ffmpeg -i stable-explosion-3-%04d.png -c:v libx264 -s:v 2048x2048 -vf fps=24 -pix_fmt yuv420p stable-explosion-3.mp4

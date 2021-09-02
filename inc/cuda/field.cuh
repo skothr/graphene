@@ -29,12 +29,11 @@ struct FieldParams
 };
 
 
-
 //// FIELD BASE: base class for fields (data type defined in child class) ////
 class FieldBase
 {
 public:
-  int3 size;
+  int3 size = int3{0,0,0};
   unsigned long long numCells = 0;
   unsigned long long typeSize = 0;
   unsigned long long dataSize = 0; // TODO: uncoalesced memory
@@ -349,7 +348,7 @@ inline void CudaTexture::destroy()
 {
   if(allocated())
     {
-      std::cout << "Destroying CudaTexture...\n";
+      std::cout << "Destroying Cuda Texture...\n";
       glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
       if(hData)        { free(hData); hData = nullptr; }
       if(mPboResource) { cudaGraphicsUnregisterResource(mPboResource); mPboResource = nullptr; }

@@ -91,10 +91,10 @@ __global__ void addSignal_k(typename DimType<T, 3>::VECTOR_T pSrc, EMField<T> ds
                                        (pen.Bopt   & IDX_COS ? cosMult : 1)*(pen.Bopt   & IDX_SIN ? sinMult : 1));
 
           unsigned long long i = dst.idx(ix, iy, iz);
-          dst.Q  [i] += pen.Qmult   * QoptMult;                 // * cp.u.dt;
-          dst.QNV[i] += pen.QNVmult * QNVoptMult; // / cp.u.dL; // * cp.u.dt;
-          dst.E  [i] += pen.Emult   * EoptMult;   // / cp.u.dL; // * cp.u.dt;
-          dst.B  [i] += pen.Bmult   * BoptMult;   // / cp.u.dL; // * cp.u.dt;
+          dst.Q  [i] += pen.Qmult   * QoptMult   * cp.u.dt;
+          dst.QNV[i] += pen.QNVmult * QNVoptMult * cp.u.dt;
+          dst.E  [i] += pen.Emult   * EoptMult   * cp.u.dt;
+          dst.B  [i] += pen.Bmult   * BoptMult   * cp.u.dt;
         }
     }
 }

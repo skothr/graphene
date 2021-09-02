@@ -223,6 +223,52 @@ inline bool Checkbox(const std::string &label, bool* v, const Vec2f &size=Vec2f(
 }
 
 
+#define SLIDER_BTN_W 10.0f
+template<typename T>
+inline bool RangeSlider(const std::string &label, T* v0, T* v1, T vMin, T vMax, const Vec2f &size=Vec2f(0,0))
+{
+  bool changed = false;
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
+  Vec2f p0 = ImGui::GetCursorScreenPos();
+
+  drawList->AddLine(Vec2f(p0.x, p0.y + size.y/2.0f), Vec2f(p0.x+size.x, p0.y + size.y/2.0f), ImColor(Vec4f(0.5f, 0.5f, 0.5f, 1.0f)), 2.0f);
+  ImGui::SetCursorScreenPos(Vec2f(p0.x - SLIDER_BTN_W/2.0f + (size.x*(*v0 - vMin)/(vMax - vMin)), p0.y));
+  ImGui::Button((label+"##btn0").c_str(), Vec2f(SLIDER_BTN_W, size.y));
+  bool c0 = ImGui::IsItemActive();
+  ImGui::SetCursorScreenPos(Vec2f(p0.x - SLIDER_BTN_W/2.0f + (size.x*(*v1 - vMin)/(vMax - vMin)), p0.y));
+  ImGui::Button((label+"##btn1").c_str(), Vec2f(SLIDER_BTN_W, size.y));
+  bool c1 = ImGui::IsItemActive();
+
+  
+  float mval = (vMax-vMin)*(ImGui::GetMousePos().x - p0.x)/size.x;
+  mval = std::max(std::min(mval+0.5f, (float)vMax), (float)vMin);
+  
+  if     (c0) { *v0 = mval; *v1 = std::max(*v0, *v1); changed = true; }
+  else if(c1) { *v1 = mval; *v0 = std::min(*v0, *v1); changed = true; }
+  *v0 = std::max(std::min(*v0, vMax), vMin);
+  *v1 = std::max(std::min(*v1, vMax), vMin);
+
+  if(!changed)
+    {
+      ImGui::SetCursorScreenPos(p0);
+      ImGui::InvisibleButton((label+"##btnInv").c_str(), size);
+      if(ImGui::IsItemActive())
+        {
+          if     (mval < *v0) { *v0 = mval; }
+          else if(mval > *v1) { *v1 = mval;} 
+          else if(abs(mval - *v0) < abs(mval - *v1)) { *v0 = mval; }
+          else if(abs(mval - *v1) < abs(mval - *v0)) { *v1 = mval; }
+        }
+    }
+
+  ImGui::SetCursorScreenPos(Vec2f(p0.x, ImGui::GetCursorScreenPos().y)); ImGui::Text("%d", vMin);
+  ImGui::SameLine(); ImGui::SetCursorScreenPos(Vec2f(p0.x + size.x, ImGui::GetCursorScreenPos().y)); ImGui::Text("%d", vMax);
+  ImGui::SameLine(); ImGui::SetCursorScreenPos(Vec2f(p0.x + size.x*(*v0-vMin)/(vMax-vMin) , ImGui::GetCursorScreenPos().y)); ImGui::Text("%d", *v0);
+  ImGui::SameLine(); ImGui::SetCursorScreenPos(Vec2f(p0.x + size.x*(*v1-vMin)/(vMax-vMin) , ImGui::GetCursorScreenPos().y)); ImGui::Text("%d", *v1);
+
+  return changed;
+}
+
 
 
 
