@@ -25,23 +25,26 @@ struct FieldInterface
 
   std::string initQPStr  = "0";
   std::string initQNStr  = "0";
-  std::string initQPVStr = "0";
-  std::string initQNVStr = "0";
+  std::string initQVxStr = "0";
+  std::string initQVyStr = "0";
+  std::string initQVzStr = "0";
   std::string initEStr   = "cos((len(r)^2)/512)";
   std::string initBStr   = "sin(t*137)";
 
   Expression<T>   *initQPExpr  = nullptr;
   Expression<T>   *initQNExpr  = nullptr;
-  Expression<VT3> *initQPVExpr = nullptr;
-  Expression<VT3> *initQNVExpr = nullptr;
+  Expression<T>   *initQVxExpr = nullptr;
+  Expression<T>   *initQVyExpr = nullptr;
+  Expression<T>   *initQVzExpr = nullptr;
   Expression<VT3> *initEExpr   = nullptr;
   Expression<VT3> *initBExpr   = nullptr;
 
   // CUDA fill expressions
   CudaExpression<T>   *mFillQP  = nullptr;
   CudaExpression<T>   *mFillQN  = nullptr;
-  CudaExpression<VT3> *mFillQPV = nullptr;
-  CudaExpression<VT3> *mFillQNV = nullptr;
+  CudaExpression<T>   *mFillQVx = nullptr;
+  CudaExpression<T>   *mFillQVy = nullptr;
+  CudaExpression<T>   *mFillQVz = nullptr;
   CudaExpression<VT3> *mFillE   = nullptr;
   CudaExpression<VT3> *mFillB   = nullptr;
 
@@ -115,18 +118,21 @@ FieldInterface<T>::FieldInterface(FieldParams<T> *cp_, const std::function<void(
   auto *sUQ = new Setting<bool> ("Update Q", "updateQ", &updateQ); mSettings.push_back(sUQ); stepGroup->add(sUQ);
 
   // init
-  auto *sQPINIT  = new Setting<std::string>("q+ init",  "qpInit",  &initQPStr, initQPStr,
+  auto *sQPINIT  = new Setting<std::string>("Q+ init",  "qpInit",  &initQPStr, initQPStr,
                                             [&]() {  if(initQPStr.empty())  { initQPStr  = "0"; } if(mFillQP)  { cudaFree(mFillQP);  mFillQP  = nullptr; } });
   mSettings.push_back(sQPINIT); initGroup->add(sQPINIT);
-  auto *sQNINIT  = new Setting<std::string>("q- init",  "qnInit",  &initQNStr, initQNStr,
+  auto *sQNINIT  = new Setting<std::string>("Q- init",  "qnInit",  &initQNStr, initQNStr,
                                             [&]() {  if(initQNStr.empty())  { initQNStr  = "0"; } if(mFillQN)  { cudaFree(mFillQN);  mFillQN  = nullptr; } });
   mSettings.push_back(sQNINIT); initGroup->add(sQNINIT);
-  auto *sQPVINIT = new Setting<std::string>("Vq+ init", "qpvInit", &initQPVStr, initQPVStr,
-                                            [&]() {  if(initQPVStr.empty()) { initQPVStr = "0"; } if(mFillQPV) { cudaFree(mFillQPV); mFillQPV = nullptr; } });
-  mSettings.push_back(sQPVINIT); initGroup->add(sQPVINIT);
-  auto *sQNVINIT = new Setting<std::string>("Vq- init", "qnvInit", &initQNVStr, initQNVStr,
-                                            [&]() {  if(initQNVStr.empty()) { initQNVStr = "0"; } if(mFillQNV) { cudaFree(mFillQNV); mFillQNV = nullptr; } });
-  mSettings.push_back(sQNVINIT); initGroup->add(sQNVINIT);
+  auto *sQVxINIT  = new Setting<std::string>("QVx init",  "qvInit",  &initQVxStr, initQVxStr,
+                                            [&]() {  if(initQVxStr.empty()) { initQVxStr = "0"; } if(mFillQVx) { cudaFree(mFillQVx); mFillQVx = nullptr; } });
+  mSettings.push_back(sQVxINIT); initGroup->add(sQVxINIT);
+  auto *sQVyINIT  = new Setting<std::string>("QVy init",  "qvInit",  &initQVyStr, initQVyStr,
+                                            [&]() {  if(initQVyStr.empty()) { initQVyStr = "0"; } if(mFillQVy) { cudaFree(mFillQVy); mFillQVy = nullptr; } });
+  mSettings.push_back(sQVyINIT); initGroup->add(sQVyINIT);
+  auto *sQVzINIT  = new Setting<std::string>("QVz init",  "qvInit",  &initQVzStr, initQVzStr,
+                                            [&]() {  if(initQVzStr.empty()) { initQVzStr = "0"; } if(mFillQVz) { cudaFree(mFillQVz); mFillQVz = nullptr; } });
+  mSettings.push_back(sQVzINIT); initGroup->add(sQVzINIT);
   auto *sEINIT   = new Setting<std::string>("E init",   "EInit",   &initEStr, initEStr,
                                             [&]() {  if(initEStr.empty())   { initEStr   = "0"; } if(mFillE)   { cudaFree(mFillE);   mFillE   = nullptr; } });
   mSettings.push_back(sEINIT); initGroup->add(sEINIT);

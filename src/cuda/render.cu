@@ -37,7 +37,7 @@ __global__ void renderFieldEM_k(EMField<T> src, CudaTexture dst, RenderParams<T>
       for(int iz = max(0, min(src.size.z-1, rp.zRange.y)); iz >= rp.zRange.x; iz--)
         {
           int fi = src.idx(fp.x, fp.y, iz);
-          T qLen = (src.Q[fi].x - src.Q[fi].y); T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
+          T qLen = (src.QP[fi] - src.QN[fi]); T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
           VT4 col = rp.brightness*rp.opacity*(qLen*rp.Qmult*rp.Qcol +
                                               eLen*rp.Emult*rp.Ecol +
                                               bLen*rp.Bmult*rp.Bcol);

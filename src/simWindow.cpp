@@ -286,8 +286,9 @@ bool SimWindow::init()
       std::cout << "Creating initial condition expressions...\n";
       mFieldUI->initQPExpr  = toExpression<float >(mFieldUI->initQPStr);
       mFieldUI->initQNExpr  = toExpression<float >(mFieldUI->initQNStr);
-      mFieldUI->initQPVExpr = toExpression<float3>(mFieldUI->initQPVStr);
-      mFieldUI->initQNVExpr = toExpression<float3>(mFieldUI->initQNVStr);
+      mFieldUI->initQVxExpr = toExpression<float >(mFieldUI->initQVxStr);
+      mFieldUI->initQVyExpr = toExpression<float >(mFieldUI->initQVyStr);
+      mFieldUI->initQVzExpr = toExpression<float >(mFieldUI->initQVzStr);
       mFieldUI->initEExpr   = toExpression<float3>(mFieldUI->initEStr);
       mFieldUI->initBExpr   = toExpression<float3>(mFieldUI->initBStr);
       
@@ -366,45 +367,52 @@ void SimWindow::resetSignals()
   std::cout << "SIGNAL RESET\n";
   if(mParams.verbose)
     {
-      std::cout << "QP:  "  << mFieldUI->initQPExpr->toString(true)  << "\n";
-      std::cout << "QN:  "  << mFieldUI->initQNExpr->toString(true)  << "\n";
-      std::cout << "QPV:  " << mFieldUI->initQPVExpr->toString(true) << "\n";
-      std::cout << "QNV:  " << mFieldUI->initQNVExpr->toString(true) << "\n";
-      std::cout << "E:  "   << mFieldUI->initEExpr->toString(true)   << "\n";
-      std::cout << "B:  "   << mFieldUI->initBExpr->toString(true)   << "\n";
+      std::cout << "QP: "  << mFieldUI->initQPExpr->toString(true)  << "\n";
+      std::cout << "QN: "  << mFieldUI->initQNExpr->toString(true)  << "\n";
+      std::cout << "QVx: " << mFieldUI->initQVxExpr->toString(true) << "\n";
+      std::cout << "QVy: " << mFieldUI->initQVyExpr->toString(true) << "\n";
+      std::cout << "QVz: " << mFieldUI->initQVzExpr->toString(true) << "\n";
+      std::cout << "E:  "  << mFieldUI->initEExpr->toString(true)   << "\n";
+      std::cout << "B:  "  << mFieldUI->initBExpr->toString(true)   << "\n";
     }
 
   mFieldUI->initQPExpr  = toExpression<float >(mFieldUI->initQPStr,  false);
   mFieldUI->initQNExpr  = toExpression<float >(mFieldUI->initQNStr,  false);
-  mFieldUI->initQPVExpr = toExpression<float3>(mFieldUI->initQPVStr, false);
-  mFieldUI->initQNVExpr = toExpression<float3>(mFieldUI->initQNVStr, false);
+  mFieldUI->initQVxExpr = toExpression<float >(mFieldUI->initQVxStr, false);
+  mFieldUI->initQVyExpr = toExpression<float >(mFieldUI->initQVyStr, false);
+  mFieldUI->initQVzExpr = toExpression<float >(mFieldUI->initQVzStr, false);
   mFieldUI->initEExpr   = toExpression<float3>(mFieldUI->initEStr,   false);
   mFieldUI->initBExpr   = toExpression<float3>(mFieldUI->initBStr,   false);
   
   // create/update expressions 
   std::cout << "Filling field states on device...\n";
   if(!mFieldUI->mFillQP)
-    { mFieldUI->mFillQP  = toCudaExpression<float> (mFieldUI->initQPExpr,  getVarNames<float>());  std::cout << "  --> QP  EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillQP  = toCudaExpression<float> (mFieldUI->initQPExpr,  getVarNames<float>());  std::cout << "  --> Q+ EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillQN)
-    { mFieldUI->mFillQN  = toCudaExpression<float> (mFieldUI->initQNExpr,  getVarNames<float>());  std::cout << "  --> QN  EXPRESSION UPDATED\n"; }
-  if(!mFieldUI->mFillQPV)
-    { mFieldUI->mFillQPV = toCudaExpression<float3>(mFieldUI->initQPVExpr, getVarNames<float3>()); std::cout << "  --> QPV EXPRESSION UPDATED\n"; }
-  if(!mFieldUI->mFillQNV)
-    { mFieldUI->mFillQNV = toCudaExpression<float3>(mFieldUI->initQNVExpr, getVarNames<float3>()); std::cout << "  --> QNV EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillQN  = toCudaExpression<float> (mFieldUI->initQNExpr,  getVarNames<float>());  std::cout << "  --> Q- EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillQVx)
+    { mFieldUI->mFillQVx = toCudaExpression<float >(mFieldUI->initQVxExpr, getVarNames<float>());  std::cout << "  --> QVx EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillQVy)
+    { mFieldUI->mFillQVy = toCudaExpression<float >(mFieldUI->initQVyExpr, getVarNames<float>());  std::cout << "  --> QVy EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillQVz)
+    { mFieldUI->mFillQVz = toCudaExpression<float >(mFieldUI->initQVzExpr, getVarNames<float>());  std::cout << "  --> QVz EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillE)
-    { mFieldUI->mFillE   = toCudaExpression<float3>(mFieldUI->initEExpr,   getVarNames<float3>()); std::cout << "  --> E   EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillE   = toCudaExpression<float3>(mFieldUI->initEExpr,   getVarNames<float3>()); std::cout << "  --> E  EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillB)
-    { mFieldUI->mFillB   = toCudaExpression<float3>(mFieldUI->initBExpr,   getVarNames<float3>()); std::cout << "  --> B   EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillB   = toCudaExpression<float3>(mFieldUI->initBExpr,   getVarNames<float3>()); std::cout << "  --> B  EXPRESSION UPDATED\n"; }
   // fill all states
   for(int i = 0; i < mStates.size(); i++)
     {
       EMField<CFT> *f = reinterpret_cast<EMField<CFT>*>(mStates[mStates.size()-1-i]);
-      fieldFillChannel<float2>(f->Q,   mFieldUI->mFillQP, 0); // q+ --> Q[i].x
-      fieldFillChannel<float2>(f->Q,   mFieldUI->mFillQN, 1); // q- --> Q[i].y
-      fieldFill       <float3>(f->QPV, mFieldUI->mFillQPV);
-      fieldFill       <float3>(f->QNV, mFieldUI->mFillQNV);
-      fieldFill       <float3>(f->E,   mFieldUI->mFillE);
-      fieldFill       <float3>(f->B,   mFieldUI->mFillB);
+      fieldFill<float>(f->QP,  mFieldUI->mFillQP); // q+ --> Q[i].x
+      fieldFill<float>(f->QN,  mFieldUI->mFillQN); // q- --> Q[i].y
+
+      fieldFill<float>(f->QVx, mFieldUI->mFillQVx);
+      fieldFill<float>(f->QVy, mFieldUI->mFillQVy);
+      fieldFill<float>(f->QVz, mFieldUI->mFillQVz);
+      
+      fieldFill<float3>(f->E,  mFieldUI->mFillE);
+      fieldFill<float3>(f->B,  mFieldUI->mFillB);
     }
   cudaDeviceSynchronize();
 }
@@ -704,9 +712,10 @@ void SimWindow::handleInput2D(ScreenView &view)
       int zi = mDisplayUI->rp->zRange.y;
           
       // pull device data
-      std::vector<float2> Q  (mStates.size(), float2{NAN, NAN});
-      std::vector<float3> QPV(mStates.size(), float3{NAN, NAN, NAN});
-      std::vector<float3> QNV(mStates.size(), float3{NAN, NAN, NAN});
+      std::vector<float > QP (mStates.size(), NAN);
+      std::vector<float > QN (mStates.size(), NAN);
+      std::vector<float3> QVp(mStates.size(), float3{NAN, NAN, NAN});
+      std::vector<float3> QVn(mStates.size(), float3{NAN, NAN, NAN});
       std::vector<float3> E  (mStates.size(), float3{NAN, NAN, NAN});
       std::vector<float3> B  (mStates.size(), float3{NAN, NAN, NAN});
       std::vector<Material<float>> mat(mStates.size(), Material<float>());
@@ -714,13 +723,21 @@ void SimWindow::handleInput2D(ScreenView &view)
         {
           for(int i = 0; i < mStates.size(); i++)
             {
+              // get data from top displayed layer (TODO: average or graph/plot?)
               EMField<CFT> *src = reinterpret_cast<EMField<CFT>*>(mStates[mStates.size()-1-i]);
               if(src)
                 {
-                  // get data from top displayed layer (TODO: average or graph layers?)
-                  cudaMemcpy(&Q[i],   src->Q.dData   + src->Q.idx  (fi.x, fi.y, zi), sizeof(float2), cudaMemcpyDeviceToHost);
-                  cudaMemcpy(&QPV[i], src->QPV.dData + src->QPV.idx(fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
-                  cudaMemcpy(&QNV[i], src->QNV.dData + src->QNV.idx(fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
+                  cudaMemcpy(&QP[i],  src->QP.dData  + src->QP.idx (fi.x, fi.y, zi), sizeof(float2), cudaMemcpyDeviceToHost);
+                  cudaMemcpy(&QN[i],  src->QN.dData  + src->QN.idx (fi.x, fi.y, zi), sizeof(float2), cudaMemcpyDeviceToHost);
+                  
+                  if(fi.x < fs.x-1) { cudaMemcpy(&QVp[i].x, src->QVx.dData + src->QVx.idx(fi.x,   fi.y,   zi),   sizeof(float), cudaMemcpyDeviceToHost); }
+                  if(fi.y < fs.y-1) { cudaMemcpy(&QVp[i].y, src->QVy.dData + src->QVy.idx(fi.x,   fi.y,   zi),   sizeof(float), cudaMemcpyDeviceToHost); }
+                  if(zi < mFieldUI->fieldRes.z-1)
+                    { cudaMemcpy(&QVp[i].z, src->QVz.dData + src->QVz.idx(fi.x,   fi.y,   zi),   sizeof(float), cudaMemcpyDeviceToHost); }
+                  if(fi.x > 0)      { cudaMemcpy(&QVn[i].x, src->QVx.dData + src->QVx.idx(fi.x-1, fi.y,   zi),   sizeof(float), cudaMemcpyDeviceToHost); }
+                  if(fi.y > 0)      { cudaMemcpy(&QVn[i].y, src->QVy.dData + src->QVy.idx(fi.x,   fi.y-1, zi),   sizeof(float), cudaMemcpyDeviceToHost); }
+                  if(zi > 0)        { cudaMemcpy(&QVn[i].z, src->QVz.dData + src->QVz.idx(fi.x,   fi.y,   zi-1), sizeof(float), cudaMemcpyDeviceToHost); }
+                  
                   cudaMemcpy(&E[i],   src->E.dData   + src->E.idx  (fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
                   cudaMemcpy(&B[i],   src->B.dData   + src->B.idx  (fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
                   cudaMemcpy(&mat[i], src->mat.dData + src->mat.idx(fi.x, fi.y, zi), sizeof(Material<float>), cudaMemcpyDeviceToHost);
@@ -753,10 +770,10 @@ void SimWindow::handleInput2D(ScreenView &view)
               {
                 float xpos = ImGui::GetCursorPos().x;
                 ImGui::Text("(State Pointer: %ld", (long)(void*)(mStates[mStates.size()-1-i]));
-                ImGui::Text(" Q   = (+)%s | (-)%s ==> %s", fAlign(Q[i].x,   4).c_str(), fAlign(Q[i].y,   4).c_str(), fAlign((Q[i].x-Q[i].y), 4).c_str());
+                ImGui::Text(" Q   = (+)%s | (-)%s ==> Total %s", fAlign(QP[i],  4).c_str(), fAlign(QN[i],  4).c_str(), fAlign((QP[i]-QN[i]), 4).c_str());
                 ImGui::Spacing();
-                ImGui::Text(" VQ+ = < %12s, %12s, %12s >", fAlign(QPV[i].x, 4).c_str(), fAlign(QPV[i].y, 4).c_str(), fAlign(QPV[i].z, 4).c_str());
-                ImGui::Text(" VQ- = < %12s, %12s, %12s >", fAlign(QNV[i].x, 4).c_str(), fAlign(QNV[i].y, 4).c_str(), fAlign(QNV[i].z, 4).c_str());
+                ImGui::Text(" QVp = < %12s, %12s, %12s >", fAlign(QVp[i].x, 4).c_str(), fAlign(QVp[i].y, 4).c_str(), fAlign(QVp[i].z, 4).c_str());
+                ImGui::Text(" QVn = < %12s, %12s, %12s >", fAlign(QVn[i].x, 4).c_str(), fAlign(QVn[i].y, 4).c_str(), fAlign(QVn[i].z, 4).c_str());
                 ImGui::Text(" E   = < %12s, %12s, %12s >", fAlign(E[i].x,   4).c_str(), fAlign(E[i].y,   4).c_str(), fAlign(E[i].z,   4).c_str());
                 ImGui::Text(" B   = < %12s, %12s, %12s >", fAlign(B[i].x,   4).c_str(), fAlign(B[i].y,   4).c_str(), fAlign(B[i].z,   4).c_str());
                 ImGui::Spacing(); ImGui::Spacing();

@@ -49,15 +49,17 @@ struct SignalPen : public Pen<T>
   
   T frequency  = 0.1;  // Hz(1/t in sim time) for sin/cos mult flags
   T wavelength = 10.0; // in dL units (cells per period)
-
-  VT2 Qmult   = VT2{0.0,  0.0};       // base field values to add
-  VT3 QPVmult = VT3{0.0,  0.0,  0.0};
-  VT3 QNVmult = VT3{0.0,  0.0,  0.0};
-  VT3 Emult   = VT3{0.0,  0.0,  1.0};
-  VT3 Bmult   = VT3{0.0,  0.0, -1.0};
-  int Qopt; int QPVopt; int QNVopt; int Eopt; int Bopt; // parameteric option flags (IDX_*)
   
-  SignalPen() : Qopt(IDX_NONE), QPVopt(IDX_NONE), QNVopt(IDX_NONE), Eopt(IDX_SIN), Bopt(IDX_COS) { this->mult = 10.0; }
+  // base field values to add
+  T   QPmult = 0;
+  T   QNmult = 0;
+  VT3 QVmult = VT3{0.0,  0.0,  0.0};
+  VT3 Emult  = VT3{0.0,  0.0,  1.0};
+  VT3 Bmult  = VT3{0.0,  0.0, -1.0};
+  // parameteric option flags (IDX_*)
+  int Qopt; int QVopt; int Eopt; int Bopt;
+  
+  SignalPen() : Qopt(IDX_NONE), QVopt(IDX_NONE), Eopt(IDX_SIN), Bopt(IDX_COS) { this->mult = 10.0; }
   
 };
 

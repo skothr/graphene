@@ -77,10 +77,10 @@ template<> __global__ void fillField_k<float3>(Field<float3> dst, CudaExpression
       
       const int nVars = 5;
       float3 vars[nVars]; // {"p", "s", "r", "n", "t"}
-      vars[0] = p;               // "p" -- position from origin (field index 0)
-      vars[1] = s;               // "s" -- size
-      vars[2] = c;               // "r" -- radius (position from center)
-      vars[3] = n;               // "n" -- normalized radius
+      vars[0] = p;        // "p" -- position from origin (field index 0)
+      vars[1] = s;        // "s" -- size
+      vars[2] = c;        // "r" -- radius (position from center)
+      vars[3] = n;        // "n" -- normalized radius
       //vars[4] = float3{t, t, t}; // "t" -- theta from center
       vars[4] = float3{atan2(n.x, n.y),
                        atan2(n.y, n.z),
@@ -193,33 +193,50 @@ __global__ void updateCharge_k(EMField<T> src, EMField<T> dst, FieldParams<T> cp
     {
       int3 p0 = int3{ix, iy, iz};
       int  i0 = src.idx(p0.x, p0.y, p0.z);
-      
-      int iPX = dst.Q.idx(ix+(ix<src.size.x-1?1:0), iy, iz);
-      int iNX = dst.Q.idx(ix-(ix>0?1:0), iy, iz);
-      int iPY = dst.Q.idx(ix, iy+(iy<src.size.y-1?1:0), iz);
-      int iNY = dst.Q.idx(ix, iy-(iy>0?1:0), iz);
-      int iPZ = dst.Q.idx(ix, iy, iz+(iz<src.size.z-1?1:0));
-      int iNZ = dst.Q.idx(ix, iy, iz-(iz>0?1:0));
 
-      VT2 Q0 = src.Q[i0];
-      VT3 pv = src.QPV[i0];
-      VT3 nv = src.QNV[i0];
-      T   q0 = Q0.x - Q0.y;
+      VT3 E0  = src.E[i0];
+      VT2 Q0  = VT2{src.QP[i0], src.QN[i0]};
+      VT3 QVp0 = VT3{(ix < src.size.x-1 ? src.QVx[src.QVx.idx(ix, iy, iz)] : (T)0),
+                     (iy < src.size.y-1 ? src.QVy[src.QVy.idx(ix, iy, iz)] : (T)0),
+                     (iz < src.size.z-1 ? src.QVz[src.QVz.idx(ix, iy, iz)] : (T)0)};
+      VT3 QVn0 = VT3{(ix > 0 ? src.QVx[src.QVx.idx(ix-1, iy, iz)] : (T)0),
+                     (iy > 0 ? src.QVy[src.QVy.idx(ix, iy-1, iz)] : (T)0),
+                     (iz > 0 ? src.QVz[src.QVz.idx(ix, iy, iz-1)] : (T)0)};
+      Material<T> M0 = src.mat[i0]; if(M0.vacuum()) { M0 = cp.u.vacuum(); }
       
-      // update velocities based on charge gradient
-      VT2 Q01 = VT2{0.0,0.0};
-      if(iPX < src.size.x) { VT2 Q1 = src.Q[iPX];  Q01 -= (q0-(Q1.x-Q1.y)); } //pv.x += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
-      if(iNX >= 0)         { VT2 Q1 = src.Q[iNX];  Q01 -= (q0-(Q1.x-Q1.y)); } //nv.x += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
-      if(iPY < src.size.y) { VT2 Q1 = src.Q[iPY];  Q01 -= (q0-(Q1.x-Q1.y)); } //pv.y += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
-      if(iNY >= 0)         { VT2 Q1 = src.Q[iNY];  Q01 -= (q0-(Q1.x-Q1.y)); } //nv.y += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
-      if(iPZ < src.size.z) { VT2 Q1 = src.Q[iPZ];  Q01 -= (q0-(Q1.x-Q1.y)); } //pv.z += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
-      if(iNZ >= 0)         { VT2 Q1 = src.Q[iNZ];  Q01 -= (q0-(Q1.x-Q1.y)); } //nv.z += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;     
+      //T   q0  = Q0.x - Q0.y; // total charge in cell (TODO: combine?)
       
-      dst.E[i0]   = src.E[i0];
+      // // update velocities based on charge gradient
+      VT2 newQ = Q0;
+      // if(iPX < src.size.x) { T QV1 = src.Q[iPX]; newQ -= (q0-(Q1.x-Q1.y)); } //pv.x += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
+      // if(iNX >= 0)         { T QV1 = src.Q[iNX];  newQ -= (q0-(Q1.x-Q1.y)); } //nv.x += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
+      // if(iPY < src.size.y) { T QV1 = src.Q[iPY];  newQ -= (q0-(Q1.x-Q1.y)); } //pv.y += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
+      // if(iNY >= 0)         { T QV1 = src.Q[iNY];  newQ -= (q0-(Q1.x-Q1.y)); } //nv.y += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
+      // if(iPZ < src.size.z) { T QV1 = src.Q[iPZ];  newQ -= (q0-(Q1.x-Q1.y)); } //pv.z += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
+      // if(iNZ >= 0)         { T QV1 = src.Q[iNZ];  newQ -= (q0-(Q1.x-Q1.y)); } //nv.z += (q0-(Q1.x-Q1.y)*(Q1.x+Q1.y))*cp.u.dt;
+
+      // TEST -- treat Q as fully derived from divergence of E (TODO: conserve?)
+      int iPX = dst.E.idx(ix+(ix<src.size.x-1?1:0), iy, iz);
+      int iNX = dst.E.idx(ix-(ix>0?1:0), iy, iz);
+      int iPY = dst.E.idx(ix, iy+(iy<src.size.y-1?1:0), iz);
+      int iNY = dst.E.idx(ix, iy-(iy>0?1:0), iz);
+      int iPZ = dst.E.idx(ix, iy, iz+(iz<src.size.z-1?1:0));
+      int iNZ = dst.E.idx(ix, iy, iz-(iz>0?1:0));
+      VT3 gradE = VT3{0.0,0.0,0.0};
+      if(ix < src.size.x-1) { gradE.x = src.E[iPX].x - E0.x;   }
+      if(iy < src.size.y-1) { gradE.y = src.E[iPY].y - E0.y;   }
+      if(iz < src.size.z-1) { gradE.z = src.E[iPZ].z - E0.z;   }
+
+      newQ.x = sum(gradE) * cp.u.e0; // (~Gauss's law)
+      //newQ.y = 0;
+      
+      dst.QP[i0]  = newQ.x;
+      dst.QN[i0]  = newQ.y;
+      if(ix < src.size.x-1) { dst.QVx[i0]  = QVp0.x; }
+      if(iy < src.size.y-1) { dst.QVy[i0]  = QVp0.y; }
+      if(iz < src.size.z-1) { dst.QVz[i0]  = QVp0.z; }
+      dst.E[i0]   = E0;
       dst.B[i0]   = src.B[i0];
-      dst.Q[i0]   = Q0 - Q01/6.0;
-      dst.QPV[i0] = pv;
-      dst.QNV[i0] = nv;
       dst.mat[i0] = src.mat[i0];
     }
 }
@@ -258,9 +275,11 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
                               max(0, min(src.size.z-1, ip0.z + zOffset)));
               dst.E[i0]   = src.E[i];  // use updated index for E
               dst.B[i0]   = src.B[i0]; // just copy everything else
-              dst.Q[i0]   = src.Q[i0];
-              dst.QPV[i0] = src.QPV[i0];
-              dst.QNV[i0] = src.QNV[i0];
+              dst.QP[i0]  = src.QP[i0];
+              dst.QN[i0]  = src.QN[i0];
+              dst.QVx[dst.QVx.idx(ix,iy,iz)] = src.QVx[dst.QVx.idx(ix,iy,iz)];
+              dst.QVy[dst.QVy.idx(ix,iy,iz)] = src.QVy[dst.QVy.idx(ix,iy,iz)];
+              dst.QVz[dst.QVz.idx(ix,iy,iz)] = src.QVz[dst.QVz.idx(ix,iy,iz)];
               dst.mat[i0] = src.mat[i0];
               return;
             }
@@ -269,9 +288,13 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
       VT3 E0 = src.E[i0];
       VT3 B0 = src.B[i0];
       
-      VT2 Q0         = src.Q[i0];
-      VT3 QPV0       = src.QPV[i0];
-      VT3 QNV0       = src.QNV[i0];
+      VT2 Q0  = VT2{src.QP[i0], src.QN[i0]};
+      VT3 QVp0 = VT3{(ix < src.size.x-1 ? src.QVx[src.QVx.idx(ix, iy, iz)] : (T)0),
+                     (iy < src.size.y-1 ? src.QVy[src.QVy.idx(ix, iy, iz)] : (T)0),
+                     (iz < src.size.z-1 ? src.QVz[src.QVz.idx(ix, iy, iz)] : (T)0)};
+      VT3 QVn0 = VT3{(ix > 0 ? src.QVx[src.QVx.idx(ix-1, iy, iz)] : (T)0),
+                     (iy > 0 ? src.QVy[src.QVy.idx(ix, iy-1, iz)] : (T)0),
+                     (iz > 0 ? src.QVz[src.QVz.idx(ix, iy, iz-1)] : (T)0)};
       Material<T> M0 = src.mat[i0];
       if(M0.vacuum()) { M0 = cp.u.vacuum(); } // check if vacuum
       typename Material<T>::Factors f = M0.getFactors(cp.u.dt, cp.u.dL);
@@ -286,7 +309,7 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
 
       // apply effect of electric current (TODO: improve)
       VT3 dS = VT3{cp.u.dL*cp.u.dL, cp.u.dL*cp.u.dL, cp.u.dL*cp.u.dL};
-      VT3 J = (QPV0 - QNV0)*(Q0.x - Q0.y) / cp.u.dt / dS;
+      VT3 J = (QVp0-QVn0)*(Q0.x - Q0.y) / cp.u.dt / dS;
       dEdt -= J / M0.permittivity;
       
       VT3 newE = f.alphaE*E0 + f.betaE*dEdt;
@@ -295,16 +318,16 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
          abs(newE.x) > 1e24 ||abs(newE.y) > 1e24 ||abs(newE.z) > 1e24) { newE = VT3{0.0,0.0,0.0}; }
       
       // // lorentz (E)
-      VT3 newQPV = QPV0 + (Q0.x-Q0.y)*newE*cp.u.dt;
-      if(isnan(newQPV.x) || isinf(newQPV.x) || isnan(newQPV.y) || isinf(newQPV.y) || isnan(newQPV.z) || isinf(newQPV.z)) { newQPV = VT3{0.0,0.0,0.0}; }
-      VT3 newQNV = QNV0 - (Q0.x-Q0.y)*newE*cp.u.dt;
-      if(isnan(newQNV.x) || isinf(newQNV.x) || isnan(newQNV.y) || isinf(newQNV.y) || isnan(newQNV.z) || isinf(newQNV.z)) { newQNV = VT3{0.0,0.0,0.0}; }
+      VT3 newQV = QVp0 + (Q0.x-Q0.y)*newE*cp.u.dt;
+      if(isnan(newQV.x) || isinf(newQV.x) || isnan(newQV.y) || isinf(newQV.y) || isnan(newQV.z) || isinf(newQV.z)) { newQV = VT3{0.0,0.0,0.0}; }
       
-      dst.E[i0]   = newE;   // updated values
-      dst.QPV[i0] = newQPV;
-      dst.QNV[i0] = newQNV;
+      dst.E[i0]   = newE; // updated values
+      if(ix > src.size.x) { dst.QVx[dst.QVx.idx(ix,iy,iz)] = newQV.x; }
+      if(iy > src.size.y) { dst.QVy[dst.QVy.idx(ix,iy,iz)] = newQV.y; }
+      if(iz > src.size.z) { dst.QVz[dst.QVz.idx(ix,iy,iz)] = newQV.z; }
+    
+      dst.QP[i0]  = Q0.x; dst.QN[i0] = Q0.y; // copied values (unchanged)
       
-      dst.Q[i0]   = Q0;    // copied values (unchanged)
       dst.B[i0]   = B0;
       dst.mat[i0] = M0;
     }
@@ -339,9 +362,11 @@ __global__ void updateMagnetic_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
                               max(0, min(src.size.z-1, ip0.z + zOffset)));
               dst.B[i0]   = src.B[i];  // use updated index for B
               dst.E[i0]   = src.E[i0]; // just copy everything else
-              dst.Q[i0]   = src.Q[i0];
-              dst.QPV[i0] = src.QPV[i0];
-              dst.QNV[i0] = src.QNV[i0];
+              dst.QP[i0]  = src.QP[i0];
+              dst.QN[i0]  = src.QN[i0];
+              dst.QVx[dst.QVx.idx(ix,iy,iz)] = src.QVx[dst.QVx.idx(ix,iy,iz)];
+              dst.QVy[dst.QVy.idx(ix,iy,iz)] = src.QVy[dst.QVy.idx(ix,iy,iz)];
+              dst.QVz[dst.QVz.idx(ix,iy,iz)] = src.QVz[dst.QVz.idx(ix,iy,iz)];
               dst.mat[i0] = src.mat[i0];
               return;
             }
@@ -349,9 +374,13 @@ __global__ void updateMagnetic_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
       
       VT3 B0         = src.B[i0];
       VT3 E0         = src.E[i0];
-      VT2 Q0         = src.Q[i0];
-      VT3 QPV0       = src.QPV[i0];
-      VT3 QNV0       = src.QNV[i0];
+      VT2 Q0  = VT2{src.QP[i0], src.QN[i0]};
+      VT3 QVp0 = VT3{(ix < src.size.x-1 ? src.QVx[src.QVx.idx(ix, iy, iz)] : (T)0),
+                     (iy < src.size.y-1 ? src.QVy[src.QVy.idx(ix, iy, iz)] : (T)0),
+                     (iz < src.size.z-1 ? src.QVz[src.QVz.idx(ix, iy, iz)] : (T)0)};
+      VT3 QVn0 = VT3{(ix > 0 ? src.QVx[src.QVx.idx(ix-1, iy, iz)] : (T)0),
+                     (iy > 0 ? src.QVy[src.QVy.idx(ix, iy-1, iz)] : (T)0),
+                     (iz > 0 ? src.QVz[src.QVz.idx(ix, iy, iz-1)] : (T)0)};
       Material<T> M0 = src.mat[i0];
       if(M0.vacuum()) { M0 = cp.u.vacuum(); } // check if vacuum
       typename Material<T>::Factors f = M0.getFactors(cp.u.dt, cp.u.dL);
@@ -368,16 +397,16 @@ __global__ void updateMagnetic_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
          abs(newB.x) > 1e24 ||abs(newB.y) > 1e24 ||abs(newB.z) > 1e24) { newB = VT3{0.0,0.0,0.0}; }
       
       // // lorentz (v x B)
-      VT3 newQPV = QPV0 + (Q0.x-Q0.y)*cross(QPV0, newB)*cp.u.dt;
-      if(isnan(newQPV.x) || isinf(newQPV.x) || isnan(newQPV.y) || isinf(newQPV.y) || isnan(newQPV.z) || isinf(newQPV.z)) { newQPV = VT3{0.0,0.0,0.0}; }
-      VT3 newQNV = QNV0 - (Q0.x-Q0.y)*cross(QNV0, newB)*cp.u.dt;
-      if(isnan(newQNV.x) || isinf(newQNV.x) || isnan(newQNV.y) || isinf(newQNV.y) || isnan(newQNV.z) || isinf(newQNV.z)) { newQNV = VT3{0.0,0.0,0.0}; }
+      VT3 newQV = QVp0 + (Q0.x-Q0.y)*cross(QVp0, newB)*cp.u.dt;
+      if(isnan(newQV.x) || isinf(newQV.x) || isnan(newQV.y) || isinf(newQV.y) || isnan(newQV.z) || isinf(newQV.z)) { newQV = VT3{0.0,0.0,0.0}; }
         
-      dst.B[i0]   = newB;   // updated values
-      dst.QPV[i0] = newQPV;
-      dst.QNV[i0] = newQNV;
+      dst.B[i0]   = newB; // updated values
+      if(ix > src.size.x) { dst.QVx[dst.QVx.idx(ix,iy,iz)] = newQV.x; }
+      if(iy > src.size.y) { dst.QVy[dst.QVy.idx(ix,iy,iz)] = newQV.y; }
+      if(iz > src.size.z) { dst.QVz[dst.QVz.idx(ix,iy,iz)] = newQV.z; }
     
-      dst.Q[i0]   = Q0;    // copied values (unchanged)
+      dst.QP[i0]  = Q0.x; // copied values (unchanged)
+      dst.QN[i0]  = Q0.y;
       dst.E[i0]   = E0;
       dst.mat[i0] = M0;
     }

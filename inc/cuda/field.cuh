@@ -169,14 +169,17 @@ public:
   using VT3 = typename DimType<T, 3>::VECTOR_T;
   using ST = T; // scalar type, provided
   
-  Field<VT2> Q;   // Q   = {q+, q-} (NOTE: Q.y represents density of negative particles, so sign should be positive)
-  Field<VT3> QPV; // velocity of positive charge <-- **** idea: +/- charge velocity just inverted, these should be velocity over +/- cell borders ****
-  Field<VT3> QNV; // velocity of negative charge
+  Field<T> QP; // positive charge
+  Field<T> QN; // negative charge
+  // charge velocity (NOTE: represents velocity of positive charge across each cell border -- SQVx = {Sx-1, Sy, Sz} )
+  //   --> e.g. cell (x,y,z) QV over +X border: (x, y, z) | -X border: (x-1, y, z)
+  Field<T> QVx; Field<T> QVy; Field<T> QVz;
+  
   Field<VT3> E;   // electric field
   Field<VT3> B;   // magnetic field
   Field<Material<T>> mat; // material field
   
-  const std::vector<FieldBase*> FIELDS {{&Q, &QPV, &QNV, &E, &B, &mat}}; //, &AB}};
+  const std::vector<FieldBase*> FIELDS {{&QP, &QN, &E, &B, &mat}}; // NOTE: QV(xyz) handled separately
   
   virtual bool create(int3 sz) override;
   virtual void destroy() override;
@@ -196,16 +199,29 @@ bool EMField<T>::create(int3 sz)
     {
       destroy();
       for(auto f : FIELDS) { if(!f->create(sz)) { return false; } }
+      if(!QVx.create(int3{sz.x-1, sz.y, sz.z})) { return false; }
+      if(!QVy.create(int3{sz.x, sz.y-1, sz.z})) { return false; }
+      if(!QVz.create(int3{sz.x, sz.y, sz.z-1})) { return false; }
       this->size = sz; return true;
     }
   else { return false; }
 }
-template<typename T> void EMField<T>::destroy()  { for(auto f : FIELDS) { f->destroy(); } this->size = int3{0, 0, 0};  }
-template<typename T> void EMField<T>::pullData() { for(auto f : FIELDS) { f->pullData(); } }
-template<typename T> void EMField<T>::pushData() { for(auto f : FIELDS) { f->pushData(); } }
-template<typename T> bool EMField<T>::allocated() const { for(auto f : FIELDS) { if(!f->allocated()) { return false; } } return true; }
-template<typename T> std::string EMField<T>::hDataStr(const Vec3i &p) const { return Q.hDataStr(p); }
-template<typename T> void EMField<T>::clear()    { for(auto f : FIELDS) { f->clear(); } }
+template<typename T> void EMField<T>::destroy()
+{
+  for(auto f : FIELDS) { f->destroy(); }
+  QVx.destroy(); QVy.destroy(); QVz.destroy();
+  this->size = int3{0, 0, 0};
+}
+
+template<typename T> void EMField<T>::pullData() { for(auto f : FIELDS) { f->pullData(); } QVx.pullData(); QVy.pullData(); QVz.pullData(); }
+template<typename T> void EMField<T>::pushData() { for(auto f : FIELDS) { f->pushData(); } QVx.pushData(); QVy.pushData(); QVz.pushData(); }
+template<typename T> bool EMField<T>::allocated() const
+{
+  for(auto f : FIELDS) { if(!f->allocated()) { return false; } }
+  return (QVx.allocated() && QVy.allocated() && QVz.allocated());
+}
+template<typename T> std::string EMField<T>::hDataStr(const Vec3i &p) const { return ""; }
+template<typename T> void EMField<T>::clear() { for(auto f : FIELDS) { f->clear(); } QVx.clear(); QVy.clear(); QVz.clear(); }
 
 template<typename T>
 void EMField<T>::copyTo(EMField<T> &other)
@@ -228,6 +244,7 @@ void EMField<T>::copyTo(EMField<T> &other)
                 }
             }
         }
+      QVx.copyTo(other.QVx); QVy.copyTo(other.QVy); QVz.copyTo(other.QVz);
     }
   else { std::cout << "====> WARNING(EMField::copyTo()): Field not allocated!\n"; }
 }

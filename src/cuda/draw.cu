@@ -48,11 +48,13 @@ __global__ void addSignal_k(EMField<T> signal, EMField<T> dst, FieldParams<T> cp
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
       int i = dst.idx(ix, iy, iz);
-      dst.Q[i]   += signal.Q[i];   // * cp.u.dt;
-      dst.QPV[i] += signal.QPV[i]; // * cp.u.dt;
-      dst.QNV[i] += signal.QNV[i]; // * cp.u.dt;
-      dst.E[i]   += signal.E[i];   // * cp.u.dt;
-      dst.B[i]   += signal.B[i];   // * cp.u.dt;
+      dst.QP[i]  += signal.QP[i];
+      dst.QN[i]  += signal.QN[i];
+      dst.QVx[i] += signal.QVx[i];
+      dst.QVy[i] += signal.QVy[i];
+      dst.QVz[i] += signal.QVz[i];
+      dst.E[i]   += signal.E[i];
+      dst.B[i]   += signal.B[i];
     }
 }
 
@@ -79,22 +81,23 @@ __global__ void addSignal_k(typename DimType<T, 3>::VECTOR_T pSrc, EMField<T> ds
           T sinMult = sin(2.0f*M_PI*pen.frequency*cp.t);
           T tMult   = atan2(n.y, n.x);
           
-          T   QoptMult   =   pen.mult*((pen.Qopt   & IDX_R   ? rMult   : 1)*(pen.Qopt   & IDX_R2  ? r2Mult  : 1)*(pen.Qopt   & IDX_T ? tMult : 1) *
-                                       (pen.Qopt   & IDX_COS ? cosMult : 1)*(pen.Qopt   & IDX_SIN ? sinMult : 1));
-          VT3 QPVoptMult = n*pen.mult*((pen.QPVopt & IDX_R   ? rMult   : 1)*(pen.QPVopt & IDX_R2  ? r2Mult  : 1)*(pen.QPVopt & IDX_T ? tMult : 1) *
-                                       (pen.QPVopt & IDX_COS ? cosMult : 1)*(pen.QPVopt & IDX_SIN ? sinMult : 1));
-          VT3 QNVoptMult = n*pen.mult*((pen.QNVopt & IDX_R   ? rMult   : 1)*(pen.QNVopt & IDX_R2  ? r2Mult  : 1)*(pen.QNVopt & IDX_T ? tMult : 1) *
-                                       (pen.QNVopt & IDX_COS ? cosMult : 1)*(pen.QNVopt & IDX_SIN ? sinMult : 1));
-          T   EoptMult   =   pen.mult*((pen.Eopt   & IDX_R   ? rMult   : 1)*(pen.Eopt   & IDX_R2  ? r2Mult  : 1)*(pen.Eopt   & IDX_T ? tMult : 1) *
-                                       (pen.Eopt   & IDX_COS ? cosMult : 1)*(pen.Eopt   & IDX_SIN ? sinMult : 1));
-          T   BoptMult   =   pen.mult*((pen.Bopt   & IDX_R   ? rMult   : 1)*(pen.Bopt   & IDX_R2  ? r2Mult  : 1)*(pen.Bopt   & IDX_T ? tMult : 1) *
-                                       (pen.Bopt   & IDX_COS ? cosMult : 1)*(pen.Bopt   & IDX_SIN ? sinMult : 1));
+          T QoptMult  = pen.mult*((pen.Qopt & IDX_R    ? rMult   : 1)*(pen.Qopt  & IDX_R2  ? r2Mult  : 1)*(pen.Qopt  & IDX_T ? tMult : 1) *
+                                  (pen.Qopt & IDX_COS  ? cosMult : 1)*(pen.Qopt  & IDX_SIN ? sinMult : 1));
+          T QVoptMult = pen.mult*((pen.QVopt & IDX_R   ? rMult   : 1)*(pen.QVopt & IDX_R2  ? r2Mult  : 1)*(pen.QVopt & IDX_T ? tMult : 1) *
+                                  (pen.QVopt & IDX_COS ? cosMult : 1)*(pen.QVopt & IDX_SIN ? sinMult : 1));
+          T EoptMult  = pen.mult*((pen.Eopt  & IDX_R   ? rMult   : 1)*(pen.Eopt  & IDX_R2  ? r2Mult  : 1)*(pen.Eopt  & IDX_T ? tMult : 1) *
+                                  (pen.Eopt  & IDX_COS ? cosMult : 1)*(pen.Eopt  & IDX_SIN ? sinMult : 1));
+          T BoptMult  = pen.mult*((pen.Bopt  & IDX_R   ? rMult   : 1)*(pen.Bopt  & IDX_R2  ? r2Mult  : 1)*(pen.Bopt  & IDX_T ? tMult : 1) *
+                                  (pen.Bopt  & IDX_COS ? cosMult : 1)*(pen.Bopt  & IDX_SIN ? sinMult : 1));
 
           unsigned long long i = dst.idx(ix, iy, iz);
-          dst.Q  [i] += pen.Qmult   * QoptMult   * cp.u.dt;
-          dst.QNV[i] += pen.QNVmult * QNVoptMult * cp.u.dt;
-          dst.E  [i] += pen.Emult   * EoptMult   * cp.u.dt;
-          dst.B  [i] += pen.Bmult   * BoptMult   * cp.u.dt;
+          dst.QP[i]  += pen.QPmult   * QoptMult * cp.u.dt;
+          dst.QN[i]  += pen.QNmult   * QoptMult * cp.u.dt;
+          dst.QVx[i] += pen.QVmult.x * QVoptMult * cp.u.dt;
+          dst.QVy[i] += pen.QVmult.y * QVoptMult * cp.u.dt;
+          dst.QVz[i] += pen.QVmult.z * QVoptMult * cp.u.dt;
+          dst.E[i]   += pen.Emult    * EoptMult  * cp.u.dt;
+          dst.B[i]   += pen.Bmult    * BoptMult  * cp.u.dt;
         }
     }
 }

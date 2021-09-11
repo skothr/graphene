@@ -21,7 +21,7 @@ __device__ typename DimType<T, 4>::VECTOR_T renderCell(EMField<T> &src, unsigned
   typedef typename DimType<T,2>::VECTOR_T VT2;
   typedef typename DimType<T,3>::VECTOR_T VT3;
   typedef typename DimType<T,4>::VECTOR_T VT4;
-  T qLen = (src.Q[i].x - src.Q[i].y);
+  T qLen = (src.QP[i] - src.QN[i]);
   T eLen = length(src.E[i]);
   T bLen = length(src.B[i]);
   VT4 color = rp.brightness*rp.opacity*(qLen*rp.Qmult*rp.Qcol + eLen*rp.Emult*rp.Ecol + bLen*rp.Bmult*rp.Bcol);
