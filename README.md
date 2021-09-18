@@ -65,16 +65,28 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 &nbsp;
 
 
-# Installation (Ubuntu)
+# Usage
+##### - NOTE: Currently only supports Ubuntu(20.04), but may build on other systems with minor modidfications
+
 ## Basic dependencies
-    $ sudo apt install build-essential cmake libglew-dev libglfw3-dev nlohmann-json3-dev
-#### Also requires CUDA and a compatible NVIDIA graphics card:
-##### Install NVIDIA driver on Ubuntu
-    $ sudo apt purge *nvidia*
-    $ sudo apt autoremove
-    $ sudo apt install nvidia-driver-460
-##### Install CUDA
-    $ sudo apt install nvidia-cuda-toolkit
+
+        $ sudo apt install build-essential cmake libglew-dev libglfw3-dev nlohmann-json3-dev libfreetype6-dev
+        
+### Also requires CUDA and a compatible NVIDIA graphics card
+#### Install NVIDIA driver
+
+        $ sudo apt purge *nvidia*
+        $ sudo apt autoremove
+        $ sudo apt install nvidia-driver-460
+        
+#### Install CUDA (11.2)
+
+        $ sudo apt install nvidia-cuda-toolkit
 
 ## Build
+
     $ ./make-release.sh
+    
+## Run
+
+    $ ./graphene

@@ -1,6 +1,7 @@
 #include "simWindow.hpp"
 
 #include <imgui.h>
+#include <imgui_freetype.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <cmath>
@@ -11,20 +12,22 @@
 #include <thread>
 #include <mutex>
 #include <unistd.h>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
+#include "keyManager.hpp"
 #include "glfwKeys.hpp"
 #include "image.hpp"
 #include "imtools.hpp"
 #include "tools.hpp"
 #include "settingForm.hpp"
-#include "setting.hpp"
 #include "tabMenu.hpp"
 
 #include "draw.hpp"
 #include "display.hpp"
 #include "render.cuh"
 
-
+// prints aligned numbers for tooltip
 inline std::string fAlign(float f, int maxDigits)
 {
   std::stringstream ss;
@@ -34,107 +37,21 @@ inline std::string fAlign(float f, int maxDigits)
   return ss.str();
 }
 
-
-static SimWindow *simWin = nullptr;
+static SimWindow *simWin = nullptr; // set in SimWindow::SimWindow()
 void SimWindow::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) { simWin->keyPress(mods, key, action); }
-
 
 // handle key events manually to make sure none are missed
 void SimWindow::keyPress(int mods, int key, int action)
 {
-  bool press    = (action == GLFW_PRESS);
-  bool repeat   = (action == GLFW_REPEAT);
-  bool release  = (action == GLFW_RELEASE);
-  bool anyPress = (press || repeat);
-
-  if(anyPress) { mKeysDown[key] = true;  }
-  else         { mKeysDown[key] = false; }
-
-  int mkl, mkr;
-  mkl = GLFW_KEY_LEFT_SHIFT;   mkr = GLFW_KEY_RIGHT_SHIFT;
-  bool shift = ((mKeysDown.find(mkl) != mKeysDown.end() && mKeysDown[mkl]) ||
-                (mKeysDown.find(mkr) != mKeysDown.end() && mKeysDown[mkr]));
-  mkl = GLFW_KEY_LEFT_CONTROL; mkr = GLFW_KEY_RIGHT_CONTROL;
-  bool ctrl  = ((mKeysDown.find(mkl) != mKeysDown.end() && mKeysDown[mkl]) ||
-                (mKeysDown.find(mkr) != mKeysDown.end() && mKeysDown[mkr]));
-  mkl = GLFW_KEY_LEFT_ALT;     mkr = GLFW_KEY_RIGHT_ALT;
-  bool alt   = ((mKeysDown.find(mkl) != mKeysDown.end() && mKeysDown[mkl]) ||
-                (mKeysDown.find(mkr) != mKeysDown.end() && mKeysDown[mkr]));
-  float shiftMult = (shift ? 0.1 : 1);
-  float ctrlMult  = (ctrl  ? 10  : 1);
-  float altMult   = (alt   ? 100 : 1);
-  float keyMult   = shiftMult*altMult;//*ctrlMult;
-
-  if(!ImGui::GetIO().WantCaptureKeyboard)
-    {
-      if(!mFieldUI->running)
-        {
-          if(key == GLFW_KEY_DOWN  && anyPress) { mSingleStepMult = -shiftMult*ctrlMult*altMult; }
-          if(key == GLFW_KEY_UP    && anyPress) { mSingleStepMult =  shiftMult*ctrlMult*altMult; }
-        }
-  
-      // LEFT/RIGHT --> adjust active parameters
-      int signMult = 0;
-      if(key == GLFW_KEY_LEFT  && anyPress) { signMult = -1; }
-      if(key == GLFW_KEY_RIGHT && anyPress) { signMult =  1; }
-      if(signMult != 0)
-        {
-          Vec2i  fSizeStep1  = 64;  Vec2i  fSizeStep2  = 256;
-          Vec2i  tSizeStep1  = 64;  Vec2i  tSizeStep2  = 256;
-          CFT    dtStep1     = 0.1; CFT    dtStep2     = 1.0;
-          
-          for(auto iter : mKeysDown)
-            {
-              if(iter.second)
-                {
-                  switch(iter.first)
-                    {
-                    case GLFW_KEY_T: // T -- adjust timestep
-                      mUnits.dt    += signMult*keyMult*(ctrl ? dtStep2 : dtStep1);
-                      std::cout << "TIMESTEP:            " << mUnits.dt << "\n";
-                      break;
-                    }
-                }
-            }
-        }
-
-      if(press)
-        {
-          if(key == GLFW_KEY_SPACE)       // SPACE -- play/pause physics
-            { togglePause(); }
-          else if(key == GLFW_KEY_ESCAPE) // CTRL+ESCAPE -- quit
-            {
-              if(ctrl) { quit(); }
-              else     { resetViews(); }
-            } 
-          else if(shift && alt && key == GLFW_KEY_D) // Alt+Shift+D -- toggle ImGui demo
-            {
-              mImGuiDemo = !mImGuiDemo;
-              std::cout << "IMGUI DEMO " << (mImGuiDemo ? "ENABLED" : "DISABLED") << "\n";
-            }
-          else if(alt && key == GLFW_KEY_D)          // Alt+D -- toggle debug mode (overlay)
-            {
-              mParams.debug = !mParams.debug;
-              std::cout << "DEBUG MODE " << (mParams.debug ? "ENABLED" : "DISABLED") << "\n";
-            }
-        }
-    }
-  
-  // always process function keys (no mixups)
-  if(anyPress && key == GLFW_KEY_F1)     // F1   -- apply sim adjustments
-    {
-      // mParams.adjApplyCount *= keyMult;
-      //fieldFillAdjust(*mFluid1, &mParams);
-      // mParams.adjApplyCount = std::max(1.0f, std::ceil(mParams.adjApplyCount/keyMult));
-    }
-  else if(press && key == GLFW_KEY_F5)             // F5   -- restart full simulation from initial conditions
-    { resetSim(); }
-  else if(press && key == GLFW_KEY_F9)             // F9   -- clear EM signals
-    { resetSignals(); }
-  else if(press && key == GLFW_KEY_F10)            // F10  -- clear EM materials
-    { resetMaterials(); }
-
+  if(mKeyManager) { mKeyManager->keyPress(mods, key, action); }
 }
+
+// helpers for key binding callbacks
+//  NOTE: unused -- std::function ambiguous constructor overloads (?)
+#define KBIND(func)       std::bind(&SimWindow::func, this)
+#define KBINDV(func, ...) std::bind(&SimWindow::func, this, __VA_ARGS__)
+#define KBIND1(func)      std::bind(&SimWindow::func, this, std::placeholders::_1)
+#define KBIND2(func)      std::bind(&SimWindow::func, this, std::placeholders::_1, std::placeholders::_2)
 
 
 SimWindow::SimWindow(GLFWwindow *window)
@@ -142,66 +59,140 @@ SimWindow::SimWindow(GLFWwindow *window)
 {
   simWin = this; // NOTE/TODO: only one window total allowed for now
   glfwSetKeyCallback(mWindow, &keyCallback); // set key event callback (before ImGui GLFW initialization)
-      
+
+  std::vector<KeyBinding> keyBindings =
+    {
+     KeyBinding("Quit",            "Ctrl+Esc",    "Quit program",                                    [this]() { quit(); },
+                KEYBINDING_GLOBAL),
+     KeyBinding("Reset Views",     "F1",          "Reset viewports (align field in each view)",      [this]() { resetViews(); },
+                KEYBINDING_NONE),
+     KeyBinding("Reset Sim",       "F5",          "Reset full simulation (signals/materials/frame)", [this]() { resetSim(); },
+                KEYBINDING_GLOBAL),
+     KeyBinding("Reset Signals",   "F9",          "Reset signals, leaving materials intact",         [this]() { resetSignals(); },
+                KEYBINDING_GLOBAL),
+     KeyBinding("Reset Materials", "F10",         "Reset materials, leaving signals intact",         [this]() { resetMaterials(); },
+                KEYBINDING_GLOBAL),
+     
+     KeyBinding("Toggle Physics",  "Space",       "Start/stop simulation physics",                   [this]() { togglePause(); },
+                KEYBINDING_NONE),
+     KeyBinding("Step Forward",    "Up",          "Single physics step (+dt)", [this](CFT mult) { if(!mFieldUI->running) { mSingleStepMult =  mult; } },
+                (KEYBINDING_REPEAT | KEYBINDING_MOD_MULT)),
+     KeyBinding("Step Backward",   "Down",        "Single physics step (-dt)", [this](CFT mult) { if(!mFieldUI->running) { mSingleStepMult = -mult; } },
+                (KEYBINDING_REPEAT | KEYBINDING_MOD_MULT)),
+
+     KeyBinding("Toggle Debug",    "Alt+D",       "Toggle debug mode",                            [this]() { mParams.debug = !mParams.debug; },
+                KEYBINDING_NONE),
+     KeyBinding("Toggle Verbose",  "Alt+V",       "Toggle verbose mode",                          [this]() { mParams.verbose = !mParams.verbose; },
+                KEYBINDING_NONE),
+     KeyBinding("Key Bindings",    "Alt+K",       "Open Key Bindings popup (view/edit bindings)", [this]() { mKeyManager->togglePopup(); },
+                KEYBINDING_GLOBAL),
+     
+     KeyBinding("ImGui Demo",      "Alt+Shift+D", "Toggle ImGui demo window (examples/tools)",
+                [this]() { mImGuiDemo = !mImGuiDemo; mLockViews = mImGuiDemo || mFontDemo; },
+                KEYBINDING_NONE),
+     KeyBinding("Font Demo",       "Alt+Shift+F", "Toggle Font demo window",
+                [this]() { mFontDemo = !mFontDemo;  mLockViews  = mFontDemo  || mImGuiDemo; },
+                KEYBINDING_NONE),
+    };
+
+  // NOTE: Any bindings not added to a group will be added to a "misc" group
+  std::vector<KeyBindingGroup> keyGroups =
+    {
+     { "System",       { "Quit", },
+       {} },
+     { "Sim Control",  { "Reset Sim", "Reset Signals", "Reset Materials", "Reset Views",
+                         "Toggle Physics", "Step Forward", "Step Backward" },
+       {} },
+     { "Modes/Popups", { "Toggle Debug", "Toggle Verbose", "Key Bindings", "ImGui Demo", "Font Demo" },
+       {} },
+    };
+
+  mKeyManager = new KeyManager(this, keyBindings, keyGroups);
 }
 
 SimWindow::~SimWindow()
 {
   cleanup();
+  if(mKeyManager) { delete mKeyManager; mKeyManager = nullptr; }
 }
+
+
+bool SimWindow::preNewFrame() { return (freetypeTest ? freetypeTest->PreNewFrame() : false); }
 
 bool SimWindow::init()
 {
   if(!mInitialized)
     {
       std::cout << "Creating SimWindow...\n";
-      
-      //// set up fonts
+
+      // font demo window
+      freetypeTest = new FreeTypeTest();
+
+      //// set up fonts=
       ImGuiIO &io = ImGui::GetIO();
       fontConfig = new ImFontConfig();
       fontConfig->OversampleH = FONT_OVERSAMPLE;
       fontConfig->OversampleV = FONT_OVERSAMPLE;
+      std::cout << "===> FONTS(imgui/freetype) --> default flags: " << fontConfig->FontBuilderFlags << "\n";
+      // io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_NoHinting;
+      // io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_NoAutoHint;
+      // io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_ForceAutoHint;
+      io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LightHinting;
+      // io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_MonoHinting;
+      // io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Bold;
+      // io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Oblique;
+      // io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Monochrome;
+      io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LoadColor;
+      io.Fonts->FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Bitmap;
       
-      ImVector<ImWchar> ranges;
-      ImFontGlyphRangesBuilder builder;
-      builder.AddText("ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω");
-      builder.AddRanges(io.Fonts->GetGlyphRangesDefault());  // Add one of the default ranges
-      builder.AddChar(0x2207);                               // Add a specific character
-      builder.BuildRanges(&ranges);                          // Build the final result (ordered ranges with all the unique characters submitted)
-      fontConfig->GlyphRanges = ranges.Data;
-      
+      fontBuilder.AddText("ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω");
+      fontBuilder.AddRanges(io.Fonts->GetGlyphRangesDefault());  // Add one of the default ranges
+      fontBuilder.AddChar(0x2207);                               // Add a specific character
+      fontBuilder.BuildRanges(&fontRanges);                      // Build the final result (ordered ranges with all the unique characters submitted)
+      fontConfig->GlyphRanges = fontRanges.Data;
+
+      fontConfig->SizePixels  = MAIN_FONT_HEIGHT; // main
       mainFont   = io.Fonts->AddFontFromFileTTF(FONT_PATH_REGULAR,      MAIN_FONT_HEIGHT,  fontConfig);
       mainFontB  = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD,         MAIN_FONT_HEIGHT,  fontConfig);
       mainFontI  = io.Fonts->AddFontFromFileTTF(FONT_PATH_ITALIC,       MAIN_FONT_HEIGHT,  fontConfig);
       mainFontBI = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD_ITALIC,  MAIN_FONT_HEIGHT,  fontConfig);
-      fontConfig->SizePixels  = SMALL_FONT_HEIGHT+1.0f; // small
+      fontConfig->SizePixels  = SMALL_FONT_HEIGHT; // small
       smallFont   = io.Fonts->AddFontFromFileTTF(FONT_PATH_REGULAR,     SMALL_FONT_HEIGHT, fontConfig);
       smallFontB  = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD,        SMALL_FONT_HEIGHT, fontConfig);
       smallFontI  = io.Fonts->AddFontFromFileTTF(FONT_PATH_ITALIC,      SMALL_FONT_HEIGHT, fontConfig);
       smallFontBI = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD_ITALIC, SMALL_FONT_HEIGHT, fontConfig);
-      fontConfig->SizePixels  = TITLE_FONT_HEIGHT+1.0f; // title
+      fontConfig->SizePixels  = TITLE_FONT_HEIGHT; // title
       titleFont   = io.Fonts->AddFontFromFileTTF(FONT_PATH_REGULAR,     TITLE_FONT_HEIGHT, fontConfig);
       titleFontB  = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD,        TITLE_FONT_HEIGHT, fontConfig);
       titleFontI  = io.Fonts->AddFontFromFileTTF(FONT_PATH_ITALIC,      TITLE_FONT_HEIGHT, fontConfig);
       titleFontBI = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD_ITALIC, TITLE_FONT_HEIGHT, fontConfig);
-      fontConfig->SizePixels  = SUPER_FONT_HEIGHT+1.0f; // superscript
+      fontConfig->SizePixels  = SUPER_FONT_HEIGHT; // superscript
       superFont   = io.Fonts->AddFontFromFileTTF(FONT_PATH_REGULAR,     SUPER_FONT_HEIGHT, fontConfig);
       superFontB  = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD,        SUPER_FONT_HEIGHT, fontConfig);
       superFontI  = io.Fonts->AddFontFromFileTTF(FONT_PATH_ITALIC,      SUPER_FONT_HEIGHT, fontConfig);
       superFontBI = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD_ITALIC, SUPER_FONT_HEIGHT, fontConfig);
+      fontConfig->SizePixels  = TINY_FONT_HEIGHT; // tiny
+      tinyFont    = io.Fonts->AddFontFromFileTTF(FONT_PATH_REGULAR,     TINY_FONT_HEIGHT,  fontConfig);
+      tinyFontB   = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD,        TINY_FONT_HEIGHT,  fontConfig);
+      tinyFontI   = io.Fonts->AddFontFromFileTTF(FONT_PATH_ITALIC,      TINY_FONT_HEIGHT,  fontConfig);
+      tinyFontBI  = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD_ITALIC, TINY_FONT_HEIGHT,  fontConfig);      
       io.Fonts->Build();
-
-
+      
       mFieldUI   = new FieldInterface<CFT>(&mParams.cp,
                                            [this]() // fieldRes update
                                            { resizeFields(mFieldUI->fieldRes); resetSim(); },
                                            [this]() // texRes2D update
                                            {
-                                             mEMTex.create(int3{mFieldUI->texRes2D.x, mFieldUI->texRes2D.y, 1});
+                                             std::cout << "Resizing 2D textures --> " << mEMTex.size << "/" << mMatTex.size << " --> " << mFieldUI->texRes2D << "\n";
+                                             mEMTex.create (int3{mFieldUI->texRes2D.x, mFieldUI->texRes2D.y, 1});
                                              mMatTex.create(int3{mFieldUI->texRes2D.x, mFieldUI->texRes2D.y, 1});
                                            },
                                            [this]() // texRes3D update
-                                           { m3DTex.create(int3{mFieldUI->texRes3D.x, mFieldUI->texRes3D.y, 1}); });
+                                           {
+                                             std::cout << "Resizing 3D textures --> " << m3DTex.size << " --> " << mFieldUI->texRes3D << "\n";
+                                             m3DTex.create (int3{mFieldUI->texRes3D.x, mFieldUI->texRes3D.y, 1});
+                                           });
+      
       mUnitsUI   = new UnitsInterface<CFT>(&mUnits, superFont);
       mDrawUI    = new DrawInterface<CFT>(&mUnits);
       mDisplayUI = new DisplayInterface<CFT>(&mParams.rp, &mParams.vp, &mFieldUI->fieldRes.z);
@@ -209,14 +200,12 @@ bool SimWindow::init()
       // file output (TODO: separate object (?))
       mFileOutUI = new SettingForm("File Output", SETTINGS_LABEL_COL_W, SETTINGS_INPUT_COL_W);
       auto *sA  = new Setting<bool>       ("Write to File",  "outActive",  &mFileRendering);
-      sA->updateCallback = [this]() { checkSimRenderPath(); };
       mFileOutUI->add(sA);
       auto *sLV = new Setting<bool>       ("Lock Views",     "lockViews",  &mLockViews);
       mFileOutUI->add(sLV);
       auto *sOR = new Setting<int2>       ("Resolution",     "outRes",     &mParams.outSize);
       mFileOutUI->add(sOR);
       auto *sN  = new Setting<std::string>("Base Name",      "baseName",   &mParams.simName);
-      sN->updateCallback = [this]() { checkSimRenderPath(); };
       mFileOutUI->add(sN);
       auto *sE  = new Setting<std::string>("File Extension", "outExt",     &mParams.outExt);
       auto *sPA = new Setting<bool>       ("Alpha Channel",  "outAlpha",   &mParams.outAlpha);
@@ -239,8 +228,8 @@ bool SimWindow::init()
       mFileOutUI->add(sPC);
       // miscellaneous flags
       mOtherUI = new SettingForm("Other Settings", SETTINGS_LABEL_COL_W, SETTINGS_INPUT_COL_W);
-      auto *sDBG   = new Setting<bool> ("Debug",   "debug",   &mParams.debug);   mSettings.push_back(sDBG);  mOtherUI->add(sDBG);
-      auto *sVERB  = new Setting<bool> ("Verbose", "verbose", &mParams.verbose); mSettings.push_back(sVERB); mOtherUI->add(sVERB);
+      auto *sDBG   = new Setting<bool> ("Debug",   "debug",   &mParams.debug);   mOtherUI->add(sDBG);
+      auto *sVERB  = new Setting<bool> ("Verbose", "verbose", &mParams.verbose); mOtherUI->add(sVERB);
       
       // create side tabs
       mTabs = new TabMenu(20, 1080, true);
@@ -257,6 +246,7 @@ bool SimWindow::init()
                          (int)SETTINGS_TOTAL_W, (int)SETTINGS_TOTAL_W+40, (int)SETTINGS_TOTAL_W+40, titleFont});
       mTabs->add(TabDesc{"Other",       "Other Settings",    [this](){ mOtherUI->draw(); },
                          (int)SETTINGS_TOTAL_W, (int)SETTINGS_TOTAL_W+40, (int)SETTINGS_TOTAL_W+40, titleFont});
+      loadSettings();
       
       // initialize CUDA and check for a compatible device
       std::cout << "Creating CUDA objects...\n";
@@ -271,6 +261,7 @@ bool SimWindow::init()
         {
           std::cout << "Creating field state queue (" << STATE_BUFFER_SIZE << "x " << mFieldUI->fieldRes << ")...\n";
           for(int i = 0; i < STATE_BUFFER_SIZE; i++) { mStates.push_back(new EMField<CFT>()); }
+          mInputE = new Field<float3>(); mInputB = new Field<float3>();
           resizeFields(mFieldUI->fieldRes);
         }
       // create textures
@@ -282,14 +273,14 @@ bool SimWindow::init()
       std::cout << "Creating 3D texture (" << ts3 << ")...\n";
       if(!m3DTex.create(ts3))   { std::cout << "====> ERROR: Texture creation for 3D view failed!\n";  }
       if(!m3DGlTex.create(ts3)) { std::cout << "====> ERROR: Texture creation for 3D gl view failed!\n";  }
+      
       // create initial state expressions
       std::cout << "Creating initial condition expressions...\n";
-      mFieldUI->initQPExpr  = toExpression<float >(mFieldUI->initQPStr);
-      mFieldUI->initQNExpr  = toExpression<float >(mFieldUI->initQNStr);
-      mFieldUI->initQPVExpr = toExpression<float3>(mFieldUI->initQPVStr);
-      mFieldUI->initQNVExpr = toExpression<float3>(mFieldUI->initQNVStr);
       mFieldUI->initEExpr   = toExpression<float3>(mFieldUI->initEStr);
       mFieldUI->initBExpr   = toExpression<float3>(mFieldUI->initBStr);
+      mFieldUI->initEpExpr  = toExpression<float >(mFieldUI->initEpStr);
+      mFieldUI->initMuExpr  = toExpression<float >(mFieldUI->initMuStr);
+      mFieldUI->initSigExpr = toExpression<float >(mFieldUI->initSigStr);
       
       //// set up base path for rendering
       checkBaseRenderPath();
@@ -302,7 +293,9 @@ void SimWindow::cleanup()
 {
   if(mInitialized)
     {
-      cudaDeviceSynchronize();
+      saveSettings();
+      
+      // cudaDeviceSynchronize(); // TODO: settle on specific synchronization point(s)
       std::cout << "Destroying CUDA field states...\n";
       std::vector<FieldBase*> deleted;
       for(int i = 0; i < mStates.size(); i++)
@@ -316,12 +309,18 @@ void SimWindow::cleanup()
               f->destroy(); delete f; deleted.push_back(f);
             }
         }
-      mStates.clear();
+      mStates.clear();      
+      if(mInputE) { mInputE->destroy(); delete mInputE; mInputE = nullptr; }
+      if(mInputB) { mInputB->destroy(); delete mInputB; mInputB = nullptr; }
+      
       std::cout << "Destroying CUDA textures...\n";
       mEMTex.destroy(); mMatTex.destroy(); m3DTex.destroy(); m3DGlTex.destroy();
       
       std::cout << "Destroying fonts...\n";
-      if(fontConfig) { delete fontConfig; }
+      if(freetypeTest) { delete freetypeTest; freetypeTest = nullptr; }
+      if(fontConfig)   { delete fontConfig; }
+
+      std::cout << "Destroying UI components...\n";      
       if(mTabs)      { delete mTabs;      mTabs      = nullptr; }
       if(mFieldUI)   { delete mFieldUI;   mFieldUI   = nullptr; }
       if(mUnitsUI)   { delete mUnitsUI;   mUnitsUI   = nullptr; }
@@ -337,18 +336,115 @@ void SimWindow::cleanup()
     }
 }
 
+void SimWindow::loadSettings(const std::string &path)
+{
+  std::cout << "Loading settings (" << path << ")...\n";
+  if(fileExists(path))
+    {
+      std::ifstream f(path, std::ios::in);
+      json js; f >> js; // load JSON from file
+
+      // load settings
+      if(js.contains("SimSettings"))
+        {
+          json sim = js["SimSettings"];
+          if(sim.contains("Field"))
+            {
+              if(!mFieldUI->fromJSON(sim["Field"]))
+                { std::cout << "====> WARNING: Failed to load Field setting group\n"; }
+            }
+          else { std::cout << "====> WARNING: Could not find Field setting group\n"; }
+          
+          if(sim.contains("Units"))
+            {
+              if(!mUnitsUI->fromJSON(sim["Units"]))
+                { std::cout << "====> WARNING: Failed to load Units setting group\n"; }
+            }
+          else { std::cout << "====> WARNING: Could not find Units setting group\n"; }
+          
+          if(sim.contains("Draw"))
+            {
+              if(!mDrawUI->fromJSON(sim["Draw"]))
+                { std::cout << "====> WARNING: Failed to load Draw setting group\n"; }
+            }
+          else { std::cout << "====> WARNING: Could not find Draw setting group\n"; }
+          
+          if(sim.contains("Display"))
+            {
+              if(!mDisplayUI->fromJSON(sim["Display"]))
+                { std::cout << "====> WARNING: Failed to load Display setting group\n"; }
+            }
+          else { std::cout << "====> WARNING: Could not find Display setting group\n"; }
+          
+          if(sim.contains("FileOutput"))
+            {
+              if(!mFileOutUI->fromJSON(sim["FileOutput"]))
+                { std::cout << "====> WARNING: Failed to load FileOutput setting group\n"; }
+            }
+          else { std::cout << "====> WARNING: Could not find FileOutput setting group\n"; }
+          // override --> don't lock views or begin rendering to files on startup
+          mFileRendering = false;
+          mLockViews     = false;
+          
+          if(sim.contains("Other"))
+            {
+              if(!mOtherUI->fromJSON(sim["Other"]))
+                { std::cout << "====> WARNING: Failed to load Other setting group\n"; }
+            }
+          else { std::cout << "====> WARNING: Could not find Other setting group\n"; }
+          
+        }
+      else { std::cout << "====> WARNING: No SimSettings group in settings file\n"; }
+
+      // load key bindings
+      if(js.contains("KeyBindings"))
+        {
+          if(!mKeyManager->fromJSON(js["KeyBindings"]))
+            { std::cout << "====> WARNING: Failed to load Key Binding settings\n"; }
+        }
+      else { std::cout << "====> WARNING: No KeyBindings in settings file\n"; }
+    }
+  else
+    {
+      std::cout << "Could not find settings file (" << path << ")\n";
+      saveSettings();
+    }
+}
+
+void SimWindow::saveSettings(const std::string &path)
+{
+  std::cout << "SAVING SETTINGS...\n";
+  json js  = json::object();
+  
+  json sim = json::object();
+  sim["Field"]      = mFieldUI->toJSON();
+  sim["Units"]      = mUnitsUI->toJSON();
+  sim["Draw"]       = mDrawUI->toJSON();
+  sim["Display"]    = mDisplayUI->toJSON();
+  sim["FileOutput"] = mFileOutUI->toJSON();
+  sim["Other"]      = mOtherUI->toJSON();
+
+  js["SimSettings"] = sim;
+  js["KeyBindings"] = mKeyManager->toJSON();
+  
+  std::ofstream f(path, std::ios::out);
+  f << std::setw(JSON_SPACES) << js;
+}
 
 
 bool SimWindow::resizeFields(const Vec3i &sz)
 {
   if(min(sz) <= 0) { std::cout << "====> ERROR: Field with zero size not allowed.\n"; return false; }
+  std::cout << "RESIZING FIELD: " << sz << "\n";
   bool success = true;
   for(int i = 0; i < STATE_BUFFER_SIZE; i++)
     {
       EMField<CFT> *f = reinterpret_cast<EMField<CFT>*>(mStates[i]);
       if(!f->create(mFieldUI->fieldRes)) { std::cout << "Field creation failed! Invalid state.\n"; success = false; break; }
-      fieldFillValue(reinterpret_cast<EMField<CFT>*>(f)->mat, mUnits.vacuum());
+      fillFieldValue(reinterpret_cast<EMField<CFT>*>(f)->mat, mUnits.vacuum());
     }
+  if(!mInputE->create(mFieldUI->fieldRes)) { std::cout << "Field creation failed! Invalid signal input field (E).\n"; success = false; }
+  if(!mInputB->create(mFieldUI->fieldRes)) { std::cout << "Field creation failed! Invalid signal input field (B).\n"; success = false; }
   mDrawUI->sigPen.depth = mFieldUI->fieldRes.z/2;
   mDrawUI->matPen.depth = mFieldUI->fieldRes.z/2;
   mDisplayUI->rp->zRange = int2{0, mFieldUI->fieldRes.z-1};
@@ -364,61 +460,59 @@ template<> std::vector<std::string> getVarNames<float3>()   { return {"p", "s", 
 void SimWindow::resetSignals()
 {
   std::cout << "SIGNAL RESET\n";
+  
+  mFieldUI->initEExpr = toExpression<float3>(mFieldUI->initEStr, false);
+  mFieldUI->initBExpr = toExpression<float3>(mFieldUI->initBStr, false);
   if(mParams.verbose)
     {
-      std::cout << "QP:  "  << mFieldUI->initQPExpr->toString(true)  << "\n";
-      std::cout << "QN:  "  << mFieldUI->initQNExpr->toString(true)  << "\n";
-      std::cout << "QPV:  " << mFieldUI->initQPVExpr->toString(true) << "\n";
-      std::cout << "QNV:  " << mFieldUI->initQNVExpr->toString(true) << "\n";
-      std::cout << "E:  "   << mFieldUI->initEExpr->toString(true)   << "\n";
-      std::cout << "B:  "   << mFieldUI->initBExpr->toString(true)   << "\n";
+      std::cout << "E:  " << mFieldUI->initEExpr->toString(true) << "\n";
+      std::cout << "B:  " << mFieldUI->initBExpr->toString(true) << "\n";
     }
-
-  mFieldUI->initQPExpr  = toExpression<float >(mFieldUI->initQPStr,  false);
-  mFieldUI->initQNExpr  = toExpression<float >(mFieldUI->initQNStr,  false);
-  mFieldUI->initQPVExpr = toExpression<float3>(mFieldUI->initQPVStr, false);
-  mFieldUI->initQNVExpr = toExpression<float3>(mFieldUI->initQNVStr, false);
-  mFieldUI->initEExpr   = toExpression<float3>(mFieldUI->initEStr,   false);
-  mFieldUI->initBExpr   = toExpression<float3>(mFieldUI->initBStr,   false);
   
-  // create/update expressions 
-  std::cout << "Filling field states on device...\n";
-  if(!mFieldUI->mFillQP)
-    { mFieldUI->mFillQP  = toCudaExpression<float> (mFieldUI->initQPExpr,  getVarNames<float>());  std::cout << "  --> QP  EXPRESSION UPDATED\n"; }
-  if(!mFieldUI->mFillQN)
-    { mFieldUI->mFillQN  = toCudaExpression<float> (mFieldUI->initQNExpr,  getVarNames<float>());  std::cout << "  --> QN  EXPRESSION UPDATED\n"; }
-  if(!mFieldUI->mFillQPV)
-    { mFieldUI->mFillQPV = toCudaExpression<float3>(mFieldUI->initQPVExpr, getVarNames<float3>()); std::cout << "  --> QPV EXPRESSION UPDATED\n"; }
-  if(!mFieldUI->mFillQNV)
-    { mFieldUI->mFillQNV = toCudaExpression<float3>(mFieldUI->initQNVExpr, getVarNames<float3>()); std::cout << "  --> QNV EXPRESSION UPDATED\n"; }
+  // create/update expressions
   if(!mFieldUI->mFillE)
-    { mFieldUI->mFillE   = toCudaExpression<float3>(mFieldUI->initEExpr,   getVarNames<float3>()); std::cout << "  --> E   EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillE = toCudaExpression<float3>(mFieldUI->initEExpr, getVarNames<float3>()); std::cout << " --> E INIT EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillB)
-    { mFieldUI->mFillB   = toCudaExpression<float3>(mFieldUI->initBExpr,   getVarNames<float3>()); std::cout << "  --> B   EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillB = toCudaExpression<float3>(mFieldUI->initBExpr, getVarNames<float3>()); std::cout << " --> B INIT EXPRESSION UPDATED\n"; }
   // fill all states
   for(int i = 0; i < mStates.size(); i++)
     {
       EMField<CFT> *f = reinterpret_cast<EMField<CFT>*>(mStates[mStates.size()-1-i]);
-      fieldFillChannel<float2>(f->Q,   mFieldUI->mFillQP, 0); // q+ --> Q[i].x
-      fieldFillChannel<float2>(f->Q,   mFieldUI->mFillQN, 1); // q- --> Q[i].y
-      fieldFill       <float3>(f->QPV, mFieldUI->mFillQPV);
-      fieldFill       <float3>(f->QNV, mFieldUI->mFillQNV);
-      fieldFill       <float3>(f->E,   mFieldUI->mFillE);
-      fieldFill       <float3>(f->B,   mFieldUI->mFillB);
+      fillField<float3>(f->E, mFieldUI->mFillE);
+      fillField<float3>(f->B, mFieldUI->mFillB);
     }
-  cudaDeviceSynchronize();
+  mInputE->clear(); mInputB->clear(); // clear remaining inputs
+  // cudaDeviceSynchronize(); // TODO: settle on specific synchronization point(s)
 }
 
 
 void SimWindow::resetMaterials()
 {
   std::cout << "MATERIAL RESET\n";
+  if(mFieldUI->initEpExpr)  { delete mFieldUI->initEpExpr;  } mFieldUI->initEpExpr  = toExpression<float>(mFieldUI->initEpStr,  false);
+  if(mFieldUI->initMuExpr)  { delete mFieldUI->initMuExpr;  } mFieldUI->initMuExpr  = toExpression<float>(mFieldUI->initMuStr,  false);
+  if(mFieldUI->initSigExpr) { delete mFieldUI->initSigExpr; } mFieldUI->initSigExpr = toExpression<float>(mFieldUI->initSigStr, false);
+  
+  if(mParams.verbose)
+    {
+      std::cout << "ε:  " << mFieldUI->initEpExpr->toString(true)  << "\n";
+      std::cout << "μ:  " << mFieldUI->initMuExpr->toString(true)  << "\n";
+      std::cout << "σ:  " << mFieldUI->initSigExpr->toString(true) << "\n";
+    }
+  
+  if(!mFieldUI->mFillEp)
+    { mFieldUI->mFillEp  = toCudaExpression<float >(mFieldUI->initEpExpr,  getVarNames<float >()); std::cout << " --> ε INIT EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillMu)
+    { mFieldUI->mFillMu  = toCudaExpression<float >(mFieldUI->initMuExpr,  getVarNames<float >()); std::cout << " --> μ INIT EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillSig)
+    { mFieldUI->mFillSig = toCudaExpression<float >(mFieldUI->initSigExpr, getVarNames<float >()); std::cout << " --> σ INIT EXPRESSION UPDATED\n"; }
+  
   for(int i = 0; i < mStates.size(); i++)
     { // reset materials in each state
       EMField<CFT> *f = reinterpret_cast<EMField<CFT>*>(mStates[mStates.size()-1-i]);
-      fieldFillValue<Material<CFT>>(*reinterpret_cast<Field<Material<CFT>>*>(&f->mat), mUnits.vacuum());
+      fillFieldMaterial<float>(f->mat, mFieldUI->mFillEp, mFieldUI->mFillMu, mFieldUI->mFillSig);
     }
-  cudaDeviceSynchronize();
+  // cudaDeviceSynchronize(); // TODO: settle on specific synchronization point(s)
 }
 
 void SimWindow::resetSim()
@@ -429,14 +523,17 @@ void SimWindow::resetSim()
   mInfo.uStep = 0;
   std::cout << " --> "; resetSignals();
   std::cout << " --> "; resetMaterials();
-  cudaDeviceSynchronize();
+  
   cudaRender(mParams.cp);
-  mNewFrame = true; // frame 0
+  cudaDeviceSynchronize();
+  mNewFrameVec = true;
+  mNewFrameOut = true; // frame 0
+  
 }
 
 void SimWindow::resetViews()
 {
-  if(!mLockViews)
+  if(!mLockViews && !mForcePause)
     {
       CFT    pad = SIM_VIEW_RESET_INTERNAL_PADDING;
       Vec2f  fs  = Vec2f(mFieldUI->fieldRes.x, mFieldUI->fieldRes.y);
@@ -462,9 +559,9 @@ void SimWindow::resetViews()
       mCamera.pos   = float3{ fs.x*mUnits.dL/2,
                               fs.y*mUnits.dL/2,
                               zOffset+mFieldUI->fieldRes.z*mUnits.dL}; // camera position (centered over field)
-      mCamera.right = float3{1.0f,  0.0f,  0.0f};     // camera x direction
-      mCamera.up    = float3{0.0f,  1.0f,  0.0f};     // camera y direction
-      mCamera.dir   = float3{0.0f,  0.0f, -1.0f};     // camera z direction
+      mCamera.right = float3{1.0f,  0.0f,  0.0f}; // camera x direction
+      mCamera.up    = float3{0.0f,  1.0f,  0.0f}; // camera y direction
+      mCamera.dir   = float3{0.0f,  0.0f, -1.0f}; // camera z direction
   
       cudaRender(mParams.cp);
     }
@@ -480,6 +577,7 @@ void SimWindow::togglePause()
 static EMField<CFT> *g_temp = nullptr; // temp state (avoids destroying input source state)
 void SimWindow::update()
 {
+  ImGuiIO &io = ImGui::GetIO();
   if(mFieldUI->fieldRes.x > 0 && mFieldUI->fieldRes.y > 0)
     {
       bool singleStep = false;
@@ -498,108 +596,144 @@ void SimWindow::update()
       
       EMField<CFT> *src  = reinterpret_cast<EMField<CFT>*>(mStates.back());  // previous field state
       EMField<CFT> *dst  = reinterpret_cast<EMField<CFT>*>(mStates.front()); // oldest state (recycle)
-      EMField<CFT> *temp = reinterpret_cast<EMField<CFT>*>(g_temp); // temp intermediate state
-
-      if(!mLockViews)
+      EMField<CFT> *temp = reinterpret_cast<EMField<CFT>*>(g_temp);          // temp intermediate state
+      
+      // apply external forces from user
+      float3 mposSim = float3{NAN, NAN, NAN};
+      if     (mEMView.hovered)  { mposSim = to_cuda(mEMView.mposSim);  }
+      else if(mMatView.hovered) { mposSim = to_cuda(mMatView.mposSim); }
+      else if(m3DView.hovered)  { mposSim = to_cuda(m3DView.mposSim);  }
+      float  cs = mUnits.dL;
+      float3 fs = float3{(float)mFieldUI->fieldRes.x, (float)mFieldUI->fieldRes.y, (float)mFieldUI->fieldRes.z};
+      float3 mpfi = (mposSim) / cs;
+      
+      // draw signal
+      mParams.rp.sigPenHighlight = false;
+      mSigMPos = float3{NAN, NAN, NAN};
+      bool active = false;
+      if(!mLockViews && !mForcePause && io.KeyCtrl)
         {
-          // apply external forces from user
-          float3 mposSim = float3{NAN, NAN, NAN};
-          if     (mEMView.hovered)  { mposSim = to_cuda(mEMView.mposSim);  }
-          else if(mMatView.hovered) { mposSim = to_cuda(mMatView.mposSim); }
-          else if(m3DView.hovered)  { mposSim = to_cuda(m3DView.mposSim);  }
-          float  cs = mUnits.dL;
-          float3 fs = float3{(float)mFieldUI->fieldRes.x, (float)mFieldUI->fieldRes.y, (float)mFieldUI->fieldRes.z};
-          float3 mpfi = (mposSim) / cs;
-          // draw signal
-          mParams.rp.sigPenHighlight = false;
-          mSigMPos = float3{NAN, NAN, NAN}; 
-          if((ImGui::IsKeyDown(GLFW_KEY_LEFT_CONTROL) || ImGui::IsKeyDown(GLFW_KEY_RIGHT_CONTROL)))
+          bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
+          bool apply = false;
+          float3 p = float3{NAN, NAN, NAN};
+          if(m3DView.hovered)
             {
-              bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
-              bool apply = false;
-              float3 p = float3{NAN, NAN, NAN};
-              if(m3DView.hovered)
-                {
-                  float3 fp = to_cuda(m3DView.mposSim);
-                  float3 vDepth = float3{(fp.x <= 1 ? 1.0f : (fp.x >= mFieldUI->fieldRes.x-1 ? -1.0f : 0.0f)),
-                                         (fp.y <= 1 ? 1.0f : (fp.y >= mFieldUI->fieldRes.y-1 ? -1.0f : 0.0f)),
-                                         (fp.z <= 1 ? 1.0f : (fp.z >= mFieldUI->fieldRes.z-1 ? -1.0f : 0.0f)) };
-                  p = fp + vDepth*mDrawUI->sigPen.depth;
-                  apply = (m3DView.leftClicked && m3DView.ctrlClick);
-                }
-              if(mEMView.hovered || mMatView.hovered)
-                {
-                  mpfi.z = mFieldUI->fieldRes.z - 1 - mDrawUI->sigPen.depth; // Z depth relative to top visible layer
-                  p = float3{mpfi.x, mpfi.y, mpfi.z};
-                  apply = ((mEMView.leftClicked && mEMView.ctrlClick) ||
-                           (mMatView.leftClicked && mMatView.ctrlClick));
-                }
-          
-              if(hover)
-                {
-                  mSigMPos = p; 
-                  mParams.rp.penPos = p;
-                  mParams.rp.sigPenHighlight = true;
-                  mParams.rp.sigPen = mDrawUI->sigPen;
-                  if(apply) { addSignal(p, *src, mDrawUI->sigPen, cp); }
-                }
+              float3 fp = to_cuda(m3DView.mposSim);
+              float3 vDepth = float3{(fp.x <= 1 ? 1.0f : (fp.x >= mFieldUI->fieldRes.x-1 ? -1.0f : 0.0f)),
+                                     (fp.y <= 1 ? 1.0f : (fp.y >= mFieldUI->fieldRes.y-1 ? -1.0f : 0.0f)),
+                                     (fp.z <= 1 ? 1.0f : (fp.z >= mFieldUI->fieldRes.z-1 ? -1.0f : 0.0f)) };
+              p = fp + vDepth*mDrawUI->sigPen.depth;
+              apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_CONTROL));
             }
-          // add material
-          mParams.rp.matPenHighlight = false;
-          mMatMPos = float3{NAN, NAN, NAN}; 
-          if(!mLockViews && (ImGui::IsKeyDown(GLFW_KEY_LEFT_ALT) || ImGui::IsKeyDown(GLFW_KEY_RIGHT_ALT)))
+          if(mEMView.hovered || mMatView.hovered)
             {
-              bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
-              float3 p = float3{NAN, NAN, NAN};
-              bool apply = false;
-              if(m3DView.hovered)
-                {
-                  float3 fp = to_cuda(m3DView.mposSim);
-                  float3 vDepth = float3{(fp.x <= 1 ? 1.0f : (fp.x >= mFieldUI->fieldRes.x-1 ? -1.0f : 0.0f)),
-                                         (fp.y <= 1 ? 1.0f : (fp.y >= mFieldUI->fieldRes.y-1 ? -1.0f : 0.0f)),
-                                         (fp.z <= 1 ? 1.0f : (fp.z >= mFieldUI->fieldRes.z-1 ? -1.0f : 0.0f)) };
-                  p = fp + vDepth*mDrawUI->matPen.depth;
-                  apply = (m3DView.leftClicked && m3DView.altClick);
-                }
-              if(mEMView.hovered || mMatView.hovered)
-                {
-                  mpfi.z = mFieldUI->fieldRes.z-1-mDrawUI->matPen.depth; // Z depth relative to top visible layer
-                  p = float3{mpfi.x, mpfi.y, mpfi.z};
-                  apply = ((mEMView.leftClicked  && mEMView.altClick) ||
-                           (mMatView.leftClicked && mMatView.altClick));
-                }
+              mpfi.z = mFieldUI->fieldRes.z - 1 - mDrawUI->sigPen.depth; // Z depth relative to top visible layer
+              p = float3{mpfi.x, mpfi.y, mpfi.z};
+              apply = (( mEMView.clickBtns(MOUSEBTN_LEFT) &&  mEMView.clickMods(GLFW_MOD_CONTROL)) ||
+                       (mMatView.clickBtns(MOUSEBTN_LEFT) && mMatView.clickMods(GLFW_MOD_CONTROL)));
+            }
+          
+          if(hover)
+            {
+              mSigMPos = p; 
+              mParams.rp.penPos = p;
+              mParams.rp.sigPenHighlight = true;
+              mParams.rp.sigPen = mDrawUI->sigPen;
+              if(apply)
+                { // draw signal to intermediate E/B fields (needs to be blended to avoid peristent blobs of
+                  active = true;
+                  if(mDrawUI->sigPen.startTime <= 0.0)
+                    { // set signal start time
+                      mDrawUI->sigPen.startTime = cp.t;
+                    }
 
-              if(hover)
-                {
-                  mMatMPos = p; 
-                  mParams.rp.penPos = p;
-                  mParams.rp.matPenHighlight = true;
-                  mParams.rp.matPen = mDrawUI->matPen;
-                  if(apply) { addMaterial(p, *src, mDrawUI->matPen, cp); }
+                  addSignal(p, *mInputE, *mInputB, mDrawUI->sigPen, cp);
+
+                  
+                  // EMField<CFT> test; test.E.create(mInputE->size); test.B.create(mInputB->size);
+                  // mInputE->copyTo(test.E); mInputB->copyTo(test.B);
+                  // addSignal(test, *src, cp);
+                  // test.destroy();
                 }
             }
         }
+      if(!active) { mDrawUI->sigPen.startTime = -1.0; } // inactive -- reset start time
       
-      if(mFieldUI->running || singleStep)
+      // add material
+      mParams.rp.matPenHighlight = false;
+      mMatMPos = float3{NAN, NAN, NAN}; 
+      if(!mLockViews && !mForcePause && io.KeyAlt)
+        {
+          bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
+          float3 p = float3{NAN, NAN, NAN};
+          bool apply = false;
+          if(m3DView.hovered)
+            {
+              float3 fp = to_cuda(m3DView.mposSim);
+              float3 vDepth = float3{(fp.x <= 1 ? 1.0f : (fp.x >= mFieldUI->fieldRes.x-1 ? -1.0f : 0.0f)),
+                                     (fp.y <= 1 ? 1.0f : (fp.y >= mFieldUI->fieldRes.y-1 ? -1.0f : 0.0f)),
+                                     (fp.z <= 1 ? 1.0f : (fp.z >= mFieldUI->fieldRes.z-1 ? -1.0f : 0.0f)) };
+              p = fp + vDepth*mDrawUI->matPen.depth;
+              apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_ALT));
+            }
+          if(mEMView.hovered || mMatView.hovered)
+            {
+              mpfi.z = mFieldUI->fieldRes.z-1-mDrawUI->matPen.depth; // Z depth relative to top visible layer
+              p = float3{mpfi.x, mpfi.y, mpfi.z};
+              apply = ((mEMView.clickBtns(MOUSEBTN_LEFT) &&  mEMView.clickMods(GLFW_MOD_ALT)) ||
+                       (mMatView.clickBtns(MOUSEBTN_LEFT) && mMatView.clickMods(GLFW_MOD_ALT)));
+            }
+
+          if(hover)
+            {
+              mMatMPos = p; 
+              mParams.rp.penPos = p;
+              mParams.rp.matPenHighlight = true;
+              mParams.rp.matPen = mDrawUI->matPen;
+              if(apply) { addMaterial(p, *src, mDrawUI->matPen, cp); }
+            }
+        }
+      
+      if((mFieldUI->running || singleStep) && !mForcePause)
         { // step simulation
-          cudaDeviceSynchronize();
-          src->copyTo(*temp);// don't overwrite previous state (use temp)
-          dst->clear();
-          if(!mFieldUI->running) { std::cout << "SIM STEP --> dt = " << mUnits.dt << "\n"; }
-          if(mFieldUI->updateE)
-            { updateElectric(*temp, *dst, cp); std::swap(temp, dst); if(mParams.debug) { cudaDeviceSynchronize(); getLastCudaError("UPDATE ELECTRIC FAILED!"); } }
-          if(mFieldUI->updateB)
-            { updateMagnetic(*temp, *dst, cp); std::swap(temp, dst); if(mParams.debug) { cudaDeviceSynchronize(); getLastCudaError("UPDATE MAGNETIC FAILED!"); } }
-          if(mFieldUI->updateQ)
-            { updateCharge  (*temp, *dst, cp); std::swap(temp, dst); if(mParams.debug) { cudaDeviceSynchronize(); getLastCudaError("UPDATE CHARGE FAILED!"); } }
-          if(temp != g_temp) { std::swap(temp, dst); } // for odd number of steps -- fix pointers
-          if(mParams.debug) { cudaDeviceSynchronize(); getLastCudaError("EM update failed!"); }
+          
+          if(!mFieldUI->running) // (print value of dt if single stepping)
+            { std::cout << "SIM STEP --> dt = " << cp.u.dt << "\n"; }
+
+          if(DESTROY_LAST_STATE) { temp = src; }         // overwrite source state (currently unneeded if number of states is <= 1)
+          else                   { src->copyTo(*temp); } // don't overwrite previous state (use temp)
+          
+          //// step Q field (TODO)
+          if(mFieldUI->updateQ) { updateCharge  (*temp, *dst, cp); std::swap(temp, dst); } // step Q
+
+          
+          // (NOTE: remove added sources to avoid persistent lumps building up)
+          
+          addSignal(*mInputB, temp->B, cp,  1.0f); //// add B input signal
+          addSignal(*mInputE, temp->E, cp,  1.0f); //// add E input signal
+                    
+          //// step E field
+          if(mFieldUI->updateE) { updateElectric(*temp, *dst, cp); std::swap(temp, dst); } //////// step E ////////
+          cp.t += cp.u.dt/2.0f;                                                            // increment first half time step
+          
+          //// step B field
+          if(mFieldUI->updateB) { updateMagnetic(*temp, *dst, cp); std::swap(temp, dst); } //////// step B ////////
+          cp.t += cp.u.dt/2.0f;                                                            // increment second half time step
+
+          addSignal(*mInputB, temp->B, cp, -1.0f); //// remove added B input signal
+          addSignal(*mInputE, temp->E, cp, -1.0f); //// remove added E input signal
+
+          if(mFieldUI->inputDecay) { decaySignal(*mInputE, cp); } //else { mInputE->clear(); } //// decay E input signal (blend over time)
+          if(mFieldUI->inputDecay) { decaySignal(*mInputB, cp); } //else { mInputB->clear(); } //// decay B input signal (blend over time)
+          
+          std::swap(temp, dst);    // swap final result back into dst
+          std::swap(g_temp, temp); // use other state as new temp (pointer changes if number of steps is odd)
           mStates.pop_front(); mStates.push_back(dst);
 
           // increment time/frame info
           mInfo.t += mUnits.dt;
           mInfo.uStep++;
-          if(mInfo.uStep >= mParams.uSteps) { mInfo.frame++; mInfo.uStep = 0; mNewFrame = true; }
+          if(mInfo.uStep >= mParams.uSteps) { mInfo.frame++; mInfo.uStep = 0; mNewFrameVec = true; mNewFrameOut = true; }
         }
 
       cudaRender(cp);
@@ -616,7 +750,7 @@ void SimWindow::cudaRender(FieldParams<CFT> &cp)
   // render 3D EM view
   Vec2f aspect = Vec2f(m3DView.r.aspect(), 1.0);
   if(aspect.x < 1.0) { aspect.y = 1.0/aspect.x; aspect.x = 1.0; }
-  if(mDisplayUI->show3DField) { m3DTex.clear();  raytraceFieldEM(*renderSrc, m3DTex, mCamera, mParams.rp, cp, aspect); }
+  if(mDisplayUI->show3DField) { m3DTex.clear();   raytraceFieldEM(*renderSrc, m3DTex, mCamera, mParams.rp, cp, aspect); }
 
   if(mFileRendering)
     { // re-render for file output aspect ratio
@@ -624,7 +758,7 @@ void SimWindow::cudaRender(FieldParams<CFT> &cp)
       if(aspect.x < 1.0) { aspect.y = 1.0/aspect.x; aspect.x = 1.0; }
       if(mDisplayUI->show3DField) { m3DGlTex.clear();  raytraceFieldEM(*renderSrc, m3DGlTex, mCamera, mParams.rp, cp, aspect); }
     }
-  if(mParams.debug) { cudaDeviceSynchronize(); getLastCudaError("Field render failed! (update)"); }
+  //if(mParams.debug) { cudaDeviceSynchronize(); getLastCudaError("Field render failed! (update)"); }
 }
 
 
@@ -636,7 +770,7 @@ void SimWindow::cudaRender(FieldParams<CFT> &cp)
 
 
 // handle input for 2D views
-void SimWindow::handleInput2D(ScreenView &view)
+void SimWindow::handleInput2D(ScreenView<CFT> &view)
 {
   ImGuiStyle &style = ImGui::GetStyle();
   ImGuiIO    &io    = ImGui::GetIO();
@@ -653,24 +787,25 @@ void SimWindow::handleInput2D(ScreenView &view)
     { view.mposSim = float3{NAN, NAN, NAN}; }
 
   bool newClick = false;
-  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))   { view.leftClicked   = true; newClick = true; }
-  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Left))   { view.leftClicked   = false; view.shiftClick = false; view.ctrlClick = false; view.altClick = false; }
-  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))  { view.rightClicked  = true; newClick = true; }
-  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Right))  { view.rightClicked  = false; view.shiftClick = false; view.ctrlClick = false; view.altClick = false; }
-  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) { view.middleClicked = true; newClick = true; }
-  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) { view.middleClicked = false; view.shiftClick = false; view.ctrlClick = false; view.altClick = false; }
+  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))   { view.clicked |=  MOUSEBTN_LEFT;   newClick = true; }
+  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Left))             { view.clicked &= ~MOUSEBTN_LEFT;   view.mods = 0; }
+  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))  { view.clicked |=  MOUSEBTN_RIGHT;  newClick = true; }
+  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Right))            { view.clicked &= ~MOUSEBTN_RIGHT;  view.mods = 0; }
+  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) { view.clicked |=  MOUSEBTN_MIDDLE; newClick = true; }
+  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Middle))           { view.clicked &= ~MOUSEBTN_MIDDLE; view.mods = 0; }
 
-  if(mLockViews) { return; } // ignore user input for rendering
-  
-  if(newClick) { view.clickPos = mpos; view.shiftClick = io.KeyShift; view.ctrlClick = io.KeyCtrl; view.altClick = io.KeyAlt; }
+  if(mLockViews || mForcePause) { return; } // ignore user input for rendering
+  if(newClick) // new mouse click
+    { view.clickPos = mpos; view.mods = (io.KeyShift ? GLFW_MOD_SHIFT : 0) | (io.KeyCtrl ? GLFW_MOD_CONTROL : 0) | (io.KeyAlt ? GLFW_MOD_ALT : 0); }
   
   //// view manipulation ////
 
   // left/middle drag --> pan
-  if(((view.leftClicked && ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !view.ctrlClick && !view.altClick) ||
-      (view.middleClicked && ImGui::IsMouseDragging(ImGuiMouseButton_Middle))))
+  ImGuiMouseButton btn = (ImGui::IsMouseDragging(ImGuiMouseButton_Left) ? ImGuiMouseButton_Left :
+                          (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ? ImGuiMouseButton_Middle : -1));
+  if(((view.clickBtns(MOUSEBTN_LEFT)   && btn == ImGuiMouseButton_Left && !view.clickMods(GLFW_MOD_CONTROL | GLFW_MOD_ALT)) ||
+      (view.clickBtns(MOUSEBTN_MIDDLE) && btn == ImGuiMouseButton_Middle)))
     {
-      ImGuiMouseButton btn = ImGui::IsMouseDragging(ImGuiMouseButton_Left) ? ImGuiMouseButton_Left : ImGuiMouseButton_Middle;
       Vec2f dmp = ImGui::GetMouseDragDelta(btn); ImGui::ResetMouseDragDelta(btn);
       dmp.x *= -1.0f;
       mSimView2D.move(screenToSim2D(dmp, mSimView2D, view.r, true)); // recenter mouse at same sim position
@@ -702,11 +837,11 @@ void SimWindow::handleInput2D(ScreenView &view)
       Vec2i fiAdj = Vec2i(std::max(0, std::min(mFieldUI->fieldRes.x-1, fi.x)), std::max(0, std::min(mFieldUI->fieldRes.y-1, fi.y)));
 
       int zi = mDisplayUI->rp->zRange.y;
-          
+      
       // pull device data
-      std::vector<float2> Q  (mStates.size(), float2{NAN, NAN});
-      std::vector<float3> QPV(mStates.size(), float3{NAN, NAN, NAN});
-      std::vector<float3> QNV(mStates.size(), float3{NAN, NAN, NAN});
+      // std::vector<float2> Q  (mStates.size(), float2{NAN, NAN});
+      // std::vector<float3> QPV(mStates.size(), float3{NAN, NAN, NAN});
+      // std::vector<float3> QNV(mStates.size(), float3{NAN, NAN, NAN});
       std::vector<float3> E  (mStates.size(), float3{NAN, NAN, NAN});
       std::vector<float3> B  (mStates.size(), float3{NAN, NAN, NAN});
       std::vector<Material<float>> mat(mStates.size(), Material<float>());
@@ -718,9 +853,9 @@ void SimWindow::handleInput2D(ScreenView &view)
               if(src)
                 {
                   // get data from top displayed layer (TODO: average or graph layers?)
-                  cudaMemcpy(&Q[i],   src->Q.dData   + src->Q.idx  (fi.x, fi.y, zi), sizeof(float2), cudaMemcpyDeviceToHost);
-                  cudaMemcpy(&QPV[i], src->QPV.dData + src->QPV.idx(fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
-                  cudaMemcpy(&QNV[i], src->QNV.dData + src->QNV.idx(fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
+                  // cudaMemcpy(&Q[i],   src->Q.dData   + src->Q.idx  (fi.x, fi.y, zi), sizeof(float2), cudaMemcpyDeviceToHost);
+                  // cudaMemcpy(&QPV[i], src->QPV.dData + src->QPV.idx(fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
+                  // cudaMemcpy(&QNV[i], src->QNV.dData + src->QNV.idx(fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
                   cudaMemcpy(&E[i],   src->E.dData   + src->E.idx  (fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
                   cudaMemcpy(&B[i],   src->B.dData   + src->B.idx  (fi.x, fi.y, zi), sizeof(float3), cudaMemcpyDeviceToHost);
                   cudaMemcpy(&mat[i], src->mat.dData + src->mat.idx(fi.x, fi.y, zi), sizeof(Material<float>), cudaMemcpyDeviceToHost);
@@ -742,7 +877,7 @@ void SimWindow::handleInput2D(ScreenView &view)
             ImGui::BeginGroup();
             {
               Vec2f sp0 = Vec2f(ImGui::GetCursorScreenPos()) + Vec2f(tSize.x + dataPadding.x, 0);
-                
+              
               // draw state label
               std::string labelStr = "T" + std::to_string(i);
               ImGui::TextUnformatted(labelStr.c_str());
@@ -753,10 +888,10 @@ void SimWindow::handleInput2D(ScreenView &view)
               {
                 float xpos = ImGui::GetCursorPos().x;
                 ImGui::Text("(State Pointer: %ld", (long)(void*)(mStates[mStates.size()-1-i]));
-                ImGui::Text(" Q   = (+)%s | (-)%s ==> %s", fAlign(Q[i].x,   4).c_str(), fAlign(Q[i].y,   4).c_str(), fAlign((Q[i].x-Q[i].y), 4).c_str());
-                ImGui::Spacing();
-                ImGui::Text(" VQ+ = < %12s, %12s, %12s >", fAlign(QPV[i].x, 4).c_str(), fAlign(QPV[i].y, 4).c_str(), fAlign(QPV[i].z, 4).c_str());
-                ImGui::Text(" VQ- = < %12s, %12s, %12s >", fAlign(QNV[i].x, 4).c_str(), fAlign(QNV[i].y, 4).c_str(), fAlign(QNV[i].z, 4).c_str());
+                // ImGui::Text(" Q   = (+)%s | (-)%s ==> %s", fAlign(Q[i].x,   4).c_str(), fAlign(Q[i].y,   4).c_str(), fAlign((Q[i].x-Q[i].y), 4).c_str());
+                // ImGui::Spacing();
+                // ImGui::Text(" VQ+ = < %12s, %12s, %12s >", fAlign(QPV[i].x, 4).c_str(), fAlign(QPV[i].y, 4).c_str(), fAlign(QPV[i].z, 4).c_str());
+                // ImGui::Text(" VQ- = < %12s, %12s, %12s >", fAlign(QNV[i].x, 4).c_str(), fAlign(QNV[i].y, 4).c_str(), fAlign(QNV[i].z, 4).c_str());
                 ImGui::Text(" E   = < %12s, %12s, %12s >", fAlign(E[i].x,   4).c_str(), fAlign(E[i].y,   4).c_str(), fAlign(E[i].z,   4).c_str());
                 ImGui::Text(" B   = < %12s, %12s, %12s >", fAlign(B[i].x,   4).c_str(), fAlign(B[i].y,   4).c_str(), fAlign(B[i].z,   4).c_str());
                 ImGui::Spacing(); ImGui::Spacing();
@@ -794,7 +929,7 @@ void SimWindow::handleInput2D(ScreenView &view)
 }
 
 // handle input for 3D views
-void SimWindow::handleInput3D(ScreenView &view)
+void SimWindow::handleInput3D(ScreenView<CFT> &view)
 {
   ImGuiStyle &style = ImGui::GetStyle();
   ImGuiIO    &io    = ImGui::GetIO();
@@ -822,35 +957,33 @@ void SimWindow::handleInput3D(ScreenView &view)
   else { view.mposSim = float3{NAN, NAN, NAN}; }
 
   bool newClick = false;
-  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))   { view.leftClicked   = true; newClick = true; }
-  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-    { view.clickPos = Vec2f(NAN, NAN); view.leftClicked   = false; view.shiftClick = false; view.ctrlClick = false; view.altClick = false; }
-  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))  { view.rightClicked  = true; newClick = true; }
-  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Right))
-    { view.clickPos = Vec2f(NAN, NAN); view.rightClicked  = false; view.shiftClick = false; view.ctrlClick = false; view.altClick = false; }
-  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) { view.middleClicked = true; newClick = true; }
-  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Middle))
-    { view.clickPos = Vec2f(NAN, NAN); view.middleClicked = false; view.shiftClick = false; view.ctrlClick = false; view.altClick = false; }
-  
-  if(mLockViews) { return; } // ignore user input for rendering
+  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))   { view.clicked |=  MOUSEBTN_LEFT;   newClick = true; }
+  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Left))             { view.clicked &= ~MOUSEBTN_LEFT;   view.mods = 0; }
+  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))  { view.clicked |=  MOUSEBTN_RIGHT;  newClick = true; }
+  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Right))            { view.clicked &= ~MOUSEBTN_RIGHT;  view.mods = 0; }
+  if(view.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) { view.clicked |=  MOUSEBTN_MIDDLE; newClick = true; }
+  else if(ImGui::IsMouseReleased(ImGuiMouseButton_Middle))           { view.clicked &= ~MOUSEBTN_MIDDLE; view.mods = 0; }
 
-  if(newClick) { view.clickPos = mpos; view.shiftClick = (io.KeyShift); view.ctrlClick = (io.KeyCtrl); view.altClick = (io.KeyAlt); }
+  if(mLockViews || mForcePause) { return; } // ignore user input for rendering
+  if(newClick) // new mouse click
+    { view.clickPos = mpos; view.mods = (io.KeyShift ? GLFW_MOD_SHIFT : 0) | (io.KeyCtrl ? GLFW_MOD_CONTROL : 0) | (io.KeyAlt ? GLFW_MOD_ALT : 0); }
+  
   
   //// view manipulation
   CFT shiftMult = (io.KeyShift ? 0.1f  : 1.0f);
-  CFT ctrlMult  = (((ImGui::IsKeyDown(GLFW_KEY_LEFT_CONTROL) || ImGui::IsKeyDown(GLFW_KEY_RIGHT_CONTROL)) ? 4.0f  : 1.0f));
-  CFT altMult   = (((ImGui::IsKeyDown(GLFW_KEY_LEFT_ALT)     || ImGui::IsKeyDown(GLFW_KEY_RIGHT_ALT))     ? 16.0f : 1.0f));
+  CFT ctrlMult  = (io.KeyCtrl  ? 4.0f  : 1.0f);
+  CFT altMult   = (io.KeyAlt   ? 16.0f : 1.0f);
   CFT keyMult   = shiftMult * ctrlMult * altMult;
 
-  Vec2f viewSize = m3DView.r.size();
+  Vec2f viewSize = view.r.size();
   CFT S = (2.0*tan(mCamera.fov/2.0f*M_PI/180.0f));
   
-  if(((ImGui::IsMouseDragging(ImGuiMouseButton_Left) && view.leftClicked && !view.ctrlClick && !view.altClick) ||
-      (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) && view.middleClicked)))
+  ImGuiMouseButton btn = (ImGui::IsMouseDragging(ImGuiMouseButton_Left) ? ImGuiMouseButton_Left :
+                          (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ? ImGuiMouseButton_Middle : -1));
+  if(((btn == ImGuiMouseButton_Left && view.clickBtns(MOUSEBTN_LEFT) && !view.clickMods(GLFW_MOD_CONTROL | GLFW_MOD_ALT)) ||
+      (btn == ImGuiMouseButton_Middle && view.clickBtns(MOUSEBTN_MIDDLE))))
     { // left/middle drag --> pan camera
-      ImGuiMouseButton btn = ImGui::IsMouseDragging(ImGuiMouseButton_Left) ? ImGuiMouseButton_Left : ImGuiMouseButton_Middle;
-      Vec2f dmp = ImGui::GetMouseDragDelta(btn);
-      ImGui::ResetMouseDragDelta(btn);
+      Vec2f dmp = ImGui::GetMouseDragDelta(btn); ImGui::ResetMouseDragDelta(btn);
       dmp.x *= -1.0f;
       float3 fpos = float3{mFieldUI->cp->fp.x, mFieldUI->cp->fp.y, mFieldUI->cp->fp.z};
       float3 cpos = float3{mCamera.pos.x, mCamera.pos.y, mCamera.pos.z};
@@ -865,10 +998,10 @@ void SimWindow::handleInput3D(ScreenView &view)
       mCamera.pos += (mCamera.right*dmp.x/viewSize.x*aspect.x + mCamera.up*dmp.y/viewSize.y*aspect.y)*lengthMult*S*shiftMult*0.8;
     }
 
-  if(ImGui::IsMouseDragging(ImGuiMouseButton_Right) && view.rightClicked)
+  btn = (ImGui::IsMouseDragging(ImGuiMouseButton_Right) ? ImGuiMouseButton_Right : -1);
+  if(btn == ImGuiMouseButton_Right && view.clickBtns(MOUSEBTN_RIGHT))
     { // right drag --> rotate camera
-      Vec2f dmp = Vec2f(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
-      ImGui::ResetMouseDragDelta(ImGuiMouseButton_Right);
+      Vec2f dmp = Vec2f(ImGui::GetMouseDragDelta(btn)); ImGui::ResetMouseDragDelta(btn);
       dmp = -dmp;
       float2 rAngles = float2{dmp.x, dmp.y} / float2{viewSize.x, viewSize.y} * 6.0 * tan(mCamera.fov/2*M_PI/180.0) * shiftMult;
       float3 rOffset = float3{(CFT)mFieldUI->fieldRes.x, (CFT)mFieldUI->fieldRes.y, (CFT)mFieldUI->fieldRes.z}*mUnits.dL / 2.0;
@@ -918,9 +1051,10 @@ void SimWindow::handleInput(const Vec2f &frameSize, const std::string &id)
                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus );
   ImGui::BeginChild(("##simView"+id).c_str(), frameSize, false, wFlags);
   {
-    if(mDisplayUI->showEMField)  { handleInput2D(mEMView); }  // EM view
+    // cudaDeviceSynchronize(); // TODO: settle on specific synchronization point(s)
+    if(mDisplayUI->showEMField)  { handleInput2D(mEMView);  } // EM view
     if(mDisplayUI->showMatField) { handleInput2D(mMatView); } // Material view
-    if(mDisplayUI->show3DField)  { cudaDeviceSynchronize(); handleInput3D(m3DView); } // 3D view (ray marching)
+    if(mDisplayUI->show3DField)  { handleInput3D(m3DView);  } // 3D view (ray marching)
 
   }
   ImGui::EndChild();
@@ -953,7 +1087,7 @@ void SimWindow::drawVectorField2D(const Rect2f &sr)
       int cRad     = mParams.vp.vecCRadius;
       int vSpacing = mParams.vp.vecSpacing;
       if(vRad > cRad) { vSpacing = std::max(vSpacing, (int)ceil(vRad/(float)cRad)); }
-      float viewScale = max(mSimView2D.size());
+      float viewScale = max(mSimView2D.size() / sr.size());
       
       int2 iMin = int2{std::max(fi.x-vRad*vSpacing, 0), std::max(fi.y-vRad*vSpacing, 0)};
       int2 iMax = int2{std::min(fi.x+vRad*vSpacing, mFieldUI->fieldRes.x-1)+1,
@@ -962,95 +1096,121 @@ void SimWindow::drawVectorField2D(const Rect2f &sr)
       int2 iStart = int2{0, 0};
       int2 iEnd   = int2{(iMax.x - iMin.x)/vSpacing, (iMax.y - iMin.y)/vSpacing};
 
-      src->E.pullData(); src->B.pullData();
-      float avgE = 0.0f; float avgB = 0.0f;
-      
-      for(int ix = iStart.x; ix <= iEnd.x; ix++)
-        for(int iy = iStart.y; iy <= iEnd.y; iy++)
-          {
-            int xi = iMin.x + ix*vSpacing; int yi = iMin.y + iy*vSpacing;
-            float2 dp = float2{(float)(xi-fi.x), (float)(yi-fi.y)};// * float2{mUnits.dL, mUnits.dL};
-            if(dot(dp, dp) <= (float)(vRad*vRad))
+      if(mNewFrameVec)
+        {
+          src->E.pullData(); src->B.pullData();
+          float avgE = 0.0f; float avgB = 0.0f;
+          mVectorField2D.clear();
+          int zTop = mParams.rp.zRange.y;
+          for(int ix = iStart.x; ix <= iEnd.x; ix++)
+            for(int iy = iStart.y; iy <= iEnd.y; iy++)
               {
-                int i = src->idx(xi, yi);
-                // Vec2f sp = simToScreen2D(Vec2f(xi+0.5f, yi+0.5f)*Vec2f(mUnits.dL, mUnits.dL), mSimView2D, sr);
-                Vec2f sp = simToScreen2D(Vec2f(xi+0.5f, yi+0.5f), mSimView2D, sr);
-                
-                Vec3f vE; Vec3f vB;
-                if(mParams.vp.smoothVectors)
+                int xi = iMin.x + ix*vSpacing; int yi = iMin.y + iy*vSpacing; int zi = zTop;
+                float2 dp = float2{(float)(xi-fi.x), (float)(yi-fi.y)};
+                if(dot(dp, dp) <= (float)(vRad*vRad))
                   {
-                    Vec2f sampleP = Vec2f(xi+fo.x, yi+fo.y);
-                    if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y)
+                    int i = src->idx(xi, yi, zi);
+                    Vec3f p = Vec3f(xi+0.5f, yi+0.5f, zi+0.5f);
+                    Vec2f sp = simToScreen2D(p, mSimView2D, sr);
+                
+                    Vec3f vE; Vec3f vB;
+                    if(mParams.vp.smoothVectors)
                       {
-                        bool x1p  = sampleP.x+1 >= src->size.x; bool y1p = sampleP.y+1 >= src->size.y;
-                        bool x1y1p = sampleP.x+1 >= src->size.x || sampleP.y+1 >= src->size.y;
+                        Vec3f sampleP = Vec3f(xi+fo.x, yi+fo.y, zi);
+                        if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y)
+                          {
+                            bool x1p   = sampleP.x+1 >= src->size.x; bool y1p = sampleP.y+1 >= src->size.y;
+                            bool x1y1p = x1p || y1p;
                     
-                        Vec3f E00 = Vec3f(src->E.hData[src->E.idx((int)sampleP.x,(int)sampleP.y, 0)]);
-                        Vec3f E01 = (x1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y,   0)]));
-                        Vec3f E10 = (y1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x,   (int)sampleP.y+1, 0)]));
-                        Vec3f E11 = (x1y1p ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y+1, 0)]));
-                        Vec3f B00 = Vec3f(src->B.hData[src->B.idx((int)sampleP.x,(int)sampleP.y, 0)]);
-                        Vec3f B01 = (x1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y,   0)]));
-                        Vec3f B10 = (y1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x,   (int)sampleP.y+1, 0)]));
-                        Vec3f B11 = (x1y1p ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y+1, 0)]));
+                            Vec3f E00 = Vec3f(src->E.hData[src->E.idx((int)sampleP.x,(int)sampleP.y, zi)]);
+                            Vec3f E01 = (x1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y,   zi)]));
+                            Vec3f E10 = (y1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x,   (int)sampleP.y+1, zi)]));
+                            Vec3f E11 = (x1y1p ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y+1, zi)]));
+                            Vec3f B00 = Vec3f(src->B.hData[src->B.idx((int)sampleP.x,(int)sampleP.y, zi)]);
+                            Vec3f B01 = (x1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y,   zi)]));
+                            Vec3f B10 = (y1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x,   (int)sampleP.y+1, zi)]));
+                            Vec3f B11 = (x1y1p ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y+1, zi)]));
 
-                        sp = simToScreen2D(sampleP, mSimView2D, sr);
-                        vE = blerp(E00, E01, E10, E11, fo); // / mUnits.dL; // scale by cell size
-                        vB = blerp(B00, B01, B10, B11, fo); // / mUnits.dL; // scale by cell size
+                            sp = simToScreen2D(sampleP, mSimView2D, sr);
+                            vE = blerp(E00, E01, E10, E11, fo);
+                            vB = blerp(B00, B01, B10, B11, fo);
+                          }
                       }
-                  }
-                else
-                  {
-                    Vec2f sampleP = Vec2f(xi, yi);
-                    if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y)
+                    else
                       {
-                        sp = simToScreen2D((sampleP+0.5f), mSimView2D, sr);
-                        i = src->idx(sampleP.x, sampleP.y);
-                        vE = src->E.hData[i]; // / mParams.cp.u.dL;
-                        vB = src->B.hData[i]; // / mParams.cp.u.dL;
+                        Vec3f sampleP = Vec3f(xi, yi, zi);
+                        if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y && sampleP.z >= 0 && sampleP.z < src->size.z)
+                          {
+                            sp = simToScreen2D((sampleP+0.5f), mSimView2D, sr);
+                            i  = src->idx(sampleP.x, sampleP.y, sampleP.z);
+                            vE = src->E.hData[i];
+                            vB = src->B.hData[i];
+                          }
                       }
-                  }
-                
-                Vec2f dpE = simToScreen2D(Vec2f(vE.x, vE.y), mSimView2D, sr, true)*mParams.vp.vecMultE;
-                Vec2f dpB = simToScreen2D(Vec2f(vB.x, vB.y), mSimView2D, sr, true)*mParams.vp.vecMultB;
-                Vec3f dpE3 = Vec3f(dpE.x, dpE.y, 0.0f);
-                Vec3f dpB3 = Vec3f(dpB.x, dpB.y, 0.0f);
-                float lw     = (mParams.vp.vecLineW   / viewScale);
-                float bw     = (mParams.vp.vecBorderW / viewScale);
-                float lAlpha = mParams.vp.vecAlpha;
-                float bAlpha = (lAlpha + mParams.vp.vecBAlpha)/2.0f;
-                float vLenE = length(dpE3);
-                float vLenB = length(dpB3);
-                float shear0 = 0.1f;//0.5f; 
-                float shear1 = 1.0f;
 
-                float magE = length(screenToSim2D(Vec2f(vLenE, 0), mSimView2D, sr, true) ); // / float2{(float)mParams.cp.u.dL, (float)mParams.cp.u.dL});
-                float magB = length(screenToSim2D(Vec2f(vLenB, 0), mSimView2D, sr, true) ); // / float2{(float)mParams.cp.u.dL, (float)mParams.cp.u.dL});
-                Vec4f Ecol1 = mParams.rp.Ecol;
-                Vec4f Bcol1 = mParams.rp.Bcol;
-                Vec4f Ecol = Vec4f(Ecol1.x, Ecol1.y, Ecol1.z, lAlpha);
-                Vec4f Bcol = Vec4f(Bcol1.x, Bcol1.y, Bcol1.z, lAlpha);
+                    // Vec2f dpE = simToScreen2D(vE, mSimView2D, sr, true)*mParams.vp.vecMultE;
+                    // Vec2f dpB = simToScreen2D(vB, mSimView2D, sr, true)*mParams.vp.vecMultB;
+                    // // Vec3f dpE3 = Vec3f(dpE.x, dpE.y, 0.0f); // 2D components
+                    // // Vec3f dpB3 = Vec3f(dpB.x, dpB.y, 0.0f);
+                    // Vec3f dpE3 = vE; // full 3D vector
+                    // Vec3f dpB3 = vB;
+                    // float lw     = (mParams.vp.vecLineW   / viewScale);
+                    // float bw     = (mParams.vp.vecBorderW / viewScale);
+                    // float lAlpha = mParams.vp.vecAlpha;
+                    // float bAlpha = (lAlpha + mParams.vp.vecBAlpha)/2.0f;
+                    // float vLenE = length(dpE3);
+                    // float vLenB = length(dpB3);
+                    // // float shear0 = 0.1f;//0.5f; 
+                    // // float shear1 = 1.0f;
                 
-                if(!mParams.vp.borderedVectors)
-                  {
-                    mFieldDrawList->AddLine(Vec2f(sp.x, sp.y), Vec2f(sp.x+dpB.x, sp.y+dpB.y), ImColor(Bcol), lw);
-                    mFieldDrawList->AddLine(Vec2f(sp.x, sp.y), Vec2f(sp.x+dpE.x, sp.y+dpE.y), ImColor(Ecol), lw);
+                    float magE = length(vE); //length(screenToSim2D(Vec2f(vLenE, 0), mSimView2D, sr, true) );
+                    float magB = length(vB); //length(screenToSim2D(Vec2f(vLenB, 0), mSimView2D, sr, true) );
+                    // Vec4f Ecol1 = mParams.rp.Ecol;
+                    // Vec4f Bcol1 = mParams.rp.Bcol;
+                    // Vec4f Ecol = Vec4f(Ecol1.x, Ecol1.y, Ecol1.z, lAlpha);
+                    // Vec4f Bcol = Vec4f(Bcol1.x, Bcol1.y, Bcol1.z, lAlpha);
+
+                    mVectorField2D.push_back(FVector{p, vE, vB});
+                
+                    avgE += magE; avgB += magB;
                   }
-                else
-                  {
-                    drawLine(mFieldDrawList, Vec2f(sp.x, sp.y), Vec2f(sp.x+dpB.x, sp.y+dpB.y), Bcol, lw, Vec4f(0, 0, 0, bAlpha), bw, shear0, shear1);
-                    drawLine(mFieldDrawList, Vec2f(sp.x, sp.y), Vec2f(sp.x+dpE.x, sp.y+dpE.y), Ecol, lw, Vec4f(0, 0, 0, bAlpha), bw, shear0, shear1);
-                  }
-                avgE += magE; avgB += magB;
               }
-          }
+          mNewFrameVec = false;
+        }
+      for(auto &v : mVectorField2D)
+        {
+          Vec2f sp = simToScreen2D(v.p0, mSimView2D, sr);
+          Vec2f dpE = simToScreen2D(v.vE, mSimView2D, sr, true)*mParams.vp.vecMultE;
+          Vec2f dpB = simToScreen2D(v.vB, mSimView2D, sr, true)*mParams.vp.vecMultB;
+          
+          float lAlpha = mParams.vp.vecAlpha;
+          Vec4f Ecol1  = mParams.rp.Ecol;
+          Vec4f Bcol1  = mParams.rp.Bcol;
+          Vec4f Ecol   = Vec4f(Ecol1.x, Ecol1.y, Ecol1.z, lAlpha);
+          Vec4f Bcol   = Vec4f(Bcol1.x, Bcol1.y, Bcol1.z, lAlpha);
+          float lw = (mParams.vp.vecLineW   / viewScale);
+          if(!mParams.vp.borderedVectors)
+            {
+              mFieldDrawList->AddLine(sp, sp+dpE, ImColor(Ecol), lw);
+              mFieldDrawList->AddLine(sp, sp+dpB, ImColor(Bcol), lw);
+            }
+          else
+            {
+              float bAlpha = (lAlpha + mParams.vp.vecBAlpha)/2.0f;
+              float shear0 = 0.1f;//0.5f; 
+              float shear1 = 1.0f;
+              float bw     = (mParams.vp.vecBorderW / viewScale);
+              drawLine(mFieldDrawList, sp, sp+dpE, Ecol, lw, Vec4f(0, 0, 0, bAlpha), bw, shear0, shear1);
+              drawLine(mFieldDrawList, sp, sp+dpB, Bcol, lw, Vec4f(0, 0, 0, bAlpha), bw, shear0, shear1);
+            }
+        }
       // std::cout << "VEC AVG E: " << avgE/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
       // std::cout << "VEC AVG B: " << avgB/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
     }
 }
 
 // overlay for 2D sim views
-void SimWindow::draw2DOverlay(ScreenView &view)
+void SimWindow::draw2DOverlay(ScreenView<CFT> &view)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   // draw axes at origin
@@ -1113,7 +1273,7 @@ void SimWindow::draw2DOverlay(ScreenView &view)
     }
 
   // draw positional axes of active signal pen 
-  if(!isnan(mSigMPos) && !mLockViews)
+  if(!isnan(mSigMPos) && !mLockViews && !mForcePause)
     {
       Vec3f W01n  = Vec3f(mFieldUI->cp->fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
       Vec3f W01p  = Vec3f(mFieldUI->cp->fp.x + mFieldUI->fieldRes.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
@@ -1163,7 +1323,7 @@ void SimWindow::draw2DOverlay(ScreenView &view)
     }
   
   // draw positional axes of active material pen 
-  if(!isnan(mMatMPos) && !mLockViews)
+  if(!isnan(mMatMPos) && !mLockViews && !mForcePause)
     {
       Vec3f W01n  = Vec3f(mFieldUI->cp->fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
       Vec3f W01p  = Vec3f(mFieldUI->cp->fp.x + mFieldUI->fieldRes.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
@@ -1213,7 +1373,7 @@ void SimWindow::draw2DOverlay(ScreenView &view)
 }
 
 // overlay for 3D sim views
-void SimWindow::draw3DOverlay(ScreenView &view)
+void SimWindow::draw3DOverlay(ScreenView<CFT> &view)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   Vec2f mpos = ImGui::GetMousePos();
@@ -1251,7 +1411,7 @@ void SimWindow::draw3DOverlay(ScreenView &view)
     }
 
   // draw positional axes of active signal pen 
-  if(!isnan(mSigMPos) && !mLockViews)
+  if(!isnan(mSigMPos) && !mLockViews && !mForcePause)
     {
       Vec3f W001n  = Vec3f(mFieldUI->cp->fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
       Vec3f W001p  = Vec3f(mFieldUI->cp->fp.x + mFieldUI->fieldRes.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
@@ -1315,7 +1475,7 @@ void SimWindow::draw3DOverlay(ScreenView &view)
     }
   
   // draw positional axes of active material pen 
-  if(!isnan(mMatMPos) && !mLockViews)
+  if(!isnan(mMatMPos) && !mLockViews && mForcePause)
     {
       Vec3f W001n  = Vec3f(mFieldUI->cp->fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
       Vec3f W010n  = Vec3f(mMatMPos.x, mFieldUI->cp->fp.y, mMatMPos.z)*mUnits.dL;
@@ -1396,8 +1556,8 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
   Vec2f p0 = ImGui::GetCursorScreenPos();
 
   // use separate texture for file output
-  CudaTexture *tex3D  = (id == "offline" ? &m3DGlTex  : &m3DTex);
-  ScreenView  *view3D = (id == "offline" ? &m3DGlView : &m3DView);
+  CudaTexture     *tex3D  = (id == "offline" ? &m3DGlTex  : &m3DTex);
+  ScreenView<CFT> *view3D = (id == "offline" ? &m3DGlView : &m3DView);
 
   // adjust view layout
   int numViews = ((int)mDisplayUI->showEMField + (int)mDisplayUI->showMatField + (int)mDisplayUI->show3DField);
@@ -1442,7 +1602,7 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
     {
       mFieldUI->texRes3D = vSize3D;
       tex3D->create(int3{vSize3D.x, vSize3D.y, 1});
-      cudaRender(mParams.cp);
+      //cudaRender(mParams.cp);
     }
   
   // draw rendered views of simulation on screen    
@@ -1470,8 +1630,8 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
           ImGui::SetCursorScreenPos(fCursorPos);
           ImGui::Image(reinterpret_cast<ImTextureID>(mEMTex.texId()), fScreenSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
           mEMTex.release();
-            
-          drawVectorField2D(mEMView.r);
+
+          if(!mLockViews && !mForcePause) { drawVectorField2D(mEMView.r); }
           draw2DOverlay(mEMView);
         }
         ImGui::EndChild();
@@ -1557,6 +1717,16 @@ void SimWindow::draw(const Vec2f &frameSize)
   {
     ImGui::PushFont(mainFont);
     Vec2f p0 = ImGui::GetCursorScreenPos();
+
+    // key bindings/shortcuts
+    if(mKeyManager)
+      {
+        bool captured = (ImGui::GetIO().WantCaptureKeyboard && // NOTE: WantCaptureKeyboard set to true when mouse clicked
+                         !mEMView.clickBtns() && !mMatView.clickBtns() && !m3DView.clickBtns()); // --> enable shortcuts anyway if clicked
+        mKeyManager->update(captured, mParams.verbose);
+        mKeyManager->draw(mFrameSize);
+        mForcePause = mKeyManager->popupOpen();
+      }
     
     Vec2f settingsSize = mTabs->getSize();
     mDisplaySize = (mFrameSize - Vec2f(settingsSize.x, 0.0f) - 2.0f*Vec2f(style.WindowPadding) - Vec2f(style.ItemSpacing.x, 0.0f));
@@ -1586,7 +1756,6 @@ void SimWindow::draw(const Vec2f &frameSize)
     }
     ImGui::EndGroup();
 
-
     // debug overlay
     if(mParams.debug)
       {
@@ -1598,6 +1767,7 @@ void SimWindow::draw(const Vec2f &frameSize)
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Vec4f(0.0f, 0.0f, 0.0f, 0.0f));
         ImGui::BeginChild("##debugOverlay", mDisplaySize, false, wFlags);
         {
+          ImGui::Indent();
           ImGui::PushFont(titleFontB);
           ImGui::Text("%.2f FPS", mInfo.fps);
           ImGui::PopFont();
@@ -1626,6 +1796,8 @@ void SimWindow::draw(const Vec2f &frameSize)
           ImGui::Text("Camera VP:   \n%s", mCamera.VP.toString().c_str());
 
           ImGui::TextUnformatted("Greek Test: ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω");
+          
+          ImGui::Unindent();
         }
         ImGui::EndChild();
         ImGui::PopClipRect();
@@ -1635,7 +1807,8 @@ void SimWindow::draw(const Vec2f &frameSize)
     if(mFirstFrame || isinf(mCamera.pos.z)) { resetViews(); mFirstFrame = false; }
     
     ImGui::PopFont();
-    if(mImGuiDemo) { ImGui::ShowDemoWindow(&mImGuiDemo); } // show imgui demo window (Alt+Shift+D)
+    if(mImGuiDemo)    { ImGui::ShowDemoWindow(&mImGuiDemo); } // show imgui demo window    (Alt+Shift+D)
+    if(freetypeTest && mFontDemo) { freetypeTest->ShowFontsOptionsWindow(); }    // show FreeType test window (Alt+Shift+F)
   }
   ImGui::End();
   ImGui::PopStyleVar(4);
@@ -1699,78 +1872,32 @@ bool SimWindow::checkBaseRenderPath()
 
 bool SimWindow::checkSimRenderPath()
 {
+  bool success = true;
   if(!checkBaseRenderPath()) { return false; } // make sure base directory exists
   else
-    {
-      // check simulation image directory
+    { // check named image sub-directory for this simulation render
       mImageDir = mBaseDir + "/" + mParams.simName;
       if(!directoryExists(mImageDir))
         {
           std::cout << "Creating directory for simulation '" << mParams.simName << "' --> (" << mImageDir << ")...\n";
-          if(makeDirectory(mImageDir)) { std::cout << "Successfully created directory.\n"; }
-          else                         { std::cout << "====> ERROR: Could not make sim image directory.\n"; return false; }
+          if(makeDirectory(mImageDir)) { std::cout << "Successfully created directory.\n";                  success = true;  }
+          else                         { std::cout << "====> ERROR: Could not make sim image directory.\n"; success = false; }
         }
     }
-  return true;
+  return success;
 }
-
-
-// bool SimWindow::fileOutInterface()
-// {
-//   if(!mFileOutSettings)
-//     {
-//       mFileOutSettings = new SettingForm("File Output", SETTINGS_LABEL_COL_W, SETTINGS_INPUT_COL_W);
-//       SettingGroup *foGroup = new SettingGroup("Output Parameters", "outParams", { }, false);
-
-//       auto *sA  = new Setting<bool>       ("Write to File",  "outActive",  &mFileRendering);
-//       sA->updateCallback = [this]() { checkSimRenderPath(); };
-//       foGroup->add(sA);
-//       auto *sLV = new Setting<bool>       ("Lock Views",     "lockViews",  &mLockViews);
-//       foGroup->add(sLV);
-//       auto *sOR = new Setting<int2>       ("Resolution",     "outRes",     &mParams.outSize);
-//       foGroup->add(sOR);
-//       auto *sN  = new Setting<std::string>("Base Name",      "baseName",   &mParams.simName);
-//       sN->updateCallback = [this]() { checkSimRenderPath(); };
-//       foGroup->add(sN);
-//       auto *sE  = new Setting<std::string>("File Extension", "outExt",     &mParams.outExt);
-//       auto *sPA = new Setting<bool>       ("Alpha Channel",  "outAlpha",   &mParams.outAlpha);
-//       sE->drawCustom = [this, sE, sPA](bool busy, bool changed) -> bool
-//                        {
-//                          ImGui::SetNextItemWidth(111); sE->onDraw(1.0f, busy, changed, true);
-//                          if(changed)
-//                            {
-//                              if(mParams.outExt.empty())        { mParams.outExt = ".png"; }
-//                              else if(mParams.outExt[0] != '.') { mParams.outExt = "." + mParams.outExt; }
-//                            }
-//                          ImGui::SameLine(); ImGui::TextUnformatted("Alpha:"); ImGui::SameLine(); sPA->onDraw(1.0f, busy, changed, true);
-//                          return busy;
-//                        };
-//       foGroup->add(sE);
-      
-//       auto *sPC  = new Setting<int> ("PNG Compression", "pngComp",   &mParams.pngCompression);
-//       sPC->enabledCallback = [this]() -> bool { return (mParams.outExt.find(".png") != std::string::npos); };
-//       sPC->drawCustom = [this, sPC](bool busy, bool changed) -> bool
-//                         { changed |= ImGui::SliderInt("##pngComp", &mParams.pngCompression, 1, 10); return busy; };
-//       foGroup->add(sPC);
-      
-//       mFileOutSettings->add(foGroup);
-//     }
-//   mFileOutSettings->draw();
-//   return true;
-// }
-
 
 void SimWindow::initGL(const Vec2i &texSize)
 {
   if(texSize != mGlTexSize || mParams.outAlpha != mGlAlpha)
     {
-      std::cout << "GL TEX SIZE: " << mGlTexSize << " --> " << texSize <<  ")...\n";
+      std::cout << "GL tex size: " << mGlTexSize << " --> " << texSize <<  ")...\n";
       cleanupGL();
       
       mGlTexSize = texSize;
       mGlAlpha   = mParams.outAlpha;
       
-      std::cout << "INITIALIZING GL RESOURCES...\n";
+      std::cout << "Initializing GL resources...\n";
       // create framebuffer  
       glGenFramebuffers(1, &mRenderFB);
       glBindFramebuffer(GL_FRAMEBUFFER, mRenderFB);
@@ -1806,7 +1933,7 @@ void SimWindow::cleanupGL()
 {
   if(mTexData)
     {
-      std::cout << "CLEANING UP GL RESOURCES...\n";
+      std::cout << "Cleaning up GL resources...\n";
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glBindTexture(GL_TEXTURE_2D, 0);
       glDeleteFramebuffers(1, &mRenderFB); mRenderFB  = 0;
@@ -1819,20 +1946,20 @@ void SimWindow::cleanupGL()
 
 void SimWindow::renderToFile()
 {
-  ImGuiIO    &io    = ImGui::GetIO();
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mFileRendering && mNewFrame) // || (mInfo.frame == 0 && mInfo.uStep == 0)))
+  if(mFileRendering && mNewFrameOut) // || (mInfo.frame == 0 && mInfo.uStep == 0)))
     {
       Vec2i outSize = Vec2i(mParams.outSize);
       initGL(outSize);
-      
       ImGui_ImplOpenGL3_NewFrame();
+      // ImGui_ImplGlfw_NewFrame();
+      
+      ImGuiIO &io = ImGui::GetIO();
       io.DisplaySize             = Vec2f(mGlTexSize.x, mGlTexSize.y);
-      io.DisplayFramebufferScale = Vec2f(1.0f, 1.0f);
+      io.DisplayFramebufferScale = Vec2f(1.0f, 1.0f); 
+      
       ImGui::NewFrame();
       {
         ImGuiStyle &style = ImGui::GetStyle();
-        
         //// draw (imgui)
         ImGuiWindowFlags wFlags = (ImGuiWindowFlags_NoTitleBar        | ImGuiWindowFlags_NoCollapse        |
                                    ImGuiWindowFlags_NoMove            | ImGuiWindowFlags_NoResize          |
@@ -1859,16 +1986,17 @@ void SimWindow::renderToFile()
         ImGui::End();
         ImGui::PopStyleVar(3); ImGui::PopStyleColor();
       }
-      ImGui::EndFrame();
+      // ImGui::EndFrame();
 
       // render to ImGui frame to separate framebuffer
-      glUseProgram(0); ImGui::Render();
+      glUseProgram(0);
+      ImGui::Render();
       glBindFramebuffer(GL_FRAMEBUFFER, mRenderFB);
       glViewport(0, 0, mGlTexSize.x, mGlTexSize.y);
       glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
+      
       // copy fluid texture data to host
       glBindTexture(GL_TEXTURE_2D, mRenderTex);
       glReadPixels(0, 0, mGlTexSize.x, mGlTexSize.y, (mGlAlpha ? GL_RGBA : GL_RGB), GL_UNSIGNED_BYTE, (GLvoid*)mTexData);
@@ -1878,7 +2006,7 @@ void SimWindow::renderToFile()
       
       // flip y --> copy each row of fluid into opposite row of mTexData2
       int channels = (mGlAlpha ? 4 : 3);
-              
+      
       for(int y = 0; y < mGlTexSize.y; y++)
         {
           std::copy(&mTexData [y*mGlTexSize.x*channels],                   // row y
@@ -1886,13 +2014,14 @@ void SimWindow::renderToFile()
                     &mTexData2[(mGlTexSize.y-1-y)*mGlTexSize.x*channels]); // flipped row
         }
       // write data to file
+      checkSimRenderPath();
       std::stringstream ss; ss << mBaseDir << "/" << mParams.simName << "/"
                                << mParams.simName << "-" << std::setfill('0') << std::setw(5) << mInfo.frame << ".png";
       std::string imagePath = ss.str();
-      std::cout << "WRITING FRAME " << mInfo.frame << " TO " << imagePath << "...\n";
+      std::cout << "Writing Frame " << mInfo.frame << " to " << imagePath << "...\n";
       setPngCompression(mParams.pngCompression);
       writeTexture(imagePath, (const void*)mTexData2, mGlTexSize, mGlAlpha);
-      mNewFrame = false;
+      mNewFrameOut = false;
     }
 }
 

@@ -1,7 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
-
-cmake_policy(SET CMP0072 NEW)   # opengl policy (to get rid of warning)
-set(OpenGL_GL_PREFERENCE GLVND) #
+cmake_minimum_required(VERSION 3.16)
 
 project(graphene VERSION 0.0.4) # project name and version
 configure_file(inc/version/version.hpp.in ../inc/version/version.hpp)
@@ -11,8 +8,15 @@ set(GRPH_ENABLE_CUDA TRUE)                         # set to TRUE to enable CUDA
 set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-11.2/") # set to location of CUDA source
 set(GRPH_CUDA_ARCH        "sm_75")                 # set for specific graphics card
 
-set(CMAKE_CXX_FLAGS_DEBUG_INIT   "-O0 -g -Wall -pg")             # debug
-set(CMAKE_CXX_FLAGS_RELEASE_INIT "-O2 -Wall -ftree-vectorize") # release
+# # verbosity
+# if("${CMAKE_BUILD_TYPE}" MATCHES "DEBUG") # verbose build for debug
+#   set(CMAKE_VERBOSE_MAKEFILE 1)
+# endif()
+
+# c++ compiler flags
+set(CMAKE_CXX_FLAGS_GLOBAL       "-std=c++20") # NOTE: passing C++ standard manually with -std
+set(CMAKE_CXX_FLAGS_DEBUG_INIT   "-O0 -Wall -g -pg")           # debug
+set(CMAKE_CXX_FLAGS_RELEASE_INIT "-O3 -Wall -ftree-vectorize") # release
 
 # #### build internal libs ####
 include_directories(
@@ -24,13 +28,11 @@ include_directories(
 if(GRPH_ENABLE_CUDA) # enable CUDA
   set(CUDACXX "nvcc")
   set(CMAKE_CUDA_COMPILER "${CUDA_TOOLKIT_ROOT_DIR}/bin/nvcc")
-  set(CMAKE_CUDA_FLAGS "-g --expt-relaxed-constexpr") # --extended-lambda") # --device-c")
+  set(CMAKE_CUDA_FLAGS         "--expt-relaxed-constexpr -std=c++17") # NOTE: passing C++ standard manually with -std
+  set(CMAKE_CUDA_FLAGS_DEBUG   "-g")
+  set(CMAKE_CUDA_FLAGS_RELEASE "-Xptxas='-suppress-stack-size-warning'") # suppress warning (due to recursive kernel)
   add_definitions(-DENABLE_CUDA)
   enable_language(CUDA)
-  if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 11)         # CUDA 11
-    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-  endif()
   
   # build cuda lib
   include_directories(
@@ -43,7 +45,6 @@ if(GRPH_ENABLE_CUDA) # enable CUDA
     src/cuda/field.cu
     src/cuda/render.cu
     )
-  set_target_properties(grphcuda PROPERTIES CXX_STANDARD 17)
   set(CUDA_LIBRARIES grphcuda)
 endif()
 
@@ -53,6 +54,8 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS_GLOBAL}")
 set(CMAKE_LIBRARY_LINKER_FLAGS "${CMAKE_LIBRARY_LINKER_FLAG_GLOBAL}")
 include_directories(
   libs/imgui
+  libs/imgui/backends
+  libs/imgui/misc/freetype
   libs/stb
   )
 add_subdirectory(libs)
@@ -99,12 +102,14 @@ message(STATUS "Building graphene...")
 add_executable(${TARGET}
   src/cuda-tools.cpp
   src/image.cpp
+  src/keyManager.cpp
   src/main.cpp
   src/settingForm.cpp
   src/simWindow.cpp
   src/tabMenu.cpp
+  src/units.cpp
   )
-set_target_properties(${TARGET} PROPERTIES CXX_STANDARD 17)
+# set_target_properties(${TARGET} PROPERTIES CXX_STANDARD 20)
 target_compile_options(${TARGET} PRIVATE -Wno-deprecated)
 
 target_link_libraries(${TARGET} PRIVATE

@@ -564,11 +564,6 @@ inline Vector<T, N> operator/(U scalar, const Vector<T, N> &v)
 }
 
 
-
-
-
-
-
 // SCALAR <, > VECTOR (AND)
 template<typename T, typename U, int N>
 inline bool operator> (U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <= v.data[i]) { return false; } } return true; }
@@ -578,13 +573,6 @@ template<typename T, typename U, int N>
 inline bool operator>=(U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <  v.data[i]) { return false; } } return true; }
 template<typename T, typename U, int N>
 inline bool operator<=(U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar >  v.data[i]) { return false; } } return true; }
-
-
-
-
-
-
-
 
 
 // glsl/cuda-like functions

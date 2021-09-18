@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <string>
-#include "nlohmann/json_fwd.hpp" // json forward declarations
+#include <nlohmann/json_fwd.hpp> // json forward declarations
 using json = nlohmann::json;
 #include "vector.hpp"
 
@@ -27,7 +27,7 @@ public:
 
   json toJSON() const;
   bool fromJSON(const json &js);
-    
+  
   void add(SettingBase *setting);
   SettingBase* get(const std::string &name);
   void remove(const std::string &name);

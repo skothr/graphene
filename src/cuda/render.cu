@@ -23,8 +23,8 @@
 template<typename T>
 __global__ void renderFieldEM_k(EMField<T> src, CudaTexture dst, RenderParams<T> rp, FieldParams<T> cp)
 {
-  typedef typename DimType<T,3>::VECTOR_T VT3;
-  typedef typename DimType<T,4>::VECTOR_T VT4;
+  typedef typename DimType<T,3>::VEC_T VT3;
+  typedef typename DimType<T,4>::VEC_T VT4;
   long long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -37,8 +37,9 @@ __global__ void renderFieldEM_k(EMField<T> src, CudaTexture dst, RenderParams<T>
       for(int iz = max(0, min(src.size.z-1, rp.zRange.y)); iz >= rp.zRange.x; iz--)
         {
           int fi = src.idx(fp.x, fp.y, iz);
-          T qLen = (src.Q[fi].x - src.Q[fi].y); T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
-          VT4 col = rp.brightness*rp.opacity*(qLen*rp.Qmult*rp.Qcol +
+          //T qLen = (src.Q[fi].x - src.Q[fi].y);
+          T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
+          VT4 col = rp.brightness*rp.opacity*(//qLen*rp.Qmult*rp.Qcol +
                                               eLen*rp.Emult*rp.Ecol +
                                               bLen*rp.Bmult*rp.Bcol);
 
@@ -65,8 +66,8 @@ __global__ void renderFieldEM_k(EMField<T> src, CudaTexture dst, RenderParams<T>
 template<typename T>
 __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, RenderParams<T> rp, FieldParams<T> cp)
 {
-  typedef typename DimType<T,3>::VECTOR_T VT3;
-  typedef typename DimType<T,4>::VECTOR_T VT4;
+  typedef typename DimType<T,3>::VEC_T VT3;
+  typedef typename DimType<T,4>::VEC_T VT4;
   long long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -108,10 +109,10 @@ __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, Render
 
 template<typename T>
 __global__ void rtRenderFieldEM_k(EMField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FieldParams<T> cp,
-                                  typename DimType<T, 2>::VECTOR_T aspect)
+                                  typename DimType<T, 2>::VEC_T aspect)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,4>::VECTOR_T VT4;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,4>::VEC_T VT4;
   long long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -126,10 +127,10 @@ __global__ void rtRenderFieldEM_k(EMField<T> src, CudaTexture dst, CameraDesc<T>
 }
 template<typename T>
 __global__ void rtRenderFieldMat_k(EMField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FieldParams<T> cp,
-                                   typename DimType<T, 2>::VECTOR_T aspect)
+                                   typename DimType<T, 2>::VEC_T aspect)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,4>::VECTOR_T VT4;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,4>::VEC_T VT4;
   long long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -154,7 +155,8 @@ void renderFieldEM(EMField<T> &src, CudaTexture &dst, const RenderParams<T> &rp,
                 (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- thread texture pixels
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
-      renderFieldEM_k<<<grid, threads>>>(src, dst, rp, cp); cudaDeviceSynchronize(); getLastCudaError("====> ERROR: renderFieldEM_k failed!");
+      renderFieldEM_k<<<grid, threads>>>(src, dst, rp, cp);
+      // cudaDeviceSynchronize(); getLastCudaError("====> ERROR: renderFieldEM_k failed!");
       if(!mapped) { dst.unmap(); }
     }
   else { std::cout << "Skipped EMField render --> " << src.size << " / " << dst.size << " \n"; }
@@ -169,7 +171,8 @@ void renderFieldMat(Field<Material<T>> &src, CudaTexture &dst, const RenderParam
                 (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- thread texture pixels
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
-      renderFieldMat_k<<<grid, threads>>>(src, dst, rp, cp); cudaDeviceSynchronize(); getLastCudaError("====> ERROR: renderFieldMat_k failed!");
+      renderFieldMat_k<<<grid, threads>>>(src, dst, rp, cp);
+      // cudaDeviceSynchronize(); getLastCudaError("====> ERROR: renderFieldMat_k failed!");
       if(!mapped) { dst.unmap(); }
     }
   else { std::cout << "Skipped EMField render --> " << src.size << " / " << dst.size << " \n"; }
@@ -179,7 +182,7 @@ template<typename T>
 void raytraceFieldEM(EMField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FieldParams<T> &cp, 
                      const Vector<T, 2> &aspect)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
+  typedef typename DimType<T,2>::VEC_T VT2;
   if(dst.size.x > 0 && dst.size.y > 0)
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
@@ -188,7 +191,7 @@ void raytraceFieldEM(EMField<T> &src, CudaTexture &dst, const Camera<T> &camera,
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
       rtRenderFieldEM_k<<<grid, threads>>>(src, dst, camera.desc, rp, cp, VT2{aspect.x, aspect.y});
-      cudaDeviceSynchronize(); getLastCudaError("====> ERROR: raytraceFieldEM_k failed!");
+      // cudaDeviceSynchronize(); getLastCudaError("====> ERROR: raytraceFieldEM_k failed!");
       if(!mapped) { dst.unmap(); }
     }
   else { std::cout << "Skipped EMField render (RT) --> " << src.size << " / " << dst.size << " \n"; }
@@ -198,7 +201,7 @@ template<typename T>
 void raytraceFieldMat(EMField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FieldParams<T> &cp,
                       const Vector<T, 2> &aspect)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
+  typedef typename DimType<T,2>::VEC_T VT2;
   if(dst.size.x > 0 && dst.size.y > 0)
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
@@ -207,7 +210,7 @@ void raytraceFieldMat(EMField<T> &src, CudaTexture &dst, const Camera<T> &camera
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
       rtRenderFieldMat_k<<<grid, threads>>>(src, dst, camera.desc, rp, cp, VT2{aspect.x, aspect.y});
-      cudaDeviceSynchronize(); getLastCudaError("====> ERROR: raytraceFieldEM_k failed!");
+      // cudaDeviceSynchronize(); getLastCudaError("====> ERROR: raytraceFieldEM_k failed!");
       if(!mapped) { dst.unmap(); }
     }
   else { std::cout << "Skipped EMField render (RT) --> " << src.size << " / " << dst.size << " \n"; }

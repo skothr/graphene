@@ -16,7 +16,7 @@
 #include "simWindow.hpp"
 #include "image.hpp"
 
-#define ICON_PATH "res/icons/graphene-icon-v4-64.png"
+#define ICON_PATH "res/icons/graphene-icon-v5-64.png"
 
 #define ENABLE_IMGUI_VIEWPORTS 0
 #define ENABLE_IMGUI_DOCKING   0
@@ -40,6 +40,9 @@ GLFWwindow* window    = nullptr;
 GLFWimage  *appIcon   = nullptr;
 SimWindow  *simWindow = nullptr;
 
+ImGuiContext *mainContext    = ImGui::CreateContext(); // main ImGui context  for live window/interaction
+ImGuiContext *offlineContext = ImGui::CreateContext(); // offline context for rendering to separate framebuffer and saving to image files
+
 void cleanup()
 {
   if(initialized)
@@ -50,7 +53,8 @@ void cleanup()
       // imgui cleanup
       ImGui_ImplOpenGL3_Shutdown();
       ImGui_ImplGlfw_Shutdown();
-      ImGui::DestroyContext();
+      ImGui::DestroyContext(mainContext);
+      ImGui::DestroyContext(offlineContext);
 
       if(window)
         {
@@ -169,28 +173,46 @@ int main(int argc, char* argv[])
   
   // set up imgui context
   IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGui::StyleColorsDark(); // dark style
+
   
+  //////// set up offline context (offline context for rendering to separate framebuffer and saving to image files)
+  offlineContext = ImGui::CreateContext();
+  ImGui::SetCurrentContext(offlineContext);
+  
+  ImGui::StyleColorsDark(); // dark style
+  // imgui context config
+  ImGuiIO *io = &ImGui::GetIO();
+  io->IniFilename = nullptr;                                     // disable .ini file
+  
+  // start offline context backend
+  ImGui_ImplOpenGL3_Init(glsl_version);
+  /////////////////////////////////////////////
+
+  
+  //////// set up main context (main ImGui context  for live window/interaction)
+  mainContext = ImGui::CreateContext();
+  ImGui::SetCurrentContext(mainContext);
+  
+  ImGui::StyleColorsDark(); // dark style
   ImGui::PushStyleColor(ImGuiCol_NavHighlight, Vec4f(0,0,0,0)); // no keyboard nav highlighting
   ImGui::GetStyle().TouchExtraPadding = Vec2f(2,2);             // padding for interaction
-  
   // imgui context config
-  ImGuiIO& io = ImGui::GetIO();
-  io.IniFilename = nullptr;                              // disable .ini file
+  io = &ImGui::GetIO();
+  io->IniFilename = nullptr;                              // disable .ini file
 #if ENABLE_IMGUI_VIEWPORTS
-  io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-  io.ConfigViewportsNoTaskBarIcon = true;
+  io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+  io->ConfigViewportsNoTaskBarIcon = true;
 #endif // ENABLE_IMGUI_VIEWPORTS
 #if ENABLE_IMGUI_DOCKING
-  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;      // enable docking
-  io.ConfigDockingWithShift = true;                      // docking when shift is held
+  io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;      // enable docking
+  io->ConfigDockingWithShift = true;                      // docking when shift is held
 #endif // ENABLE_IMGUI_DOCKING
   
-  // start imgui context
+  // start main context backend
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init(glsl_version);
-
+  /////////////////////////////////////////////
+  
   simWindow->init();
   initialized = true;
   
@@ -198,14 +220,18 @@ int main(int argc, char* argv[])
   Vec2i frameSize(WINDOW_W, WINDOW_H); // size of current frame
   while(!glfwWindowShouldClose(window))
     {
-      // handle events
+      // handle window events
       glfwPollEvents();
       if(simWindow->closing()) { glfwSetWindowShouldClose(window, GLFW_TRUE); }
+
+      // re-upload font texture to gpu if fonts have changed
+      if(simWindow->preNewFrame())
+        { std::cout << "====> UPDATING FONT ATLAS...\n"; ImGui_ImplOpenGL3_DestroyDeviceObjects(); }
       
-      
-      // imgui frame
+      // imgui implementation frame (main context)
       ImGui_ImplOpenGL3_NewFrame();
       ImGui_ImplGlfw_NewFrame();
+      // imgui frame (main context)
       ImGui::NewFrame();
       {
         glfwGetFramebufferSize(window, &frameSize.x, &frameSize.y); // get frame size
@@ -214,21 +240,31 @@ int main(int argc, char* argv[])
       ImGui::EndFrame();
 
       //// RENDERING ////
-      glUseProgram(0);
       ImGui::Render();
       // Update and Render additional Platform Windows (if viewports enabled)
-      if(io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) { ImGui::UpdatePlatformWindows(); ImGui::RenderPlatformWindowsDefault(); }
+      if(ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+          GLFWwindow* contextBackup = glfwGetCurrentContext();
+          ImGui::UpdatePlatformWindows();
+          ImGui::RenderPlatformWindowsDefault();
+          glfwMakeContextCurrent(contextBackup);
+        }
       // render to screen
       glViewport(0, 0, frameSize.x, frameSize.y);
       glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT);
+      glUseProgram(0);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-      
-      // render simulation to file (if enabled)
-      simWindow->renderToFile();
+
+      // render simulation to file if actively rendering (offline context)
+      if(simWindow->fileRendering())
+        {
+          ImGui::SetCurrentContext(offlineContext);
+          simWindow->renderToFile();
+          ImGui::SetCurrentContext(mainContext);
+        }
       // step simulation
       simWindow->update();
-
       glfwSwapBuffers(window);
     }
 

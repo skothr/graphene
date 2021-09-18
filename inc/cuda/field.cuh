@@ -21,11 +21,12 @@ typedef void* ImTextureID;
 template<typename T>
 struct FieldParams
 {
-  typedef typename DimType<T, 3>::VECTOR_T VT3;
+  typedef typename DimType<T, 3>::VEC_T VT3;
   Units<T>  u;          // units
-  T t = 0.0f;           // current simulation time
-  VT3 fp;               // field position
+  T     t      = 0.0f;  // current simulation time
+  T    decay   = 0.92f; // source decay
   bool reflect = false; // reflective boundaries
+  VT3 fp;               // field position
 };
 
 
@@ -45,7 +46,6 @@ public:
   __host__ __device__ unsigned long long idx(const Vec3f &p) const { return idx(p.x, p.y, p.z); }
   
   virtual bool allocated() const { return (gCudaInitialized && size.x > 0 && size.y > 0 && size.z > 0 && dataSize > 0); }
-  virtual std::string hDataStr(const Vec3i &pos) const { return ""; }
 
   // pure virtual functions
   virtual bool create(int3 sz) = 0;
@@ -72,10 +72,9 @@ public:
   virtual void pullData() override;
   virtual void pushData() override;
   virtual void clear()    override { if(allocated()) { cudaMemset(dData, 0, dataSize); memset(hData, 0, dataSize); } }
-  void copyTo(Field<T> &other);
+  void copyTo(Field<T> &other) const;
   
   virtual bool allocated() const override;
-  virtual std::string hDataStr(const Vec3i &pos) const override;
 };
 
 template<typename T>
@@ -90,7 +89,7 @@ bool Field<T>::create(int3 sz)
       unsigned long long tSize  = sizeof(T);
       unsigned long long dSize  = tSize*nCells;
       if(nCells <= 0) { std::cout << "====> ERROR: Could not create Field with size " << sz << "\n"; return false; }
-      else            { std::cout << "Creating Hyper-field ("  << sz << ")... --> data: " << nCells << "*" << tSize << " ==> " << dSize << "\n"; }
+      else            { std::cout << "Creating Field ("  << sz << ")... --> data: " << nCells << "*" << tSize << " ==> " << dSize << "\n"; }
 
       // init device data
       int err = cudaMalloc((void**)&dData, dSize);
@@ -141,21 +140,13 @@ void Field<T>::pushData()
   else            { std::cout << "====> WARNING(Field::pushData()): Field not allocated!\n"; }
 }
 template<typename T>
-void Field<T>::copyTo(Field<T> &other)
+void Field<T>::copyTo(Field<T> &other) const
 {
   if(allocated() && other.allocated())
     { cudaMemcpy(other.dData, dData, dataSize, cudaMemcpyDeviceToDevice); getLastCudaError("Field::copyTo()\n"); }
   else
     { std::cout << "====> WARNING(Field::copyTo()): Field not allocated!\n"; }
 }
-template<typename T>
-std::string Field<T>::hDataStr(const Vec3i &p) const { std::stringstream ss; ss << hData[idx(p)]; return ss.str(); }
-
-
-
-
-
-
 
 
 
@@ -165,28 +156,24 @@ template<typename T>
 class EMField : public FieldBase
 {
 public:
-  using VT2 = typename DimType<T, 2>::VECTOR_T;
-  using VT3 = typename DimType<T, 3>::VECTOR_T;
-  using ST = T; // scalar type, provided
+  using VT2 = typename DimType<T, 2>::VEC_T;
+  using VT3 = typename DimType<T, 3>::VEC_T;
   
-  Field<VT2> Q;   // Q   = {q+, q-} (NOTE: Q.y represents density of negative particles, so sign should be positive)
-  Field<VT3> QPV; // velocity of positive charge <-- **** idea: +/- charge velocity just inverted, these should be velocity over +/- cell borders ****
-  Field<VT3> QNV; // velocity of negative charge
   Field<VT3> E;   // electric field
   Field<VT3> B;   // magnetic field
   Field<Material<T>> mat; // material field
   
-  const std::vector<FieldBase*> FIELDS {{&Q, &QPV, &QNV, &E, &B, &mat}}; //, &AB}};
+  const std::vector<FieldBase*> FIELDS {{// &Q, &QPV, &QNV,
+                                         &E, &B, &mat}};
   
   virtual bool create(int3 sz) override;
   virtual void destroy() override;
   virtual void pullData() override;
   virtual void pushData() override;
   virtual void clear()    override;
-  void copyTo(EMField<T> &other);
+  void copyTo(EMField<T> &other) const;
   
   virtual bool allocated() const override;
-  virtual std::string hDataStr(const Vec3i &pos) const override;  
 };
 
 template<typename T>
@@ -200,15 +187,14 @@ bool EMField<T>::create(int3 sz)
     }
   else { return false; }
 }
-template<typename T> void EMField<T>::destroy()  { for(auto f : FIELDS) { f->destroy(); } this->size = int3{0, 0, 0};  }
-template<typename T> void EMField<T>::pullData() { for(auto f : FIELDS) { f->pullData(); } }
-template<typename T> void EMField<T>::pushData() { for(auto f : FIELDS) { f->pushData(); } }
+template<typename T> void EMField<T>::destroy()         { for(auto f : FIELDS) { f->destroy();  } this->size = int3{0, 0, 0};  }
+template<typename T> void EMField<T>::pullData()        { for(auto f : FIELDS) { f->pullData(); } }
+template<typename T> void EMField<T>::pushData()        { for(auto f : FIELDS) { f->pushData(); } }
 template<typename T> bool EMField<T>::allocated() const { for(auto f : FIELDS) { if(!f->allocated()) { return false; } } return true; }
-template<typename T> std::string EMField<T>::hDataStr(const Vec3i &p) const { return Q.hDataStr(p); }
-template<typename T> void EMField<T>::clear()    { for(auto f : FIELDS) { f->clear(); } }
+template<typename T> void EMField<T>::clear()           { for(auto f : FIELDS) { f->clear(); } }
 
 template<typename T>
-void EMField<T>::copyTo(EMField<T> &other)
+void EMField<T>::copyTo(EMField<T> &other) const
 {
   if(allocated())
     {
@@ -225,6 +211,7 @@ void EMField<T>::copyTo(EMField<T> &other)
                 {
                   Field<Material<T>> *fM = reinterpret_cast<Field<Material<T>>*>(FIELDS[i]);
                   if(fM) { fM->copyTo(*reinterpret_cast<Field<Material<T>>*>(other.FIELDS[i]));} 
+                  else { std::cout << "====> WARNING(EMField::copyTo()): Failed to cast field type! (VT2/VT3/Material)\n"; }
                 }
             }
         }
@@ -235,7 +222,7 @@ void EMField<T>::copyTo(EMField<T> &other)
 
 
 //// CUDA TEXTURE ////
-// --> contains texture data for a field
+// --> contains texture data (special case of 2D field)
 struct CudaTexture : public Field<float4>
 {
   cudaGraphicsResource *mPboResource = nullptr;
@@ -278,7 +265,7 @@ inline void CudaTexture::copyTo(CudaTexture &other)
     }
   else { std::cout << "====> WARNING(CudaTexture::copyTo()): Field not allocated!\n"; }
 }
-  
+
 inline bool CudaTexture::create(int3 sz)
 {
   initCudaDevice();
@@ -467,9 +454,10 @@ inline void CudaTexture::unmap()
 template<typename T> class CudaExpression; // forward declaration
 
 // in field.cu
-template<typename T> void fieldFillValue   (Field<T> &dst, const T & val);
-template<typename T> void fieldFill        (Field<T> &dst, CudaExpression<T> *dExpr);
-template<typename T> void fieldFillChannel (Field<T> &dst, CudaExpression<typename Dims<T>::BASE> *dExpr, int channel);
+template<typename T> void fillFieldMaterial(Field<Material<T>> &dst, CudaExpression<T> *dExprEp, CudaExpression<T> *dExprMu, CudaExpression<T> *dExprSig);
+template<typename T> void fillFieldValue   (Field<T> &dst, const T & val);
+template<typename T> void fillField        (Field<T> &dst, CudaExpression<T> *dExpr);
+template<typename T> void fillFieldChannel (Field<T> &dst, CudaExpression<typename Dim<T>::BASE_T> *dExpr, int channel);
 // physics update
 template<typename T> void updateCharge     (EMField<T> &src, EMField<T> &dst, FieldParams<T> &cp);
 template<typename T> void updateElectric   (EMField<T> &src, EMField<T> &dst, FieldParams<T> &cp);

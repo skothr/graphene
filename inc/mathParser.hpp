@@ -11,6 +11,8 @@
 
 #include "vector-operators.h"
 
+#define M_PHI ((sqrt(5.0)+1.0)/2.0)
+
 enum MathFunction
   {
    MATHFUNC_BAD  = -1,
@@ -25,11 +27,10 @@ enum MathFunction
    MATHFUNC_SQRT,
    MATHFUNC_POS, // max(x, 0)
    MATHFUNC_NEG, // min(x, 0)
-
    // vector
    MATHFUNC_LEN,
    MATHFUNC_NORM,
-   
+   //
    MATHFUNC_COUNT
   };
 
@@ -37,9 +38,10 @@ enum MathConstant
   {
    MATHCONST_BAD  = -1,
    MATHCONST_NONE =  0,
-
+   //
    MATHCONST_PI   =  1,
-   
+   MATHCONST_PHI,
+   //
    MATHCONST_COUNT
   };
 
@@ -107,8 +109,9 @@ __host__ __device__ inline T getConst(MathConstant c)
 {
   switch(c)                
     {
-    case MATHCONST_PI: return makeV<T>((typename Dims<T>::BASE)(M_PI));
-    default:           return T();
+    case MATHCONST_PI:  return makeV<T>((typename Dim<T>::BASE_T)(M_PI));
+    case MATHCONST_PHI: return makeV<T>((typename Dim<T>::BASE_T)(M_PHI));
+    default:            return T();
     }
 }
 
@@ -141,6 +144,7 @@ __host__ inline std::string getName(MathConstant c)
     {
     case MATHCONST_NONE: return "<NONE>";
     case MATHCONST_PI:   return "pi";
+    case MATHCONST_PHI:  return "phi";
     default:             return "<?>";
     }
 }
@@ -510,9 +514,9 @@ CudaExpression<T>* toCudaExpression(Expression<T> *expr, const std::vector<std::
       T result = T();
       if(std::isdigit(term->valStr[0]) || term->valStr[0] == '-') // check for explicit value (scalar)
         {
-          typename Dims<T>::BASE scalar = 0;
+          typename Dim<T>::BASE_T scalar = 0;
           std::stringstream ss(term->valStr); ss >> scalar;
-          result = makeV<T>((typename Dims<T>::BASE)1)*scalar;
+          result = makeV<T>((typename Dim<T>::BASE_T)1)*scalar;
         }
       else if(term->valStr[0] == '<')      // check for explicit value (scalar)
         { std::stringstream ss(term->valStr); ss >> result; }

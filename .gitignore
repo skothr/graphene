@@ -2,6 +2,7 @@ graphene
 /build/
 inc/version/version.hpp
 
+/.settings.conf
 /images0/
 /videos/
 /rendered/

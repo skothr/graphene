@@ -8,20 +8,40 @@
 #include <sstream>
 #include <iostream>
 #include "glfwKeys.hpp"
+#include "tools.hpp"
 
-// #include <GL/glew.h>
-// #include <GLFW/glfw3.h>
+// for categorizing key bindings
+struct KeyBindingGroup
+{
+  std::string name = "";             // group name
+  std::vector<std::string> bindings; // binding names
+  std::vector<int>         ids;      // binding indices
+};
 
+// binding callback (mult will be 1 unless KEYBINDING_MOD_MULT is set and a separate 
+typedef std::function<void(float mult)> KeyAction;
 
-typedef std::function<void()> KeyAction;
-
+// single key press info
 struct KeyPress
 {
-  int mods     = 0;
-  int key      = GLFW_KEY_UNKNOWN;
-  KeyPress(int m, int k) : mods(m), key(k) { }
+  int  mods    = 0;
+  int  key     = GLFW_KEY_UNKNOWN;
+  bool repeat  = false;
+  KeyPress(int m, int k, bool r=false) : mods(m), key(k), repeat(r) { }
 };
-  
+
+enum KeyBindingFlags
+  {
+   KEYBINDING_NONE     = 0x00, // (no flags set)
+   KEYBINDING_GLOBAL   = 0x01, // binding triggered even when interacting with UI (e.g. editing textbox -- assumes key pattern isn't relevant)
+   KEYBINDING_REPEAT   = 0x02, // binding triggered on key repeat actions (press/hold non-mod keys)
+   KEYBINDING_MOD_MULT = 0x04, // additional mod keys act as multipliers for the binding action (generally: SHIFT --> x0.1 | CTRL --> x2 | ALT --> x10)
+  };
+ENUM_FLAG_OPERATORS(KeyBindingFlags)
+
+
+
+// defines a sequence of keys as a string, and a triggered callback 
 class KeyBinding
 {
 private:
@@ -52,30 +72,51 @@ private:
     
 public:
   bool pressed = false; // set to true if activated
+  
+  std::vector<KeyPress> sequence;
   std::string name;
   std::string defaultBinding;
   std::string description;
-  KeyAction action;
-  std::vector<KeyPress> sequence;
-    
-  KeyBinding() { }
-  KeyBinding(const std::string &name_, const std::string &defaultBinding_, const std::string &desc_, const KeyAction &action_)
-    : name(name_), defaultBinding(defaultBinding_), action(action_), description(desc_)
-  { fromString(defaultBinding); }
-  KeyBinding(const KeyBinding &other)
-    : name(other.name), defaultBinding(other.defaultBinding), action(other.action), description(other.description), sequence(other.sequence)
-  { }
+  KeyAction   action = nullptr;
+  KeyBindingFlags flags = KEYBINDING_NONE;
 
+  // used to scale action if KEYBIDING_MOD_MULT is set
+  float shiftMult =  0.1f;
+  float ctrlMult  =  2.0f;
+  float altMult   = 10.0f;
+  
+  KeyBinding() { }
+  
+  // NOTE: shift/ctrl/alt multipliers only relevant if KEYBIDING_MOD_MULT is set
+  explicit KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, std::function<void(float mult)> action_,
+                      KeyBindingFlags flags_=KEYBINDING_NONE, float shift=0.1f, float ctrl=2.0f, float alt=10.0f)
+    : name(name_), defaultBinding(default_), description(desc_), action(action_), flags(flags_), shiftMult(shift), ctrlMult(ctrl), altMult(alt)
+  { fromString(default_); }
+
+  // wraps void() action callback with unused argument (for compatibility, KEYBINDING_MOD_MULT)
+  //    NOTE: shift/ctrl/alt multipliers only relevant if KEYBIDING_MOD_MULT is set
+  explicit KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, std::function<void()> action_,
+                      KeyBindingFlags flags_=KEYBINDING_NONE, float shift=0.1f, float ctrl=2.0f, float alt=10.0f)
+    : KeyBinding(name_, default_, desc_, [action_](float mult){ action_(); }, flags_, shift, ctrl, alt) { }
+
+  // copying
+  KeyBinding(const KeyBinding &other)
+    : name(other.name), defaultBinding(other.defaultBinding), description(other.description), action(other.action), sequence(other.sequence),
+      flags(other.flags), shiftMult(other.shiftMult), ctrlMult(other.ctrlMult), altMult(other.altMult) { }
   KeyBinding& operator=(const KeyBinding &other)
   {
+    flags          = other.flags;
+    sequence       = other.sequence;
     name           = other.name;
     defaultBinding = other.defaultBinding;
-    action         = other.action;
     description    = other.description;
-    sequence       = other.sequence;
+    action         = other.action;
+    shiftMult = other.shiftMult;
+    ctrlMult = other.ctrlMult;
+    altMult = other.altMult;
     return *this;
   }
-
+  // comparison
   bool operator==(const KeyBinding &other) const
   {
     if(other.sequence.size() != sequence.size()) { return false; }
@@ -88,29 +129,53 @@ public:
   }
   bool operator!=(const KeyBinding &other) const
   { return !(other == *this); }
-
-    
-  bool check(const std::vector<KeyPress> &seq)
+  
+  bool check(const std::vector<KeyPress> &seq, bool verbose=false)
   {
     if(seq.size() != sequence.size()) { return false; }
     for(auto i = 0; i < seq.size(); i++)
       {
-        if(seq[i].key != sequence[i].key || seq[i].mods != sequence[i].mods)
+        int modOverlap = (seq[i].mods & sequence[i].mods);
+        if(seq[i].key != sequence[i].key || ((flags & KEYBINDING_MOD_MULT) ?
+                                             (sequence[i].mods != modOverlap) :
+                                             (seq[i].mods != sequence[i].mods)) ||
+           (seq.back().repeat && !(flags & KEYBINDING_REPEAT)))
           { return false; }
       }
     pressed = true;
-    return true;
+    return pressed;
   }
 
-  void update()
+  bool update(const std::vector<KeyPress> &seq, bool verbose=false)
   {
-    if(pressed && action) { action(); }
+    bool activated = false;
+    if(pressed && action)
+      {
+        float mult = 1.0f;
+        if((flags & KEYBINDING_MOD_MULT) && seq.size() > 0 && sequence.size() > 0)
+          {
+            int m = seq.back().mods & ~sequence.back().mods; // exclude modifiers defined as part of base sequence
+            mult *= (((m & GLFW_MOD_SHIFT)   ? shiftMult : 1.0f) *
+                     ((m & GLFW_MOD_CONTROL) ? ctrlMult : 1.0f) *
+                     ((m & GLFW_MOD_ALT)     ? altMult : 1.0f));
+          }
+        if(verbose) { std::cout << "\n==== " << toString() << " --> "
+                                << name << ((flags & KEYBINDING_MOD_MULT) ? (" (x" + std::to_string(mult) + ")") : "")
+                                << " | " << description << "\n"; }
+        action(mult); activated = true;
+      }
     pressed = false;
+    return activated;
   }
 
-  void reset()
-  { fromString(defaultBinding); }
-    
+  void reset() { fromString(defaultBinding); }
+
+
+  void setModMults(float shift=0.1f, float ctrl=2.0f, float alt=10.0f) { shiftMult = shift; ctrlMult = ctrl; altMult = alt; }
+  void setShiftMult(float shift) { shiftMult = shift; }
+  void setCtrlMult(float ctrl) { ctrlMult = ctrl; }
+  void setAltMult(float alt) { altMult = alt; }
+
   void fromString(const std::string &keyStr)
   {
     // convert string to uppercase (values match GLFW keys)
@@ -130,15 +195,15 @@ public:
         if(mod != 0)
           { // token is a modifier key
             if(sequence.size() > 0 && sequence.back().key == GLFW_KEY_UNKNOWN) { sequence.back().mods |= mod; } // combine
-            else { sequence.push_back(KeyPress(mod, GLFW_KEY_UNKNOWN)); }                // new keypress
+            else { sequence.push_back(KeyPress(mod, GLFW_KEY_UNKNOWN)); } // new keypress
           }
         else
           {
             int key = getKey(k);
             if(key != GLFW_KEY_UNKNOWN)
               {
-                if(sequence.size() > 0 && sequence.back().key == GLFW_KEY_UNKNOWN) { sequence.back().key = key; }  // combine
-                else { sequence.push_back(KeyPress(0, key)); }                            // new keypress
+                if(sequence.size() > 0 && sequence.back().key == GLFW_KEY_UNKNOWN) { sequence.back().key = key; } // combine
+                else { sequence.push_back(KeyPress(0, key)); } // new keypress
               }
           }
       }
@@ -160,5 +225,6 @@ public:
     return keyStr;
   }
 };
+
 
 #endif // KEY_BINDING_HPP

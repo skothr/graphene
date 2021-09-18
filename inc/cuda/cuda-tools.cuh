@@ -90,25 +90,12 @@ __device__ T tex3DD(T *tex, float x, float y, float z, int w, int h, int d)
 
 
 
-// //#include "cudaField.hpp"
-
 // // maximization reduction
-
 // // template<typename T, unsigned int blockSize> __global__ void fieldMax_k(CudaField<T> fieldIn, CudaField<T> fieldOut, unsigned int n);
 // class CudaFieldBase;
 // template<typename T> class CudaField;
 // template<typename T> float fieldMax(CudaFieldBase *field, CudaFieldBase *fieldOut, CudaField<float> *dst);
 // template<typename T> float fieldNorm(CudaFieldBase *field, CudaFieldBase *fieldOut, CudaField<float> *dst);
 
-
-// void combineChannels(CudaFieldBase *fieldX, CudaFieldBase *dst);
-// void combineChannels(CudaFieldBase *fieldX, CudaFieldBase *fieldY, CudaFieldBase *dst);
-// void combineChannels(CudaFieldBase *fieldX, CudaFieldBase *fieldY, CudaFieldBase *fieldZ, CudaFieldBase *dst);
-// void combineChannels(CudaFieldBase *fieldX, CudaFieldBase *fieldY, CudaFieldBase *fieldZ, CudaFieldBase *fieldW, CudaFieldBase *dst);
-
-// void splitChannels(CudaFieldBase *field, CudaFieldBase *dstX);
-// void splitChannels(CudaFieldBase *field, CudaFieldBase *dstX, CudaFieldBase *dstY);
-// void splitChannels(CudaFieldBase *field, CudaFieldBase *dstX, CudaFieldBase *dstY, CudaFieldBase *dstZ);
-// void splitChannels(CudaFieldBase *field, CudaFieldBase *dstX, CudaFieldBase *dstY, CudaFieldBase *dstZ, CudaFieldBase *dstW);
 
 #endif // CUDA_TOOLS_CUH

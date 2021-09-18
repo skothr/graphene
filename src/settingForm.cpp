@@ -1,12 +1,12 @@
 #include "settingForm.hpp"
 
+#include <imgui.h>
 #include <algorithm>
-#include "imgui.h"
-#include "glfwKeys.hpp"
-#include "nlohmann/json.hpp" // json forward declarations
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
-#include "setting.hpp"
 
+#include "setting.hpp"
+#include "glfwKeys.hpp"
 
 
 SettingForm::~SettingForm()
@@ -42,7 +42,6 @@ void SettingForm::add(SettingBase *setting)
 {
   if(setting)
     {
-      if(setting->drawCustom) { std::cout << "SETTING DRAW CUSTOM!\n"; }
       setting->setLabelColWidth(mLabelColW); setting->setInputColWidth(mInputColW);
       mSettings.push_back(setting);
     }

@@ -18,14 +18,15 @@
 template<typename T>
 struct RenderParams
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,3>::VECTOR_T VT3;
-  typedef typename DimType<T,4>::VECTOR_T VT4;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,3>::VEC_T VT3;
+  typedef typename DimType<T,4>::VEC_T VT4;
   // base colors for field components
-  VT4 Qcol  = VT4{1.0, 0.0, 0.0, 1.0}; // R
+  //VT4 Qcol  = VT4{1.0, 0.0, 0.0, 1.0}; // R
   VT4 Ecol  = VT4{0.0, 1.0, 0.0, 1.0}; // G
   VT4 Bcol  = VT4{0.0, 0.0, 1.0, 1.0}; // B
-  T  Qmult  = 0.2; T Emult   = 0.2; T Bmult   = 0.2; // additional multipliers
+  //T  Qmult  = 0.2;
+  T Emult   = 0.2; T Bmult   = 0.2; // additional multipliers
   // base colors for materials
   VT4 epCol   = VT4{1.0, 0.0, 0.0, 1.0}; // R
   VT4 muCol   = VT4{0.0, 1.0, 0.0, 1.0}; // G

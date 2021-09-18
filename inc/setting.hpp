@@ -5,18 +5,18 @@
 #include <sstream>
 #include <iostream>
 #include <iomanip>
-#include "imgui.h"
-#include "glfwKeys.hpp"
+#include <imgui.h>
+
 #include "vector.hpp"
 #include "imtools.hpp"
+#include "glfwKeys.hpp"
 
-// TODO: avoid including big file in header
-#include "nlohmann/json.hpp" // #include "nlohmann/json_fwd.hpp" // json forward declarations
+// full json headers (NOTE: don't include settings.hpp in header files unnecessarily)
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
+
 #define JSON_SPACES 4
-
 #define DEFAULT_FORMAT "%.6f"
-
 
 typedef std::function<void(void)> SettingUpdateCB;
 typedef std::function<bool(void)> SettingEnabledCB;
@@ -50,7 +50,7 @@ public:
   virtual bool isGroup() const { return false; }
   std::string getName() const  { return mName; }
   std::string getId() const    { return mId; }
-    
+  
   // JSON
   virtual json toJSON() const           { return json::object(); }
   virtual bool fromJSON(const json &js) { return true; }
@@ -861,7 +861,7 @@ inline SettingGroup* makeSettingGroup(const std::string &name, const std::string
 {
   if(!contentData) { return nullptr; }
   std::vector<SettingBase*> contents;
-  for(int i; i < contentData->size(); i++)
+  for(int i = 0; i < contentData->size(); i++)
     {
       std::string index = std::to_string(i);
       contents.push_back(new Setting<T>(name+index, id+index, &contentData->at(i)));
@@ -874,7 +874,7 @@ inline SettingGroup* makeSettingGroup(const std::string &name, const std::string
 {
   if(!contentData) { return nullptr; }
   std::vector<SettingBase*> contents;
-  for(int i; i < N; i++)
+  for(int i = 0; i < N; i++)
     {
       std::string index = std::to_string(i);
       contents.push_back(new Setting<T>(name+index, id+index, &contentData->at(i)));

@@ -13,7 +13,7 @@
 // ray type
 template<typename T> struct Ray
 {
-  typedef typename DimType<T,3>::VECTOR_T VT3;
+  typedef typename DimType<T,3>::VEC_T VT3;
   VT3 pos; VT3 dir;
 };
 
@@ -21,8 +21,8 @@ template<typename T> struct Ray
 template<typename T>
 struct CameraDesc
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,3>::VECTOR_T VT3;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,3>::VEC_T VT3;
 
   VT3 pos = VT3{0.0, 0.0, 0.0}; // world position
   
@@ -52,8 +52,8 @@ struct CameraDesc
 template<typename T>
 struct Camera
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,3>::VECTOR_T VT3;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,3>::VEC_T VT3;
 
   VT3 upBasis = VT3{(T)0, (T)1, (T)0};
   union
@@ -146,8 +146,8 @@ struct Camera
 //// CUDA helpers ////
 
 template<typename T>
-__host__  __device__ inline T planeIntersect(const typename DimType<T,3>::VECTOR_T &p,
-                                             const typename DimType<T,3>::VECTOR_T &n, const Ray<T> &ray) 
+__host__  __device__ inline T planeIntersect(const typename DimType<T,3>::VEC_T &p,
+                                             const typename DimType<T,3>::VEC_T &n, const Ray<T> &ray) 
 {
   T denom = dot(n, ray.dir);
   return (abs(denom) > TOL ? dot((p - ray.pos), n) / denom : (T)-1);
@@ -161,11 +161,11 @@ __host__  __device__ inline T planeIntersect(const typename DimType<T,3>::VECTOR
 //  - return value < 0 means ray missed, value == 0 means ray started inside cube
 // returns {tmin, tmax}
 template<typename T>
-__device__ inline typename DimType<T,2>::VECTOR_T cubeIntersect(const typename DimType<T,3>::VECTOR_T &pos,
-                                                                const typename DimType<T,3>::VECTOR_T &size, const Ray<T> &ray)
+__device__ inline typename DimType<T,2>::VEC_T cubeIntersect(const typename DimType<T,3>::VEC_T &pos,
+                                                                const typename DimType<T,3>::VEC_T &size, const Ray<T> &ray)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,3>::VECTOR_T VT3;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,3>::VEC_T VT3;
   T tnx = (pos.x - ray.pos.x)          / ray.dir.x;
   T tpx = (pos.x - ray.pos.x + size.x) / ray.dir.x;
   T tny = (pos.y - ray.pos.y)          / ray.dir.y;
@@ -182,8 +182,8 @@ __device__ inline typename DimType<T,2>::VECTOR_T cubeIntersect(const typename D
 template<typename T>
 __host__ inline Vector<T,2> cubeIntersectHost(const Vector<T,3> &pos, const Vector<T,3> &size, const Ray<T> &ray)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,3>::VECTOR_T VT3;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,3>::VEC_T VT3;
   T tnx = (pos.x - ray.pos.x)          / ray.dir.x;
   T tpx = (pos.x - ray.pos.x + size.x) / ray.dir.x;
   T tny = (pos.y - ray.pos.y)          / ray.dir.y;

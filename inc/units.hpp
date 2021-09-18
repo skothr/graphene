@@ -4,6 +4,8 @@
 #include <imgui.h>
 #include "imtools.hpp"
 #include "physics.h"
+#include "material.h"
+#include "setting.hpp"
 #include "settingForm.hpp"
 
 // ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω
@@ -16,35 +18,50 @@ struct Units
   // discretization
   T dt = 0.25; // TIME   (field update timestep)
   T dL = 1.0;  // LENGTH (field cell size)
-  // NOTE: dL/dt > 2 usually explodes *
+  // NOTE: dL/dt > ~2 usually explodes
   
   // EM
-  T e  = 1.0;  // CHARGE (elementary charge)
+  T e  = 1.0;       // elementary charge
   T a  = 1.0/137.0; // fine structure constant
-  T e0 = 1.0;  // electric constant / permittivity of free space    (E)
-  T u0 = 1.0;  // magnetic constant / permeability of free space    (B)
-  T s0 = 0.0;  // conductivity of free space (may just be abstract) (Q?)
+  T e0 = 1.0;       // electric constant / permittivity of free space    (E)
+  T u0 = 1.0;       // magnetic constant / permeability of free space    (B)
+  T s0 = 0.0;       // conductivity of free space (may just be abstract) (Q?)
 
   __host__ __device__ Material<T> vacuum() const { return Material<T>(e0, u0, s0, true); }
 
-  // derived
-  __host__ __device__ T c() const { return 1/(T)sqrt(e0*u0); }
-  __host__ __device__ T h() const { return u0*e*e*c() / (2.0*a); }
+  // derive
+  __host__ __device__ T c() const { return 1/(T)sqrt(e0*u0); }     // speed of light in a vacuum
+  __host__ __device__ T h() const { return u0*e*e*c() / (2.0*a); } // Planck's constant
 };
 
 template<typename T>
 struct UnitsInterface
 {
-  Units<T> *units = nullptr;
+  Units<T> *units  = nullptr;
   ImFont *superFont = nullptr;
+  
+  SettingForm *mForm = nullptr;
+  json toJSON() const           { return (mForm ? mForm->toJSON() : json::object()); }
+  bool fromJSON(const json &js) { return (mForm ? mForm->fromJSON(js) : false); }
+  
+  UnitsInterface(Units<T> *u=nullptr, ImFont *sfont=nullptr)
+    : units(u), superFont(sfont)
+  {
+    mForm = new SettingForm();
+    mForm->add(new Setting<T>("dt", "dt", &units->dt));
+    mForm->add(new Setting<T>("dL", "dL", &units->dL));
+    mForm->add(new Setting<T>("e",  "e",  &units->e ));
+    mForm->add(new Setting<T>("α",  "a",  &units->a ));
+    mForm->add(new Setting<T>("ε₀", "e0", &units->e0));
+    mForm->add(new Setting<T>("μ₀", "u0", &units->u0));
+    mForm->add(new Setting<T>("σ₀", "s0", &units->s0));
+  }
 
-  UnitsInterface(Units<T> *u=nullptr, ImFont *sfont=nullptr) : units(u), superFont(sfont) { }
-
+  ~UnitsInterface() { if(mForm) { delete mForm; mForm = nullptr; } }
+  
   void drawUnit(const std::string &name, T *ptr, T step0, T step1, const std::string &format, const std::string &desc);
   void draw();
 };
-
-
 
 template<> inline void UnitsInterface<float>::drawUnit(const std::string &name, float *ptr, float step0, float step1,
                                                        const std::string &format, const std::string &desc)

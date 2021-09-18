@@ -6,34 +6,43 @@
 #include <GLFW/glfw3.h>
 #include <map>
 #include <deque>
+#include <misc/freetype/imgui_freetype_test.h>
 
 #include "vector.hpp"
 #include "rect.hpp"
-#include "field.hpp"
+#include "display.hpp"
+#include "screenView.hpp"
+
+#include "keyBinding.hpp"
 #include "mathParser.hpp"
+#include "field.hpp"
 #include "units.hpp"
 #include "physics.h"
 #include "raytrace.h"
 #include "render.cuh"
-#include "display.hpp"
 #include "cuda-vbo.h"
+
+#define SETTINGS_SAVE_FILE "./.settings.conf"
+#define JSON_SPACES 4
 
 #define FPS_UPDATE_INTERVAL 0.1 // FPS update interval (seconds)
 #define CLOCK_T std::chrono::steady_clock
 #define RENDER_BASE_PATH "./rendered"
 
 #define CFT float // field base type (float/double (/int?))
-#define CFV2 typename DimType<CFT, 2>::VECTOR_T
-#define CFV3 typename DimType<CFT, 3>::VECTOR_T
-#define CFV4 typename DimType<CFT, 4>::VECTOR_T
-#define STATE_BUFFER_SIZE 1
+#define CFV2 typename DimType<CFT, 2>::VEC_T
+#define CFV3 typename DimType<CFT, 3>::VEC_T
+#define CFV4 typename DimType<CFT, 4>::VEC_T
+#define STATE_BUFFER_SIZE  2
+#define DESTROY_LAST_STATE false //(STATE_BUFFER_SIZE <= 1)
 
 // font settings
-#define SMALL_FONT_HEIGHT 13.0f
 #define MAIN_FONT_HEIGHT  14.0f
+#define SMALL_FONT_HEIGHT 13.0f
 #define TITLE_FONT_HEIGHT 19.0f
 #define SUPER_FONT_HEIGHT 10.5f
-#define FONT_OVERSAMPLE   1
+#define TINY_FONT_HEIGHT  9.0f
+#define FONT_OVERSAMPLE   4
 #define FONT_PATH "./res/fonts/"
 #define FONT_NAME "UbuntuMono"
 #define FONT_PATH_REGULAR     (FONT_PATH FONT_NAME "-R.ttf" )
@@ -54,7 +63,7 @@
 // overlay colors
 #define X_COLOR Vec4f(0.0f, 1.0f, 0.0f, 0.5f)
 #define Y_COLOR Vec4f(1.0f, 0.0f, 0.0f, 0.5f)
-#define Z_COLOR Vec4f(0.1f, 0.1f, 1.0f, 0.8f) // (bumped up -- hard to see over dark background)
+#define Z_COLOR Vec4f(0.1f, 0.1f, 1.0f, 0.8f) // (slightly brighter -- hard to see pure blue over dark background)
 #define OUTLINE_COLOR Vec4f(1,1,1,0.5f) // field outline
 #define GUIDE_COLOR   Vec4f(1,1,1,0.3f) // pen input guides
 #define RADIUS_COLOR  Vec4f(1,1,1,0.4f) // intersecting radii ghosts
@@ -64,7 +73,7 @@
 struct ImFont;
 struct ImFontConfig;
 struct ImDrawList;
-class  SettingBase;
+class  KeyManager;
 class  SettingForm;
 class  TabMenu;
 template<typename T> class DrawInterface;
@@ -108,20 +117,12 @@ struct SimInfo
   int uStep = 0;    // keeps track of microsteps betweeen frames
 };
 
-struct ScreenView
+struct FVector
 {
-  Rect2f r;
-  bool   hovered       = false;
-  bool   leftClicked   = false;
-  bool   rightClicked  = false;
-  bool   middleClicked = false;
-  bool   shiftClick    = false;
-  bool   ctrlClick     = false;
-  bool   altClick      = false;
-  Vec2f           clickPos;
-  Vector<CFT, 3>  mposSim;
+  Vec3f p0; // cell sim pos
+  Vec3f vE; // E sim vector
+  Vec3f vB; // B sim vector
 };
-
 
 class SimWindow
 {
@@ -137,8 +138,6 @@ private:
   double fpsLast = 0.0;      // previous FPS value
 
   // window callbacks
-  std::map<int, bool>        mKeysDown;
-  std::map<int, std::string> mKeyParamNames;
   static void windowCloseCallback(GLFWwindow *window);
   static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
   
@@ -148,9 +147,12 @@ private:
   Vec2f mDisplaySize; // 
 
   bool mImGuiDemo     = false; // run the ImGui demo popup (provides working widget examples and debug tools)
+  bool mFontDemo      = false; // run a simple comparison test / config demo for freetype (https://gist.github.com/ocornut/b3a9ecf13502fd818799a452969649ad)
   bool mFileRendering = false; // rendering simulation frames to image files
-  bool mLockViews     = false; // prevent any user input while rendering to file
-  bool mNewFrame      = false; // new rendered frame available for output
+  bool mLockViews     = false; // prevent any user input (for render to file)
+  bool mForcePause    = false; // pause all physics and prevent any user input (for open popup focus)
+  bool mNewFrameVec   = false; // new updated sim frame (recalculate vector field)
+  bool mNewFrameOut   = false; // new rendered frame available for output
   
   // simulation
   SimParams  mParams;
@@ -163,12 +165,14 @@ private:
   CudaTexture  mMatTex;
   CudaTexture  m3DTex;
   CudaVBO      mVecBuffer;
-  std::deque<FieldBase*> mStates; // N-buffered states (e.g. for Runge-Kutta integration)
+  std::deque<FieldBase*> mStates;   // N-buffered states (e.g. for Runge-Kutta integration (TODO?))
+  
+  Field<float3> *mInputE = nullptr; // accumulate E/B  signals added by the user
+  Field<float3> *mInputB = nullptr;
 
-  ImDrawList *mFieldDrawList = nullptr;
+  std::vector<FVector> mVectorField2D;
 
   // UI
-  std::vector<SettingBase*> mSettings;
   FieldInterface<CFT>   *mFieldUI   = nullptr; // base field settings
   UnitsInterface<CFT>   *mUnitsUI   = nullptr; // global units
   DrawInterface<CFT>    *mDrawUI    = nullptr; // settings for drawing in signals/materials
@@ -176,13 +180,16 @@ private:
   SettingForm           *mFileOutUI = nullptr; // settings for outputting simulation frames to image files
   SettingForm           *mOtherUI   = nullptr; // other settings (misc)
   TabMenu *mTabs = nullptr;
+  
+  ImDrawList *mFieldDrawList = nullptr;
+  KeyManager *mKeyManager = nullptr;
 
   Camera<CFT> mCamera;
   Rect2f mSimView2D; // view in sim space
-  ScreenView mEMView;
-  ScreenView mMatView;
-  ScreenView m3DView;
-  ScreenView m3DGlView;
+  ScreenView<CFT> mEMView;
+  ScreenView<CFT> mMatView;
+  ScreenView<CFT> m3DView;
+  ScreenView<CFT> m3DGlView;
   
   Vec2f mMouseSimPos;
   CFV3  mSigMPos; // 3D pos of active signal pen
@@ -197,23 +204,26 @@ private:
   Vec2f simToScreen2D(const Vec3f &pSim,    const Rect2f &simView, const Rect2f &screenView, bool vector=false);
   Vec2f screenToSim2D(const Vec3f &pScreen, const Rect2f &simView, const Rect2f &screenView, bool vector=false);
 
-  void drawRect3D(ScreenView &view, const Vec3f &p0, const Vec3f &p1, const Vec4f &color);
-  void drawEllipse3D(ScreenView &view, const Vec3f &center, const Vec3f &radius, const Vec4f &color);
+  void drawRect3D   (ScreenView<CFT> &view, const Vec3f &p0, const Vec3f &p1, const Vec4f &color);
+  void drawEllipse3D(ScreenView<CFT> &view, const Vec3f &center, const Vec3f &radius, const Vec4f &color);
   
-  void drawRect2D(ScreenView &view, const Vec2f &p0, const Vec2f &p1, const Vec4f &color);
-  void drawEllipse2D(ScreenView &view, const Vec2f &center, const Vec2f &radius, const Vec4f &color);
+  void drawRect2D   (ScreenView<CFT> &view, const Vec2f &p0, const Vec2f &p1, const Vec4f &color);
+  void drawEllipse2D(ScreenView<CFT> &view, const Vec2f &center, const Vec2f &radius, const Vec4f &color);
   
   void resetViews();
   void cudaRender(FieldParams<CFT> &cp);
   
-  void handleInput2D(ScreenView &view);
-  void handleInput3D(ScreenView &view);
+  void handleInput2D(ScreenView<CFT> &view);
+  void handleInput3D(ScreenView<CFT> &view);
   void drawVectorField2D(const Rect2f &sr);
   
-  void draw2DOverlay(ScreenView &view);
-  void draw3DOverlay(ScreenView &view);
+  void draw2DOverlay(ScreenView<CFT> &view);
+  void draw3DOverlay(ScreenView<CFT> &view);
       
   double calcFps();
+
+  void loadSettings(const std::string &path=SETTINGS_SAVE_FILE);
+  void saveSettings(const std::string &path=SETTINGS_SAVE_FILE);
 
   // rendering to file
   // images output as: [mBaseDir]/[mSimName]/[mSimName]-[mParams.frame].png
@@ -238,15 +248,18 @@ private:
 
   bool checkBaseRenderPath();
   bool checkSimRenderPath();
-  bool fileOutInterface();
   
 public:
   // fonts (public)
-  ImFontConfig *fontConfig = nullptr;
-  ImFont *smallFont  = nullptr; ImFont *smallFontB  = nullptr; ImFont *smallFontI = nullptr; ImFont *smallFontBI = nullptr;
+  ImVector<ImWchar>        fontRanges;
+  ImFontGlyphRangesBuilder fontBuilder;
+  ImFontConfig            *fontConfig = nullptr;
   ImFont *mainFont   = nullptr; ImFont *mainFontB   = nullptr; ImFont *mainFontI  = nullptr; ImFont *mainFontBI  = nullptr;
+  ImFont *smallFont  = nullptr; ImFont *smallFontB  = nullptr; ImFont *smallFontI = nullptr; ImFont *smallFontBI = nullptr;
   ImFont *titleFont  = nullptr; ImFont *titleFontB  = nullptr; ImFont *titleFontI = nullptr; ImFont *titleFontBI = nullptr;
   ImFont *superFont  = nullptr; ImFont *superFontB  = nullptr; ImFont *superFontI = nullptr; ImFont *superFontBI = nullptr;
+  ImFont *tinyFont   = nullptr; ImFont *tinyFontB   = nullptr; ImFont *tinyFontI  = nullptr; ImFont *tinyFontBI  = nullptr;
+  FreeTypeTest *freetypeTest = nullptr;
   
   void keyPress(int mods, int key, int action);
   
@@ -264,9 +277,12 @@ public:
   void resetMaterials();
   void resetSim();
   void togglePause();
-    
+
+  bool preNewFrame(); // call in main loop before ImGui::NewFrame()
   void draw(const Vec2f &frameSize=Vec2f(0,0));
   void update();
+
+  bool fileRendering() const { return mFileRendering; }
   void renderToFile();
 };
 
@@ -317,7 +333,7 @@ inline Vec2f SimWindow::screenToSim2D(const Vec3f &pScreen, const Rect2f &simVie
 // shape helper functions
 
 //  (NOTE: hacky transformations... TODO: improve/optimize)
-inline void SimWindow::drawRect3D(ScreenView &view, const Vec3f &p0, const Vec3f &p1, const Vec4f &color)
+inline void SimWindow::drawRect3D(ScreenView<CFT> &view, const Vec3f &p0, const Vec3f &p1, const Vec4f &color)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   Vec2f aspect = Vec2f(view.r.aspect(), 1.0); if(aspect.x < 1.0) { aspect.y = 1.0/aspect.x; aspect.x = 1.0; }
@@ -365,7 +381,7 @@ inline void SimWindow::drawRect3D(ScreenView &view, const Vec3f &p0, const Vec3f
 }
 
 
-inline void SimWindow::drawEllipse3D(ScreenView &view, const Vec3f &center, const Vec3f &radius, const Vec4f &color)
+inline void SimWindow::drawEllipse3D(ScreenView<CFT> &view, const Vec3f &center, const Vec3f &radius, const Vec4f &color)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   float S = 2.0*tan(mCamera.fov/2.0f*M_PI/180.0f);
@@ -388,7 +404,7 @@ inline void SimWindow::drawEllipse3D(ScreenView &view, const Vec3f &center, cons
 }
 
 
-inline void SimWindow::drawRect2D(ScreenView &view, const Vec2f &p0, const Vec2f &p1, const Vec4f &color)
+inline void SimWindow::drawRect2D(ScreenView<CFT> &view, const Vec2f &p0, const Vec2f &p1, const Vec4f &color)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();  
   Vec2f Wp00 = Vec2f(p0.x, p0.y);
@@ -404,7 +420,7 @@ inline void SimWindow::drawRect2D(ScreenView &view, const Vec2f &p0, const Vec2f
   drawList->AddLine(Sp11, Sp10, ImColor(color), 1);
   drawList->AddLine(Sp10, Sp00, ImColor(color), 1);
 }
-inline void SimWindow::drawEllipse2D(ScreenView &view, const Vec2f &center, const Vec2f &radius, const Vec4f &color)
+inline void SimWindow::drawEllipse2D(ScreenView<CFT> &view, const Vec2f &center, const Vec2f &radius, const Vec4f &color)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();  
   for(int i = 0; i < 32; i++)

@@ -16,15 +16,16 @@
 #ifdef ENABLE_CUDA
 
 template<typename T>
-__device__ typename DimType<T, 4>::VECTOR_T renderCell(EMField<T> &src, unsigned long long i, const RenderParams<T> &rp)
+__device__ typename DimType<T, 4>::VEC_T renderCell(EMField<T> &src, unsigned long long i, const RenderParams<T> &rp)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,3>::VECTOR_T VT3;
-  typedef typename DimType<T,4>::VECTOR_T VT4;
-  T qLen = (src.Q[i].x - src.Q[i].y);
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,3>::VEC_T VT3;
+  typedef typename DimType<T,4>::VEC_T VT4;
+  //T qLen = (src.Q[i].x - src.Q[i].y);
   T eLen = length(src.E[i]);
   T bLen = length(src.B[i]);
-  VT4 color = rp.brightness*rp.opacity*(qLen*rp.Qmult*rp.Qcol + eLen*rp.Emult*rp.Ecol + bLen*rp.Bmult*rp.Bcol);
+  VT4 color = rp.brightness*rp.opacity*(//qLen*rp.Qmult*rp.Qcol +
+                                        eLen*rp.Emult*rp.Ecol + bLen*rp.Bmult*rp.Bcol);
   //color.w *= (qLen+eLen+bLen);
   return color;
 }
@@ -34,11 +35,11 @@ __device__ typename DimType<T, 4>::VECTOR_T renderCell(EMField<T> &src, unsigned
 #define MAX_ITER2 4
 
 template<typename T>
-__device__ inline typename DimType<T, 4>::VECTOR_T& fluidBlend(typename DimType<T, 4>::VECTOR_T &rayColor,
-                                                               const typename DimType<T, 4>::VECTOR_T &cellColor,
+__device__ inline typename DimType<T, 4>::VEC_T& fluidBlend(typename DimType<T, 4>::VEC_T &rayColor,
+                                                               const typename DimType<T, 4>::VEC_T &cellColor,
                                                                const RenderParams<T> &rp)
 {
-  typedef typename DimType<T, 4>::VECTOR_T VT4;
+  typedef typename DimType<T, 4>::VEC_T VT4;
   T a = rayColor.w;
   rayColor += VT4{cellColor.x, cellColor.y, cellColor.z, 0.0} * cellColor.w*(1-a)*rp.brightness;
   rayColor.w += cellColor.w*(1-rayColor.w)*(rp.opacity);
@@ -47,11 +48,11 @@ __device__ inline typename DimType<T, 4>::VECTOR_T& fluidBlend(typename DimType<
 
 // render 3D --> raytrace field
 template<typename T>
-__device__ typename DimType<T,4>::VECTOR_T rayTraceField(EMField<T> &src, Ray<T> ray, const RenderParams<T> &rp, const FieldParams<T> &cp)
+__device__ typename DimType<T,4>::VEC_T rayTraceField(EMField<T> &src, Ray<T> ray, const RenderParams<T> &rp, const FieldParams<T> &cp)
 {
-  typedef typename DimType<T,2>::VECTOR_T VT2;
-  typedef typename DimType<T,3>::VECTOR_T VT3;
-  typedef typename DimType<T,4>::VECTOR_T VT4;
+  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename DimType<T,3>::VEC_T VT3;
+  typedef typename DimType<T,4>::VEC_T VT4;
 
   const int zl = rp.zRange.y - rp.zRange.x + 1; // number of z layers to render
 

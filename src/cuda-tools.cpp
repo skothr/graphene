@@ -29,10 +29,12 @@ bool initCudaDevice(int devId)
 
       std::cout << "==== Using CUDA device " << devId << " (" << _ConvertSMVer2ArchName(major, minor) << ")\n";
       checkCudaErrors(cudaSetDevice(devId));
-
+      
       // get number of SMs on this GPU
       cudaDeviceProp deviceProps; checkCudaErrors(cudaGetDeviceProperties(&deviceProps, devId));
       printf("CUDA device [%s] has %d Multi-Processors\n\n", deviceProps.name, deviceProps.multiProcessorCount);
+
+      // cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
       
       gDevId = devId;
       gCudaInitialized = true;

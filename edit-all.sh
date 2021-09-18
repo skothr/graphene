@@ -1,3 +1,3 @@
 #!/bin/bash
-emacs ./src/* ./inc/* ./src/cuda/* ./inc/cuda/* &
+env XMODIFIERS=@im=none emacs ./src/* ./inc/* ./src/cuda/* ./inc/cuda/* &
 

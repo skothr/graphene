@@ -130,6 +130,19 @@ inline bool makeDirectory(const std::string &path)
 }
 
 
+// provides access to simple info for an std::function object
+template<typename T>  struct FunctionInfo;
+template<typename R, typename ...Args>
+struct FunctionInfo<std::function<R(Args...)>>
+{
+  static const size_t nargs = sizeof...(Args);
+  typedef R returnType;
+  // individual argument types --> print name of type with:
+  //      std::cout << typeid(FunctionInfo<f>::arg<0>::type).name() << "\n";
+  template<size_t i> struct arg
+  { typedef typename std::tuple_element<i, std::tuple<Args...>>::type type; };
+};
+
 
 
 
@@ -152,6 +165,14 @@ inline std::istream& operator>>(std::istream &is, BoolStruct &b)
 }
 
 
+
+// defines (some) bitwise operators for an enum that works as a flag type
+#define ENUM_FLAG_OPERATORS(TYPE)                                       \
+  inline TYPE  operator~ (TYPE t) { return static_cast<TYPE>(~static_cast<int>(t)); } \
+  inline TYPE& operator|=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<int>(t0) | static_cast<int>(t1)); return t0; } \
+  inline TYPE& operator&=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<int>(t0) & static_cast<int>(t1)); return t0; } \
+  inline TYPE  operator| (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<int>(t0) | static_cast<int>(t1)); } \
+  inline TYPE  operator& (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<int>(t0) & static_cast<int>(t1)); }
 
 
 #endif // TOOLS_HPP
