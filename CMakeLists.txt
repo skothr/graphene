@@ -107,7 +107,6 @@ add_executable(${TARGET}
   src/settingForm.cpp
   src/simWindow.cpp
   src/tabMenu.cpp
-  src/units.cpp
   )
 # set_target_properties(${TARGET} PROPERTIES CXX_STANDARD 20)
 target_compile_options(${TARGET} PRIVATE -Wno-deprecated)
