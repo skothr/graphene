@@ -1,5 +1,7 @@
 #include "keyManager.hpp"
 
+#include <bitset>
+
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
@@ -117,18 +119,22 @@ void KeyManager::update(bool captured, bool verbose)
       mBindingEdit->sequence = mKeySequence;
       if((mBindingEdit->sequence.size() > 0 && mBindingEdit->sequence.back().key != GLFW_KEY_UNKNOWN))
         {
-          // check if binding is available
-          bool found = false;          
-          for(auto &s : mKeyBindings)
+          if(!(mBindingEdit->sequence.back().key == GLFW_KEY_ESCAPE &&
+               mBindingEdit->sequence.back().mods == 0)) // pressing only escape cancels binding 
             {
-              if(&s != mBindingEdit && s == *mBindingEdit)
+              // check if binding is available
+              for(auto &s : mKeyBindings)
                 {
-                  std::cout << "Key binding is already in use! (" << s.name << ")\n";
-                  mBindingEdit->sequence = mOldBinding.sequence;
-                  found = true;
-                  break;
+                  if(&s != mBindingEdit && s == *mBindingEdit)
+                    {
+                      std::cout << "Key binding is already in use! (" << s.name << ")\n";
+                      mBindingEdit->sequence = mOldBinding.sequence;
+                      break;
+                    }
                 }
             }
+          else
+            { mBindingEdit->sequence = mOldBinding.sequence; }
           // sequence complete -- reset
           mKeySequence.clear();
           mBindingEdit = nullptr;
@@ -136,7 +142,7 @@ void KeyManager::update(bool captured, bool verbose)
     }
   else
     {
-      if(mKeySequence.size() > 0 && mKeySequence.back().key != GLFW_KEY_UNKNOWN)
+      if(mKeySequence.size() > 0) // && mKeySequence.back().key != GLFW_KEY_UNKNOWN)
         {
           if(mPopupOpen && mKeyPopupBinding)
             { // popup open -- just handle popup binding (to close)
@@ -152,12 +158,13 @@ void KeyManager::update(bool captured, bool verbose)
                 {
                   if(((k.flags & KEYBINDING_GLOBAL) || !captured) && k.check(mKeySequence, verbose))
                     {
+                      k.update(mKeySequence, verbose);
                       if(k.flags & KEYBINDING_REPEAT) { mKeySequence.pop_back(); }
                       else                            { mKeySequence.clear();    }
                       break;
                     }
                 }
-              for(auto &k : mKeyBindings) { k.update(mKeySequence, verbose); }
+              // for(auto &k : mKeyBindings) { k.update(mKeySequence, verbose); }
             }
         }
     }
@@ -242,46 +249,6 @@ void KeyManager::draw(const Vec2f &frameSize)
   ImGui::PopStyleVar();
 }
 
-// draw single key binding
-void KeyManager::drawKeyBinding(KeyBinding &kb, const KeyBinding &defaultKb)
-{
-  ImGuiStyle &style = ImGui::GetStyle();
-  ImGui::BeginGroup();
-  {
-    char info[256];
-    sprintf(info, "%*s   %*s   ", -mMaxNameLength, kb.name.c_str(), -mMaxKeyLength, kb.toString().c_str());
-
-    // find maximum binding width (approximated with fixed-length font chars)
-    float tWidth = (ImGui::CalcTextSize((std::string(info)+"   <Press Keys>   ").c_str()).x +
-                    style.WindowPadding.x + style.ItemSpacing.x + 2*style.FramePadding.x);
-    
-    ImGui::TextUnformatted(info);
-    ImGui::SameLine();
-    if(mBindingEdit == &kb)
-      { ImGui::Button("<Press Keys>"); }
-    else
-      {
-        if(ImGui::Button(("Set##"+kb.name).c_str()) && !mBindingEdit)
-          {
-            mOldBinding = kb;
-            kb.sequence.clear();
-            mBindingEdit = &kb;
-          }
-        if(kb != defaultKb)
-          { // reset button 
-            ImGui::SameLine();
-            if(ImGui::Button(("Reset##"+kb.name).c_str()) && !mBindingEdit)
-              { kb = defaultKb; }
-          }
-      }
-    // enforce maximum width
-    ImGui::SetCursorPos(Vec2f(tWidth, ImGui::GetCursorPos().y));
-  }
-  ImGui::EndGroup();
-  if(ImGui::IsItemHovered())
-    { ImGui::SetTooltip("%s", kb.description.c_str()); }
-}
-
 // draw key binding popup
 void KeyManager::drawKeyBindings()
 {
@@ -304,4 +271,46 @@ void KeyManager::drawKeyBindings()
           ImGui::Separator();
         }
     }
+}
+
+// draw single key binding
+void KeyManager::drawKeyBinding(KeyBinding &kb, const KeyBinding &defaultKb)
+{
+  ImGuiStyle &style = ImGui::GetStyle();
+  ImGui::BeginGroup();
+  {
+    char info[256];
+    sprintf(info, "%*s   %*s   ", -mMaxNameLength, kb.name.c_str(), -mMaxKeyLength, kb.toString().c_str());
+
+    // find maximum binding width (approximated for monospace font)
+    float tWidth = (ImGui::CalcTextSize((std::string(info)+"   <Press Keys>   ").c_str()).x +
+                    style.WindowPadding.x + style.ItemSpacing.x + 2*style.FramePadding.x);
+    
+    ImGui::TextUnformatted(info);
+    ImGui::SameLine();
+    if(mBindingEdit == &kb)
+      { // currently editing this binding
+        if(ImGui::Button("<Press Keys>")) { kb.sequence = mOldBinding.sequence; mBindingEdit = nullptr; } // click button to cancel
+      }
+    else
+      {
+        if(ImGui::Button(("Set##"+kb.name).c_str()) && !mBindingEdit)
+          {
+            mOldBinding = kb;
+            kb.sequence.clear();
+            mBindingEdit = &kb;
+          }
+        if(kb != defaultKb)
+          { // reset button 
+            ImGui::SameLine();
+            if(ImGui::Button(("Reset##"+kb.name).c_str()) && !mBindingEdit)
+              { kb = defaultKb; }
+          }
+      }
+    // enforce maximum width
+    ImGui::SetCursorPos(Vec2f(tWidth, ImGui::GetCursorPos().y));
+  }
+  ImGui::EndGroup();
+  if(ImGui::IsItemHovered())
+    { ImGui::SetTooltip("%s", kb.description.c_str()); }
 }

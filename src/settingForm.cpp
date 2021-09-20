@@ -29,11 +29,10 @@ bool SettingForm::fromJSON(const json &js)
   bool success = true;
   for(auto s : mSettings)
     {
-      auto jss = js[s->getId()];
-      if(!jss.is_null())
-        { if(!s->fromJSON(jss)) { success = false; } }
+      if(js.contains(s->getId()))
+        { s->fromJSON(js[s->getId()]); }
       else
-        { std::cout <<  "WARNING: SettingForm couldn't find setting id (" << s->getId() << ")\n"; success = false; }
+        { std::cout << "====> WARNING: SettingForm couldn't find '" << s->getId() << "'\n"; success = false; }
     }
   return success;
 }
@@ -73,10 +72,15 @@ bool SettingForm::draw(float scale, bool busy, bool visible)
     {
       bool changed = false;
       busy |= mSettings[i]->draw(scale, busy, changed, visible);
-      if(changed && mSettings[i]->updateCallback) { mSettings[i]->updateCallback(); } // notify if changed
+      if(changed) { mSettings[i]->updateAll(); } // notify if changed
     }
   ImGui::EndGroup();
   mSize = Vec2f(mLabelColW + mInputColW + ImGui::GetStyle().ItemSpacing.x, ImGui::GetCursorPos().y - p0.y);
   return busy;
 }
 
+void SettingForm::updateAll()
+{
+  for(int i = 0; i < mSettings.size(); i++)
+    { mSettings[i]->updateAll(); }
+}

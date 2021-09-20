@@ -23,7 +23,7 @@ struct FieldParams
 {
   typedef typename DimType<T, 3>::VEC_T VT3;
   Units<T>  u;          // units
-  T     t      = 0.0f;  // current simulation time
+  T t = 0.0f;           // current simulation time
   T    decay   = 0.92f; // source decay
   bool reflect = false; // reflective boundaries
   VT3 fp;               // field position
@@ -35,15 +35,15 @@ class FieldBase
 {
 public:
   int3 size = int3{0,0,0};
-  unsigned long long numCells = 0;
-  unsigned long long typeSize = 0;
-  unsigned long long dataSize = 0; // TODO: uncoalesced memory
+  unsigned long numCells = 0;
+  unsigned long typeSize = 0;
+  unsigned long dataSize = 0; // TODO: uncoalesced memory (?)
   // data indexing -- should work for any dimensionality <= 3D
-  __host__ __device__ unsigned long long idx(unsigned long long ix, unsigned long long iy=0, unsigned long long iz=0) const 
+  __host__ __device__ unsigned long idx(unsigned long ix, unsigned long iy=0, unsigned long iz=0) const 
   { return ix + size.x*(iy + (size.y*iz)); }
-  __host__ __device__ unsigned long long idx(const int3  &p) const { return idx(p.x, p.y, p.z); }
-  __host__ __device__ unsigned long long idx(const Vec3i &p) const { return idx(p.x, p.y, p.z); }
-  __host__ __device__ unsigned long long idx(const Vec3f &p) const { return idx(p.x, p.y, p.z); }
+  __host__ __device__ unsigned long idx(const int3  &p) const { return idx((unsigned long)p.x, (unsigned long)p.y, (unsigned long)p.z); }
+  __host__ __device__ unsigned long idx(const Vec3i &p) const { return idx((unsigned long)p.x, (unsigned long)p.y, (unsigned long)p.z); }
+  __host__ __device__ unsigned long idx(const Vec3f &p) const { return idx((unsigned long)p.x, (unsigned long)p.y, (unsigned long)p.z); }
   
   virtual bool allocated() const { return (gCudaInitialized && size.x > 0 && size.y > 0 && size.z > 0 && dataSize > 0); }
 
@@ -64,14 +64,21 @@ public:
   T *hData   = nullptr;
   T *dData   = nullptr;
 
-  __device__ const T& operator[](unsigned long long i) const { return dData[i]; }
-  __device__       T& operator[](unsigned long long i)       { return dData[i]; }
+  __device__ const T& operator[](unsigned long i) const { return dData[i]; }
+  __device__       T& operator[](unsigned long i)       { return dData[i]; }
   
   virtual bool create(int3 sz) override;
   virtual void destroy()  override;
   virtual void pullData() override;
   virtual void pushData() override;
-  virtual void clear()    override { if(allocated()) { cudaMemset(dData, 0, dataSize); memset(hData, 0, dataSize); } }
+  virtual void clear()    override
+  {
+    if(allocated())
+      {
+        cudaMemset(dData, 0, dataSize);
+        if(hData) { memset(hData, 0, dataSize); }
+      }
+  }
   void copyTo(Field<T> &other) const;
   
   virtual bool allocated() const override;
@@ -85,9 +92,9 @@ bool Field<T>::create(int3 sz)
     {
       if(sz == this->size) { std::cout << "Field already allocated (" << size << ")\n"; return true; }
       else { destroy(); }
-      unsigned long long nCells = (unsigned long long)sz.x*(unsigned long long)sz.y*(unsigned long long)sz.z;
-      unsigned long long tSize  = sizeof(T);
-      unsigned long long dSize  = tSize*nCells;
+      unsigned long nCells = (unsigned long)sz.x*(unsigned long)sz.y*(unsigned long)sz.z;
+      unsigned long tSize  = sizeof(T);
+      unsigned long dSize  = tSize*nCells;
       if(nCells <= 0) { std::cout << "====> ERROR: Could not create Field with size " << sz << "\n"; return false; }
       else            { std::cout << "Creating Field ("  << sz << ")... --> data: " << nCells << "*" << tSize << " ==> " << dSize << "\n"; }
 
@@ -96,9 +103,6 @@ bool Field<T>::create(int3 sz)
       if(err) { std::cout << "====> ERROR: Failed to allocated memory for field!\n"; return false; }
       err = cudaMemset(dData, 0, dSize);
       if(err) { std::cout << "====> ERROR: Failed to initialize memory for field!\n"; cudaFree(dData); dData = nullptr; return false; }
-      // init host data
-      hData = (T*)malloc(dSize);
-      memset(hData, 0, dSize);
       
       getLastCudaError("Field::create(sz)");
       size = sz; numCells = nCells; typeSize = tSize; dataSize = dSize;
@@ -126,18 +130,22 @@ void Field<T>::destroy()
     }
 }
 template<typename T>
-bool Field<T>::allocated() const { return (FieldBase::allocated() && dData && hData); }
+bool Field<T>::allocated() const { return (FieldBase::allocated() && dData); }
 template<typename T>
 void Field<T>::pullData()
 {
-  if(allocated()) { cudaMemcpy(hData, dData, dataSize, cudaMemcpyDeviceToHost); getLastCudaError("Field::pullData()\n"); }
+  if(allocated())
+    {
+      if(!hData) { hData = (T*)malloc(dataSize); }
+      cudaMemcpy(hData, dData, dataSize, cudaMemcpyDeviceToHost); getLastCudaError("Field::pullData()\n");
+    }
   else            { std::cout << "====> WARNING(Field::pullData()): Field not allocated!\n"; }
 }
 template<typename T>
 void Field<T>::pushData()
 {
-  if(allocated()) { cudaMemcpy(dData, hData, dataSize, cudaMemcpyHostToDevice); getLastCudaError("Field::pushData()\n"); }
-  else            { std::cout << "====> WARNING(Field::pushData()): Field not allocated!\n"; }
+  if(allocated() && hData) { cudaMemcpy(dData, hData, dataSize, cudaMemcpyHostToDevice); getLastCudaError("Field::pushData()\n"); }
+  else                     { std::cout << "====> WARNING(Field::pushData()): Field not allocated!\n"; }
 }
 template<typename T>
 void Field<T>::copyTo(Field<T> &other) const
@@ -274,20 +282,17 @@ inline bool CudaTexture::create(int3 sz)
       sz.z = 1; // 2D only
       if(sz == this->size) { std::cout << "Texture already allocated (" << size << ")\n"; return true; }
       else { destroy(); }
-      unsigned long long nCells = (unsigned long long)sz.x*(unsigned long long)sz.y;
-      unsigned long long tSize  = (unsigned long long)sizeof(float4);
-      unsigned long long dSize  = tSize*nCells;
+      unsigned long nCells = (unsigned long)sz.x*(unsigned long)sz.y;
+      unsigned long tSize  = (unsigned long)sizeof(float4);
+      unsigned long dSize  = tSize*nCells;
       if(nCells <= 0) { std::cout << "====> ERROR: Could not create CudaTexture with size " << sz << "\n"; return false; }
       else            { std::cout << "Creating Cuda Texture ("  << sz << ")... --> data: " << nCells << "*" << tSize << " ==> " << dSize << "\n"; }
 
       // init device data
-      int err = cudaMalloc((void**)&dData, (unsigned long long)dSize);
+      int err = cudaMalloc((void**)&dData, (unsigned long)dSize);
       if(err) { std::cout << "====> ERROR: Failed to allocated memory for field!\n"; return false; }
       err = cudaMemset(dData, 0, dSize);
       if(err) { std::cout << "====> ERROR: Failed to initialize memory for field!\n"; cudaFree(dData); dData = nullptr; return false; }
-      // init host data
-      hData = (float4*)malloc(dSize);
-      memset(hData, 0, dSize);
       
       initGL(sz);
       

@@ -13,10 +13,10 @@
 #define SIG_HIGHLIGHT_COLOR float4{0.5, 1.0, 0.5, 0.1}
 #define MAT_HIGHLIGHT_COLOR float4{1.0, 0.5, 0.5, 0.1}
 
-#ifdef ENABLE_CUDA
+#ifdef __NVCC__
 
 template<typename T>
-__device__ typename DimType<T, 4>::VEC_T renderCell(EMField<T> &src, unsigned long long i, const RenderParams<T> &rp)
+__device__ typename DimType<T, 4>::VEC_T renderCell(EMField<T> &src, unsigned long i, const RenderParams<T> &rp)
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   typedef typename DimType<T,3>::VEC_T VT3;
@@ -83,7 +83,7 @@ __device__ typename DimType<T,4>::VEC_T rayTraceField(EMField<T> &src, Ray<T> ra
           if(fp.x < 0 || fp.x >= src.size.x ||
              fp.y < 0 || fp.y >= src.size.y ||
              fp.z < 0 || fp.z+rp.zRange.x >= src.size.z) { break; } // || fp.z+rp.zRange.x > rp.zRange.y+1) { break; }
-          unsigned long long i = src.idx((unsigned long long)fp.x, (unsigned long long)fp.y, (unsigned long long)(fp.z+rp.zRange.x));
+          unsigned long i = src.idx((unsigned long)fp.x, (unsigned long)fp.y, (unsigned long)(fp.z+rp.zRange.x));
 
           // base cell color
           float4 col = renderCell(src, i, rp);
@@ -139,6 +139,6 @@ __device__ typename DimType<T,4>::VEC_T rayTraceField(EMField<T> &src, Ray<T> ra
 }
 
 
-#endif // ENABLE_CUDA
+#endif // __NVCC__
 
 #endif // RAYTRACE_CUH

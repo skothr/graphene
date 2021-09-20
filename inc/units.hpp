@@ -61,6 +61,7 @@ struct UnitsInterface
   
   void drawUnit(const std::string &name, T *ptr, T step0, T step1, const std::string &format, const std::string &desc);
   void draw();
+  void updateAll() { mForm->updateAll(); }
 };
 
 template<> inline void UnitsInterface<float>::drawUnit(const std::string &name, float *ptr, float step0, float step1,

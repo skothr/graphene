@@ -88,50 +88,48 @@
   ImVec2(const Vec2d& f) : x(f.x), y(f.y) { }                           \
   operator Vec2i() const { return Vec2d(x, y); }                        \
   operator Vec2f() const { return Vec2f(x, y); }                        \
-  operator Vec2d() const { return Vec2d(x, y); }                        \
-  //                                                                    \
-  // ImVec2  operator- () { return ImVec2(-x, -y); }                    \
-  // ImVec2  operator+ (float f) { return ImVec2(x+f, y+f); }           \
-  // ImVec2& operator+=(float f) { x += f; y += f; return *this; }      \
-  // ImVec2  operator- (float f) { return ImVec2(x-f, y-f); }           \
-  // ImVec2& operator-=(float f) { x -= f; y -= f; return *this; }      \
-  // ImVec2  operator* (float f) { return ImVec2(x*f, y*f); }           \
-  // ImVec2& operator*=(float f) { x *= f; y *= f; return *this; }      \
-  // ImVec2  operator/ (float f) { return ImVec2(x/f, y/f); }           \
-  // ImVec2& operator/=(float f) { x /= f; y /= f; return *this; }      \
-  // ImVec2  operator+ (const ImVec2 &f) { return ImVec2(x+f.x, y+f.y); } \
-  // ImVec2& operator+=(const ImVec2 &f) { x += f.x; y += f.y; return *this; } \
-  // ImVec2  operator- (const ImVec2 &f) { return ImVec2(x-f.x, y-f.y); } \
-  // ImVec2& operator-=(const ImVec2 &f) { x -= f.x; y -= f.y; return *this; } \
-  // ImVec2  operator* (const ImVec2 &f) { return ImVec2(x*f.x, y*f.y); } \
-  // ImVec2& operator*=(const ImVec2 &f) { x *= f.x; y *= f.y; return *this; } \
-  // ImVec2  operator/ (const ImVec2 &f) { return ImVec2(x/f.x, y/f.y); } \
+  operator Vec2d() const { return Vec2d(x, y); }                        
+  // ImVec2  operator- () { return ImVec2(-x, -y); }                    
+  // ImVec2  operator+ (float f) { return ImVec2(x+f, y+f); }           
+  // ImVec2& operator+=(float f) { x += f; y += f; return *this; }      
+  // ImVec2  operator- (float f) { return ImVec2(x-f, y-f); }           
+  // ImVec2& operator-=(float f) { x -= f; y -= f; return *this; }      
+  // ImVec2  operator* (float f) { return ImVec2(x*f, y*f); }           
+  // ImVec2& operator*=(float f) { x *= f; y *= f; return *this; }      
+  // ImVec2  operator/ (float f) { return ImVec2(x/f, y/f); }           
+  // ImVec2& operator/=(float f) { x /= f; y /= f; return *this; }      
+  // ImVec2  operator+ (const ImVec2 &f) { return ImVec2(x+f.x, y+f.y); } 
+  // ImVec2& operator+=(const ImVec2 &f) { x += f.x; y += f.y; return *this; } 
+  // ImVec2  operator- (const ImVec2 &f) { return ImVec2(x-f.x, y-f.y); } 
+  // ImVec2& operator-=(const ImVec2 &f) { x -= f.x; y -= f.y; return *this; } 
+  // ImVec2  operator* (const ImVec2 &f) { return ImVec2(x*f.x, y*f.y); } 
+  // ImVec2& operator*=(const ImVec2 &f) { x *= f.x; y *= f.y; return *this; } 
+  // ImVec2  operator/ (const ImVec2 &f) { return ImVec2(x/f.x, y/f.y); } 
   // ImVec2& operator/=(const ImVec2 &f) { x /= f.x; y /= f.y; return *this; }
 
 #define IM_VEC4_CLASS_EXTRA                                             \
   ImVec4(const Vec4f& f) : x(f.x), y(f.y), z(f.z), w(f.w) { }           \
-  operator Vec4f() const { return Vec4f(x, y, z, w); }                  \
-                                                                        \
-  /* ImVec4(const Vec4d& f) : x(f.x), y(f.y), z(f.z), w(f.w) { }         */ \
-  /* operator Vec4d() const { return Vec4d((double)x, (double)y, (double)z, (double)w); }  */ \
-  //                                                                    \
-  // ImVec4  operator- () { return ImVec4(-x, -y, -z, -w); }            \
-  // ImVec4  operator+ (float f) { return ImVec4(x+f, y+f, z+f, w+f); } \
-  // ImVec4& operator+=(float f) { x += f; y += f; z += f; w += f; return *this; } \
-  // ImVec4  operator- (float f) { return ImVec4(x-f, y-f, z-f, w-f); } \
-  // ImVec4& operator-=(float f) { x -= f; y -= f; z -= f; w -= f; return *this; } \
-  // ImVec4  operator* (float f) { return ImVec4(x*f, y*f, z*f, w*f); } \
-  // ImVec4& operator*=(float f) { x *= f; y *= f; z *= f; w *= f; return *this; } \
-  // ImVec4  operator/ (float f) { return ImVec4(x/f, y/f, z/f, w/f); } \
-  // ImVec4& operator/=(float f) { x /= f; y /= f; z /= f; w /= f; return *this; } \
-  // ImVec4  operator+ (const ImVec4 &f) { return ImVec4(x+f.x, y+f.y, z+f.z, w+f.w); } \
-  // ImVec4& operator+=(const ImVec4 &f) { x += f.x; y += f.y; z += f.z; w += f.w; return *this; } \
-  // ImVec4  operator- (const ImVec4 &f) { return ImVec4(x-f.x, y-f.y, z-f.z, w-f.w); } \
-  // ImVec4& operator-=(const ImVec4 &f) { x -= f.x; y -= f.y; z -= f.z; w -= f.w; return *this; } \
-  // ImVec4  operator* (const ImVec4 &f) { return ImVec4(x*f.x, y*f.y, z*f.z, w*f.w); } \
-  // ImVec4& operator*=(const ImVec4 &f) { x *= f.x; y *= f.y; z *= f.z; w *= f.w; return *this; } \
-  // ImVec4  operator/ (const ImVec4 &f) { return ImVec4(x/f.x, y/f.y, z/f.z, w/f.w); } \
-  // ImVec4& operator/=(const ImVec4 &f) { x /= f.x; y /= f.y; z /= f.z; w /= f.w; return *this; } \
+  operator Vec4f() const { return Vec4f(x, y, z, w); }                  
+  //                                                                    
+  // ImVec4(const Vec4d& f) : x(f.x), y(f.y), z(f.z), w(f.w) { }        
+  // operator Vec4d() const { return Vec4d((double)x, (double)y, (double)z, (double)w); } 
+  // ImVec4  operator- () { return ImVec4(-x, -y, -z, -w); }            
+  // ImVec4  operator+ (float f) { return ImVec4(x+f, y+f, z+f, w+f); } 
+  // ImVec4& operator+=(float f) { x += f; y += f; z += f; w += f; return *this; }
+  // ImVec4  operator- (float f) { return ImVec4(x-f, y-f, z-f, w-f); } 
+  // ImVec4& operator-=(float f) { x -= f; y -= f; z -= f; w -= f; return *this; }
+  // ImVec4  operator* (float f) { return ImVec4(x*f, y*f, z*f, w*f); } 
+  // ImVec4& operator*=(float f) { x *= f; y *= f; z *= f; w *= f; return *this; }
+  // ImVec4  operator/ (float f) { return ImVec4(x/f, y/f, z/f, w/f); } 
+  // ImVec4& operator/=(float f) { x /= f; y /= f; z /= f; w /= f; return *this; }
+  // ImVec4  operator+ (const ImVec4 &f) { return ImVec4(x+f.x, y+f.y, z+f.z, w+f.w); }
+  // ImVec4& operator+=(const ImVec4 &f) { x += f.x; y += f.y; z += f.z; w += f.w; return *this; }
+  // ImVec4  operator- (const ImVec4 &f) { return ImVec4(x-f.x, y-f.y, z-f.z, w-f.w); }
+  // ImVec4& operator-=(const ImVec4 &f) { x -= f.x; y -= f.y; z -= f.z; w -= f.w; return *this; }
+  // ImVec4  operator* (const ImVec4 &f) { return ImVec4(x*f.x, y*f.y, z*f.z, w*f.w); }
+  // ImVec4& operator*=(const ImVec4 &f) { x *= f.x; y *= f.y; z *= f.z; w *= f.w; return *this; }
+  // ImVec4  operator/ (const ImVec4 &f) { return ImVec4(x/f.x, y/f.y, z/f.z, w/f.w); }
+  // ImVec4& operator/=(const ImVec4 &f) { x /= f.x; y /= f.y; z /= f.z; w /= f.w; return *this; }
  
 
 

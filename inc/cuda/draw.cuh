@@ -17,19 +17,25 @@ template<typename T>
 struct Pen
 {
   using VT3 = typename DimType<T, 3>::VEC_T;
-  bool active     = true;
-  bool cellAlign  = true;  // snap offset to center of cell
-  bool square     = false; // draw with square pen
-  int  depth      = 0;     // depth of pen center from view surface
-  VT3  radius0    = VT3{10.0, 10.0, 10.0};  // base pen size in fluid cells
-  VT3  radius1    = VT3{ 0.0,  0.0,  0.0};  // if x,y,z > 0, pen shape will be the intersection of spheres 0/1
-  VT3  rDist      = VT3{ 0.0,  0.0,  0.0};  // positional difference between intersecting spheres
-  T    mult       = 1.0;               // multiplier (signal/material)
-  T    sizeMult   = 1.0;                // multiplier (pen size)
-  VT3  xyzMult    = VT3{1.0, 1.0, 1.0}; // multiplier (pen size, each dimension)
-  virtual PenType type() const { return PEN_NONE; }
+  bool active    = true;
+  bool cellAlign = false; // snap offset to center of cell
+  bool square    = false; // draw with square pen
+  bool speed     = true;  // scale by mouse speed
+  
+  int  depth     = 0;     // depth of pen center from view surface
+  VT3  radius0   = VT3{10.0, 10.0, 10.0}; // base pen size in fluid cells
+  VT3  radius1   = VT3{ 0.0,  0.0,  0.0}; // if x,y,z > 0, pen shape will be the intersection of spheres 0/1
+  VT3  rDist     = VT3{ 0.0,  0.0,  0.0}; // positional difference between intersecting spheres
+  T    mult      = 1.0;                   // multiplier (amplitude if signal)
+  T    sizeMult  = 1.0;                   // multiplier (pen size)
+  VT3  xyzMult   = VT3{1.0, 1.0, 1.0};    // multiplier (pen size, each dimension)
+  T   speedMult  = 1.0;                   // multiplier for mouse speed
 
-  T startTime = -1.0; // time of initial click (-1 if inactive)
+  T startTime    = -1.0; // time of initial mouse click (-1 if inactive)
+  T mouseSpeed   = 0.0f; // current mouse speed
+  
+  
+  virtual PenType type() const { return PEN_NONE; }
 };
 
 enum // bit flags for applying multipliers to field values
@@ -49,13 +55,15 @@ struct SignalPen : public Pen<T>
   using VT2 = typename DimType<T, 2>::VEC_T;
   using VT3 = typename DimType<T, 3>::VEC_T;
   
-  T frequency  = 0.02;  // Hz(1/t in sim time) for sin/cos mult flags
-  T wavelength = 50.0; // in dL units (cells per period)
-  VT3 Emult   = VT3{1.0,  1.0,  1.0};
-  VT3 Bmult   = VT3{0.0,  0.0,  0.0};
-  int Eopt; int Bopt; // parameteric option flags (IDX_*)
+  T wavelength = 20.0; // in dL units (cells per period)
+  T frequency  = 0.05; // Hz(c/t in sim time) for sin/cos mult flags (c --> speed in vacuum = vMat.c())
   
-  SignalPen() : Eopt(IDX_SIN), Bopt(IDX_SIN) { this->mult = 32.0; }
+  VT3 Emult = VT3{1.0,  1.0,  1.0}; // X/Y/Z vector multipliers
+  VT3 Bmult = VT3{0.0,  0.0,  0.0};
+  int Eopt  = IDX_SIN; // parameteric option flags (IDX_*)
+  int Bopt  = IDX_SIN;
+  
+  SignalPen() { this->mult = 24.0; }
 };
 
 template<typename T>

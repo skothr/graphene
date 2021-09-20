@@ -30,7 +30,7 @@ private:
   int mMaxKeyLength  = 0; // max length of shortcut text
   
   SimWindow *mParent = nullptr;
-  KeyBinding *mKeyPopupBinding = nullptr; // points to key popup binding (remains active while popup is open, to toggle)
+  KeyBinding *mKeyPopupBinding = nullptr; // pointer to key popup binding (closes popup if open, default Alt+K)
   bool  mPopupOpen = false;
   Vec2f mPopupSize = KEY_POPUP_SIZE;
 

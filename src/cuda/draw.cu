@@ -67,15 +67,18 @@ __global__ void addSignal_k(EMField<T> signal, EMField<T> dst, FieldParams<T> cp
       dst.B[i] += signal.B[i]*cp.u.dt*mult;
     }
 }
+////////////////////////////////////////////////////////////////
+// NOTE: figure out why X appears to negative (...?)
+////////////////////////////////////////////////////////////////
 
 // draw in signals based on pen location and parameters
 template<typename T>
 __global__ void addSignal_k(typename DimType<T, 3>::VEC_T mpos, EMField<T> dst, SignalPen<T> pen, FieldParams<T> cp)
 {
   typedef typename DimType<T, 3>::VEC_T VT3;
-  long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long iy = blockIdx.y*blockDim.y + threadIdx.y;
-  long iz = blockIdx.z*blockDim.z + threadIdx.z;
+  unsigned long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  unsigned long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  unsigned long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
       VT3 pCell = VT3{(T)ix+0.5f, (T)iy+0.5f, (T)iz+0.5f};
@@ -86,11 +89,13 @@ __global__ void addSignal_k(typename DimType<T, 3>::VEC_T mpos, EMField<T> dst, 
           T distMag  = sqrt(dist2Mag);  distMag = (distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag;
           VT3 n = normalize(diff);            n = ((isnan(n) || isinf(n)) ? VT3{1.0f, 1.0f, 1.0f} : n);
 
-          T rMult   = (distMag  >= 1.0f ? 1.0f/distMag  : 1.0f);
-          T r2Mult  = dist2Mag; //(dist2Mag >= 1.0f ? 1.0f/dist2Mag : 1.0f);
+          T rMult   = (distMag > 0.0f ? 1.0f/distMag : 1.0f);
+          T r2Mult  = (dist2Mag >= 1.0f ? 1.0f/dist2Mag : 1.0f);
           T cosMult = cos(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
           T sinMult = sin(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
           T tMult   = atan2(n.y, n.x);
+          
+          T speed = (pen.speed ? max(1.0f, pen.speedMult*length(pen.mouseSpeed)) : 1.0f);
 
           // TODO: gaussian multiplier?
           T gaussMult = 1.0f;//exp(-dist2Mag/(2*pen->radius0*pen->radius0));
@@ -100,9 +105,10 @@ __global__ void addSignal_k(typename DimType<T, 3>::VEC_T mpos, EMField<T> dst, 
           T BoptMult = pen.mult*((pen.Bopt & IDX_R   ? rMult   : 1)*(pen.Bopt & IDX_R2  ? r2Mult  : 1)*(pen.Bopt & IDX_T ? tMult : 1) *
                                  (pen.Bopt & IDX_COS ? cosMult : 1)*(pen.Bopt & IDX_SIN ? sinMult : 1));
 
-          unsigned long long i = dst.idx(ix, iy, iz);
-          dst.E[i] += (pen.square ? VT3{1,1,1} : n) * pen.Emult * EoptMult * gaussMult * cp.u.dt;
-          dst.B[i] += (pen.square ? VT3{1,1,1} : n) * pen.Bmult * BoptMult * gaussMult * cp.u.dt;
+          // n.x *= -1; // ?
+          unsigned long i = dst.idx(ix, iy, iz);
+          dst.E[i] += (pen.square ? VT3{1,1,1} : n) * speed * pen.Emult * EoptMult * gaussMult * cp.u.dt;
+          dst.B[i] += (pen.square ? VT3{1,1,1} : n) * speed * pen.Bmult * BoptMult * gaussMult * cp.u.dt;
         }
     }
 }
@@ -112,9 +118,9 @@ __global__ void addSignal_k(typename DimType<T, 3>::VEC_T mpos, Field<typename D
                             SignalPen<T> pen, FieldParams<T> cp)
 {
   typedef typename DimType<T, 3>::VEC_T VT3;
-  long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long iy = blockIdx.y*blockDim.y + threadIdx.y;
-  long iz = blockIdx.z*blockDim.z + threadIdx.z;
+  unsigned long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  unsigned long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  unsigned long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < dstE.size.x && iy < dstE.size.y && iz < dstE.size.z &&
      ix < dstB.size.x && iy < dstB.size.y && iz < dstB.size.z)
     {
@@ -126,11 +132,14 @@ __global__ void addSignal_k(typename DimType<T, 3>::VEC_T mpos, Field<typename D
           T distMag  = sqrt(dist2Mag); distMag  = (distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag;
           VT3 n = normalize(diff);     n        = ((isnan(n) || isinf(n)) ? VT3{1.0f, 1.0f, 1.0f} : n);
 
-          T rMult   = (distMag  >= 1.0f ? 1.0f/distMag  : 1.0f);
-          T r2Mult  = dist2Mag;//(dist2Mag >= 1.0f ? 1.0f/dist2Mag : 1.0f);
+          T rMult   = (distMag > 0.0f ? 1.0f/distMag : 1.0f);
+          T r2Mult  = (dist2Mag >= 1.0f ? 1.0f/dist2Mag : 1.0f);
           T cosMult = cos(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
           T sinMult = sin(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
           T tMult   = atan2(n.y, n.x);
+
+          T speed = (pen.speedMult ? max(1.0f, pen.speedMult*length(pen.mouseSpeed)) : 1.0f);
+          //VT3 mvec  = ((pen.speed && speed >= 1.0f) ? pen.mouseSpeed : VT3{1.0f, 1.0f, 1.0f});
 
           // TODO: gaussian multiplier?
           T gaussMult = 1.0f;//exp(-dist2Mag/(2*pen->radius0*pen->radius0));
@@ -140,9 +149,10 @@ __global__ void addSignal_k(typename DimType<T, 3>::VEC_T mpos, Field<typename D
           T BoptMult = pen.mult*((pen.Bopt & IDX_R   ? rMult   : 1)*(pen.Bopt & IDX_R2  ? r2Mult  : 1)*(pen.Bopt & IDX_T ? tMult : 1) *
                                  (pen.Bopt & IDX_COS ? cosMult : 1)*(pen.Bopt & IDX_SIN ? sinMult : 1));
 
-          unsigned long long i = dstE.idx(ix, iy, iz);
-          dstE[i] += (pen.square ? VT3{1,1,1} : n) * pen.Emult * EoptMult * gaussMult * cp.u.dt;
-          dstB[i] += (pen.square ? VT3{1,1,1} : n) * pen.Bmult * BoptMult * gaussMult * cp.u.dt;
+          // n.x *= -1; // ?
+          unsigned long i = dstE.idx(ix, iy, iz);
+          dstE[i] += (pen.square ? VT3{1,1,1} : n) * speed * pen.Emult * EoptMult * gaussMult * cp.u.dt;
+          dstB[i] += (pen.square ? VT3{1,1,1} : n) * speed * pen.Bmult * BoptMult * gaussMult * cp.u.dt;
         }
     }
 }

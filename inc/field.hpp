@@ -70,6 +70,7 @@ struct FieldInterface
   ~FieldInterface();
   
   void draw();
+  void updateAll() { mForm->updateAll(); }
 
   // update callback for when an init expression string is changed
   template<typename U>
@@ -87,6 +88,7 @@ FieldInterface<T>::FieldInterface(FieldParams<T> *cp_, const std::function<void(
   : cp(cp_), fieldResCallback(frCb), texRes2DCallback(tr2DCb), texRes3DCallback(tr3DCb)
 {
   SettingGroup *paramGroup = new SettingGroup("Field Parameters",   "fieldParams",       { }, false);
+  paramGroup->setHelp("TEST");
   SettingGroup *stepGroup  = new SettingGroup("Physics Steps",      "physicsSteps",      { }, false);
   SettingGroup *initGroup  = new SettingGroup("Initial Conditions", "initialConditions", { }, false);
 
@@ -96,33 +98,44 @@ FieldInterface<T>::FieldInterface(FieldParams<T> *cp_, const std::function<void(
   
   // field/texture sizes
   auto *sFRES = new Setting<int3> ("Field Resolution",       "fieldRes",   &fieldRes, fieldRes, [this]() { if(fieldResCallback) { fieldResCallback(); } });
+  sFRES->setHelp("Size of field (number of cells) in each dimension");
   sFRES->setFormat(FIELD_RES_SMALL_STEP, FIELD_RES_LARGE_STEP);
   sFRES->setMin(FIELD_RES_MIN); sFRES->setMax(FIELD_RES_MAX);
   paramGroup->add(sFRES);
   auto *sTRES2 = new Setting<int2> ("Tex Resolution (2D)",   "texRes2D",   &texRes2D, texRes2D, [this]() { if(texRes2DCallback) { texRes2DCallback(); } });
+  sTRES2->setHelp("Size of 2D rendered texture (EM and Material views)");
   sTRES2->setFormat(TEX_RES_SMALL_STEP, TEX_RES_LARGE_STEP);
   sTRES2->setMin(TEX_RES_MIN); sTRES2->setMax(TEX_RES_MAX);
   paramGroup->add(sTRES2);
   auto *sTRES3 = new Setting<int2> ("Tex Resolution (3D)",   "texRes3D",   &texRes3D, texRes3D, [this]() { if(texRes3DCallback) { texRes3DCallback(); } });
+  sTRES3->setHelp("Size of 3D rendered texture (3D view)");
   sTRES3->setFormat(TEX_RES_SMALL_STEP, TEX_RES_LARGE_STEP);
   sTRES3->setMin(TEX_RES_MIN); sTRES3->setMax(TEX_RES_MAX);
   paramGroup->add(sTRES3);
   auto *sTRES3M = new Setting<bool>("   (Match Viewport)",  "texRes3DMatch", &texRes3DMatch);
+  sTRES3M->setHelp("Dynamically fit 3D texture size to actual resolution (changes if window is resized)");
   paramGroup->add(sTRES3M);
   
   auto *sFPP = new Setting<VT3>    ("Position",          "fPos",    &cp->fp);
+  sFPP->setHelp("3D position of field within sim");
   paramGroup->add(sFPP);
   auto *sREF = new Setting<bool>   ("Reflective Bounds", "reflect", &cp->reflect);
+  sREF->setHelp("Reflect signals at boundary (some reflections are still apparent even if disabled)");
   paramGroup->add(sREF);
   auto *sSD = new Setting<T>       ("Input Decay",       "decay",   &cp->decay);
+  sSD->setHelp("Input signal field is multiplied by decay^dt each frame to prevent stuck vectors");
   sSD->setFormat(0.01f, 0.1f);
   sSD->setMin(-2.0f); sSD->setMax(2.0f);
   paramGroup->add(sSD);
 
   auto *sUE  = new Setting<bool> ("Update E",           "updateE",    &updateE);    stepGroup->add(sUE);
+  sUE->setHelp("Toggle electric field physics update");
   auto *sUB  = new Setting<bool> ("Update B",           "updateB",    &updateB);    stepGroup->add(sUB);
+  sUB->setHelp("Toggle magnetic field physics update");
   auto *sUQ  = new Setting<bool> ("Update Q",           "updateQ",    &updateQ);    stepGroup->add(sUQ);
+  sUQ->setHelp("Toggle charge field physics update (NOTE: unimplemented)");
   auto *sISD = new Setting<bool> ("Input Signal Decay", "inputDecay", &inputDecay); stepGroup->add(sISD);
+  sISD->setHelp("Toggle decay for input");
 
   // init
   auto *sEINIT   = new Setting<std::string>("E init",   "EInit",            &initEStr,   initEStr,   [&]() { initStrUpdateCb(&initEStr,   &mFillE);   });
@@ -144,15 +157,10 @@ FieldInterface<T>::FieldInterface(FieldParams<T> *cp_, const std::function<void(
 
 template<typename T>
 FieldInterface<T>::~FieldInterface()
-{
-  if(mForm) { delete mForm; mForm = nullptr; }
-}
+{ if(mForm) { delete mForm; mForm = nullptr; } }
 
 template<typename T>
 void FieldInterface<T>::draw()
-{
-  mForm->draw();
-}
-
+{ mForm->draw(); }
 
 #endif // FIELD_HPP

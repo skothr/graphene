@@ -12,10 +12,8 @@
 #include <type_traits>
 #include <limits>
 
-#ifdef ENABLE_CUDA
-#include <cuda_runtime.h>
 #include <vector_types.h>
-#endif // ENABLE_CUDA
+#include <cuda_runtime.h>
 
 // Vector Template Base
 template<typename T, int N>
@@ -23,29 +21,26 @@ struct Vector
 {
   std::array<T, N> data;
 
-  __host__ __device__ Vector()                              : data{{0}}          { }
-  __host__ __device__ Vector(const Vector<T, N> &other)     : Vector(other.data) { }
-  __host__ __device__ Vector(const std::array<T, N> &data_) : data(data_)        { }
-  __host__ __device__ Vector(T val)                         : data(N, val)       { }
+  Vector()                              : data{{0}}          { }
+  Vector(const Vector<T, N> &other)     : Vector(other.data) { }
+  Vector(const std::array<T, N> &data_) : data(data_)        { }
+  Vector(T val)                         : data(N, val)       { }
   
-  __host__ __device__ Vector(const std::string &str)          { fromString(str); }
+  Vector(const std::string &str)          { fromString(str); }
   template<typename U> // convert from other type
-  __host__ __device__ Vector(const Vector<U, N> &other)       { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
-
-#ifdef ENABLE_CUDA
-  __host__ __device__  Vector(const float2 &cv)  { for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)( (const float*)(&cv))[i]; } }
-  __host__ __device__  Vector(const float3 &cv)  { for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)( (const float*)(&cv))[i]; } }
-  __host__ __device__  Vector(const float4 &cv)  { for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)( (const float*)(&cv))[i]; } }
-  __host__ __device__  Vector(const double2 &cv) { for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)((const double*)(&cv))[i]; } }
-  __host__ __device__  Vector(const double3 &cv) { for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)((const double*)(&cv))[i]; } }
-  __host__ __device__  Vector(const double4 &cv) { for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)((const double*)(&cv))[i]; } }
-  __host__ __device__  Vector<T, N>& operator=(const float2 &cv) { for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)((const float*)(&cv))[i]; } return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const float3 &cv) { for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)((const float*)(&cv))[i]; } return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const float4 &cv) { for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)((const float*)(&cv))[i]; } return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const double2 &cv){ for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)((const double*)(&cv))[i]; } return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const double3 &cv){ for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)((const double*)(&cv))[i]; } return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const double4 &cv){ for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)((const double*)(&cv))[i]; } return *this; }
-#endif // ENABLE_CUDA
+  Vector(const Vector<U, N> &other)       { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
+  Vector(const float2 &cv)  { for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)( (const float*)(&cv))[i]; } }
+  Vector(const float3 &cv)  { for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)( (const float*)(&cv))[i]; } }
+  Vector(const float4 &cv)  { for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)( (const float*)(&cv))[i]; } }
+  Vector(const double2 &cv) { for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)((const double*)(&cv))[i]; } }
+  Vector(const double3 &cv) { for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)((const double*)(&cv))[i]; } }
+  Vector(const double4 &cv) { for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)((const double*)(&cv))[i]; } }
+  Vector<T, N>& operator=(const float2 &cv) { for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)((const float*) (&cv))[i]; } return *this; }
+  Vector<T, N>& operator=(const float3 &cv) { for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)((const float*) (&cv))[i]; } return *this; }
+  Vector<T, N>& operator=(const float4 &cv) { for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)((const float*) (&cv))[i]; } return *this; }
+  Vector<T, N>& operator=(const double2 &cv){ for(int i = 0; i < std::min(N, 2); i++) { data[i] = (T)((const double*)(&cv))[i]; } return *this; }
+  Vector<T, N>& operator=(const double3 &cv){ for(int i = 0; i < std::min(N, 3); i++) { data[i] = (T)((const double*)(&cv))[i]; } return *this; }
+  Vector<T, N>& operator=(const double4 &cv){ for(int i = 0; i < std::min(N, 4); i++) { data[i] = (T)((const double*)(&cv))[i]; } return *this; }
 
   std::string toString() const            { std::ostringstream ss;      ss << (*this); return ss.str(); }
   void fromString(const std::string &str) { std::istringstream ss(str); ss >> (*this); }
@@ -53,12 +48,12 @@ struct Vector
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
   
-  __host__ __device__ Vector<T, N>& operator=(T scalar)
+   Vector<T, N>& operator=(T scalar)
   {
     for(int i = 0; i < N; i++) { data[i] = scalar; }
     return *this;
   }
-  __host__ __device__ Vector<T, N>& operator=(const Vector<T, N> &other)
+   Vector<T, N>& operator=(const Vector<T, N> &other)
   {
     for(int i = 0; i < N; i++) { data[i] = other.data[i]; }
     return *this;
@@ -158,25 +153,22 @@ struct Vector<T, 2>
     std::array<T, N> data;
   };
 
-  __host__ __device__ Vector()                              : x((T)0), y((T)0)          { }
-  __host__ __device__ Vector(T x_, T y_)                    : x(x_), y(y_)              { }
-  __host__ __device__ Vector(const Vector<T, N> &other)     : x(other.x), y(other.y)    { }
-  __host__ __device__ Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1])  { }
-  __host__ __device__ Vector(T val)                         : x(val), y(val)            { }
-  __host__ __device__ Vector(const std::string &str)        { fromString(str); }
+   Vector()                              : x((T)0), y((T)0)          { }
+   Vector(T x_, T y_)                    : x(x_), y(y_)              { }
+   Vector(const Vector<T, N> &other)     : x(other.x), y(other.y)    { }
+   Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1])  { }
+   Vector(T val)                         : x(val), y(val)            { }
+   Vector(const std::string &str)        { fromString(str); }
   template<typename U> // convert from other type
-  __host__ __device__ Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
+   Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
   
-  __host__ __device__ Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
-  __host__ __device__ Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
-
-#ifdef ENABLE_CUDA
-  __host__ __device__  Vector(const int2    &cv) : x((T)cv.x), y((T)cv.y) { }
-  __host__ __device__  Vector(const float2  &cv) : x((T)cv.x), y((T)cv.y) { }
-  __host__ __device__  Vector(const double2 &cv) : x((T)cv.x), y((T)cv.y) { }
-  __host__ __device__  Vector<T, N>& operator=(const float2 &cv)  { x = (T)cv.x; y = (T)cv.y; return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const double2 &cv) { x = (T)cv.x; y = (T)cv.y; return *this; }
-#endif // ENABLE_CUDA
+   Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
+   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
+    Vector(const int2    &cv) : x((T)cv.x), y((T)cv.y) { }
+    Vector(const float2  &cv) : x((T)cv.x), y((T)cv.y) { }
+    Vector(const double2 &cv) : x((T)cv.x), y((T)cv.y) { }
+    Vector<T, N>& operator=(const float2 &cv)  { x = (T)cv.x; y = (T)cv.y; return *this; }
+    Vector<T, N>& operator=(const double2 &cv) { x = (T)cv.x; y = (T)cv.y; return *this; }
 
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
@@ -291,26 +283,23 @@ struct Vector<T, 3>
     std::array<T, N> data;
   };
 
-  __host__ __device__ Vector()                              : x((T)0), y((T)0), z((T)0)               { }
-  __host__ __device__ Vector(T x_, T y_, T z_)              : x(x_), y(y_), z(z_)                     { }
-  __host__ __device__ Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z)      { }
-  __host__ __device__ Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2])   { }
-  __host__ __device__ Vector(T val)                         : x(val), y(val), z(val)                  { }
+   Vector()                              : x((T)0), y((T)0), z((T)0)               { }
+   Vector(T x_, T y_, T z_)              : x(x_), y(y_), z(z_)                     { }
+   Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z)      { }
+   Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2])   { }
+   Vector(T val)                         : x(val), y(val), z(val)                  { }
   
-  __host__ __device__ Vector(const std::string &str)        { fromString(str); }
+   Vector(const std::string &str)        { fromString(str); }
   template<typename U> // convert from other type
-  __host__ __device__ Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
+   Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
   
-  __host__ __device__ Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
-  __host__ __device__ Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; }    return *this; }
-  
-#ifdef ENABLE_CUDA
-  __host__ __device__  Vector(const int3    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
-  __host__ __device__  Vector(const float3  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
-  __host__ __device__  Vector(const double3 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
-  __host__ __device__  Vector<T, N>& operator=(const float3 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const double3 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
-#endif // ENABLE_CUDA
+   Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
+   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; }    return *this; }
+    Vector(const int3    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
+    Vector(const float3  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
+    Vector(const double3 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
+    Vector<T, N>& operator=(const float3 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
+    Vector<T, N>& operator=(const double3 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
   
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
@@ -421,25 +410,22 @@ struct Vector<T, 4>
     std::array<T, N> data;
   };
 
-  __host__ __device__ Vector()                              : x((T)0), y((T)0), z((T)0), w((T)1)                 { }
-  __host__ __device__ Vector(T x_, T y_, T z_, T w_)        : x(x_), y(y_), z(z_), w(w_)                         { }
-  __host__ __device__ Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z), w(other.w)     { }
-  __host__ __device__ Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2]), w(data_[3]) { }
-  __host__ __device__ Vector(T val)                         : x(val), y(val), z(val), w(val)                     { }
-  __host__ __device__ Vector(const std::string &str)        { fromString(str); }
+   Vector()                              : x((T)0), y((T)0), z((T)0), w((T)1)                 { }
+   Vector(T x_, T y_, T z_, T w_)        : x(x_), y(y_), z(z_), w(w_)                         { }
+   Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z), w(other.w)     { }
+   Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2]), w(data_[3]) { }
+   Vector(T val)                         : x(val), y(val), z(val), w(val)                     { }
+   Vector(const std::string &str)        { fromString(str); }
   template<typename U> // convert from other type
-  __host__ __device__ Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
+   Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
   
-  __host__ __device__ Vector<T, 4>& operator=(const Vector<T, 4> &other) { data = other.data; return *this; }
-  __host__ __device__ Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
-
-#ifdef ENABLE_CUDA
-  __host__ __device__ Vector(const int4    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
-  __host__ __device__ Vector(const float4  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
-  __host__ __device__ Vector(const double4 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
-  __host__ __device__  Vector<T, N>& operator=(const float4 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
-  __host__ __device__  Vector<T, N>& operator=(const double4 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
-#endif // ENABLE_CUDA
+   Vector<T, 4>& operator=(const Vector<T, 4> &other) { data = other.data; return *this; }
+   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
+   Vector(const int4    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
+   Vector(const float4  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
+   Vector(const double4 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
+    Vector<T, N>& operator=(const float4 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
+    Vector<T, N>& operator=(const double4 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
   
   T& operator[](int dim)               { return data[dim]; }
   const T& operator[](int dim) const   { return data[dim]; }
@@ -631,22 +617,18 @@ inline Vector<T, 3> rotate(const Vector<T, 3> &v, const Vector<T, 3> &ax, T thet
 }
 
 
+ inline int2    to_cuda(const Vec2i &v) { return int2   {v.x, v.y}; }
+ inline int3    to_cuda(const Vec3i &v) { return int3   {v.x, v.y, v.z}; }
+ inline int4    to_cuda(const Vec4i &v) { return int4   {v.x, v.y, v.z, v.w}; }
+ inline float2  to_cuda(const Vec2f &v) { return float2 {v.x, v.y}; }
+ inline float3  to_cuda(const Vec3f &v) { return float3 {v.x, v.y, v.z}; }
+ inline float4  to_cuda(const Vec4f &v) { return float4 {v.x, v.y, v.z, v.w}; }
+ inline double2 to_cuda(const Vec2d &v) { return double2{v.x, v.y}; }
+ inline double3 to_cuda(const Vec3d &v) { return double3{v.x, v.y, v.z}; }
+ inline double4 to_cuda(const Vec4d &v) { return double4{v.x, v.y, v.z, v.w}; }
 
-
-#if ENABLE_CUDA
-__host__ __device__ inline int2    to_cuda(const Vec2i &v) { return int2   {v.x, v.y}; }
-__host__ __device__ inline int3    to_cuda(const Vec3i &v) { return int3   {v.x, v.y, v.z}; }
-__host__ __device__ inline int4    to_cuda(const Vec4i &v) { return int4   {v.x, v.y, v.z, v.w}; }
-__host__ __device__ inline float2  to_cuda(const Vec2f &v) { return float2 {v.x, v.y}; }
-__host__ __device__ inline float3  to_cuda(const Vec3f &v) { return float3 {v.x, v.y, v.z}; }
-__host__ __device__ inline float4  to_cuda(const Vec4f &v) { return float4 {v.x, v.y, v.z, v.w}; }
-__host__ __device__ inline double2 to_cuda(const Vec2d &v) { return double2{v.x, v.y}; }
-__host__ __device__ inline double3 to_cuda(const Vec3d &v) { return double3{v.x, v.y, v.z}; }
-__host__ __device__ inline double4 to_cuda(const Vec4d &v) { return double4{v.x, v.y, v.z, v.w}; }
-#endif // ENABLE_CUDA
-
-template<typename T, int N> __host__ __device__ T*       arr(      Vector<T, N> &v) { return v.data.data(); }
-template<typename T, int N> __host__ __device__ const T* arr(const Vector<T, N> &v) { return v.data.data(); }
+template<typename T, int N>  T*       arr(      Vector<T, N> &v) { return v.data.data(); }
+template<typename T, int N>  const T* arr(const Vector<T, N> &v) { return v.data.data(); }
 
 
 #endif //VECTOR_HPP

@@ -33,8 +33,8 @@
 #define CFV2 typename DimType<CFT, 2>::VEC_T
 #define CFV3 typename DimType<CFT, 3>::VEC_T
 #define CFV4 typename DimType<CFT, 4>::VEC_T
-#define STATE_BUFFER_SIZE  2
-#define DESTROY_LAST_STATE false //(STATE_BUFFER_SIZE <= 1)
+#define STATE_BUFFER_SIZE  1
+#define DESTROY_LAST_STATE true //(STATE_BUFFER_SIZE <= 1)
 
 // font settings
 #define MAIN_FONT_HEIGHT  14.0f
@@ -67,7 +67,6 @@
 #define OUTLINE_COLOR Vec4f(1,1,1,0.5f) // field outline
 #define GUIDE_COLOR   Vec4f(1,1,1,0.3f) // pen input guides
 #define RADIUS_COLOR  Vec4f(1,1,1,0.4f) // intersecting radii ghosts
-
 
 // forward declarations
 struct ImFont;
@@ -120,6 +119,7 @@ struct SimInfo
 struct FVector
 {
   Vec3f p0; // cell sim pos
+  Vec3f sp; // sample position
   Vec3f vE; // E sim vector
   Vec3f vB; // B sim vector
 };
@@ -192,6 +192,7 @@ private:
   ScreenView<CFT> m3DGlView;
   
   Vec2f mMouseSimPos;
+  Vec2f mMouseSimPosLast;
   CFV3  mSigMPos; // 3D pos of active signal pen
   CFV3  mMatMPos; // 3D pos of active material pen
 
@@ -215,7 +216,7 @@ private:
   
   void handleInput2D(ScreenView<CFT> &view);
   void handleInput3D(ScreenView<CFT> &view);
-  void drawVectorField2D(const Rect2f &sr);
+  void drawVectorField2D(ScreenView<CFT> &view);
   
   void draw2DOverlay(ScreenView<CFT> &view);
   void draw3DOverlay(ScreenView<CFT> &view);
@@ -259,7 +260,7 @@ public:
   ImFont *titleFont  = nullptr; ImFont *titleFontB  = nullptr; ImFont *titleFontI = nullptr; ImFont *titleFontBI = nullptr;
   ImFont *superFont  = nullptr; ImFont *superFontB  = nullptr; ImFont *superFontI = nullptr; ImFont *superFontBI = nullptr;
   ImFont *tinyFont   = nullptr; ImFont *tinyFontB   = nullptr; ImFont *tinyFontI  = nullptr; ImFont *tinyFontBI  = nullptr;
-  FreeTypeTest *freetypeTest = nullptr;
+  FreeTypeTest *ftDemo = nullptr;
   
   void keyPress(int mods, int key, int action);
   
@@ -336,12 +337,9 @@ inline Vec2f SimWindow::screenToSim2D(const Vec3f &pScreen, const Rect2f &simVie
 inline void SimWindow::drawRect3D(ScreenView<CFT> &view, const Vec3f &p0, const Vec3f &p1, const Vec4f &color)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
-  Vec2f aspect = Vec2f(view.r.aspect(), 1.0); if(aspect.x < 1.0) { aspect.y = 1.0/aspect.x; aspect.x = 1.0; }
+  Vec2f aspect = Vec2f(view.r.aspect(), 1.0);
   Vec2f vSize = view.r.size();
-  Vec2f aOffset = (aspect.x > 1 ?
-                   Vec2f(vSize.x/aspect.x - vSize.x, 0.0f) :
-                   Vec2f(0.0f, vSize.y/aspect.y - vSize.y))/2.0f;
-
+  Vec2f aOffset = Vec2f(vSize.x/aspect.x - vSize.x, vSize.y/aspect.y - vSize.y)/2.0f;
   // rect points
   Vec3f W000  = p0;
   Vec3f W001  = Vec3f(p0.x, p0.y, p1.z);
@@ -385,11 +383,10 @@ inline void SimWindow::drawEllipse3D(ScreenView<CFT> &view, const Vec3f &center,
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   float S = 2.0*tan(mCamera.fov/2.0f*M_PI/180.0f);
-  Vec2f aspect = Vec2f(view.r.aspect(), 1.0); if(aspect.x < 1.0) { aspect.y = 1.0/aspect.x; aspect.x = 1.0; }
+  Vec2f aspect = Vec2f(view.r.aspect(), 1.0);
   Vec2f vSize = view.r.size();
-  Vec2f aOffset = (aspect.x > 1 ?
-                   Vec2f(vSize.x/aspect.x - vSize.x, 0.0f) :
-                   Vec2f(0.0f, vSize.y/aspect.y - vSize.y))/2.0f;
+  Vec2f aOffset = Vec2f(vSize.x/aspect.x - vSize.x, vSize.y/aspect.y - vSize.y)/2.0f;
+
   for(int i = 0; i < 32; i++)
     {
       float a0 = 2.0f*M_PI*(i/32.0f);

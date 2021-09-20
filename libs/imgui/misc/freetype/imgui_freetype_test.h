@@ -10,7 +10,7 @@ struct FreeTypeTest
   FontBuildMode   BuildMode = FontBuildMode_FreeType;
   bool            WantRebuild = false;
   float           RasterizerMultiply = 1.0f;
-  unsigned int    FreeTypeBuilderFlags = 0;
+  unsigned int    FreeTypeBuilderFlags = ImGui::GetIO().Fonts->FontBuilderFlags;
 
   // Call _BEFORE_ NewFrame()
   bool PreNewFrame()
@@ -43,10 +43,10 @@ struct FreeTypeTest
     return true;
   }
   // Call to draw UI
-  void ShowFontsOptionsWindow()
+  void ShowFontsOptionsWindow(bool *windowOpen)
   {
     ImFontAtlas* atlas = ImGui::GetIO().Fonts;
-    ImGui::Begin("FreeType Options");
+    ImGui::Begin("FreeType Options", windowOpen);
     ImGui::ShowFontSelector("Fonts");
     WantRebuild |= ImGui::RadioButton("FreeType", (int*)&BuildMode, FontBuildMode_FreeType);
     ImGui::SameLine();

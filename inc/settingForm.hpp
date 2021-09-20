@@ -32,7 +32,9 @@ public:
   SettingBase* get(const std::string &name);
   void remove(const std::string &name);
   bool draw(float scale=1.0f, bool busy=false, bool visible=true);
-    
+
+  void updateAll();
+  
   void setLabelColWidth(float w);
   void setInputColWidth(float w);
   float labelColWidth() const { return mLabelColW; }

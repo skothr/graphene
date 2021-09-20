@@ -14,11 +14,8 @@ struct DrawInterface
 {
   // TODO: clean up this mess
   //                          1/R    1/R^2  theta  sin(t)  cos(t)
-  // std::vector<bool> Qopt   = {false, false, false, false,  false};
-  // std::vector<bool> QPVopt = {false, false, false, false,  false};
-  // std::vector<bool> QNVopt = {false, false, false, false,  false};
-  std::vector<bool> Eopt   = {false, false, false, false, true  };
-  std::vector<bool> Bopt   = {false, false, false, true,  false };
+  std::vector<bool> Eopt   = {false, false, false,  true,  false };
+  std::vector<bool> Bopt   = {false, false, false,  true,  false };
 
   // Pen *activePen = nullptr; // TODO: better pen abstraction
   SignalPen<T>   sigPen;
@@ -27,13 +24,21 @@ struct DrawInterface
   Units<T> *mUnits = nullptr;
   
   SettingForm *mForm = nullptr;
-  json toJSON() const           { return (mForm ? mForm->toJSON() : json::object()); }
-  bool fromJSON(const json &js) { return (mForm ? mForm->fromJSON(js) : false); }
+  json toJSON() const { return (mForm ? mForm->toJSON() : json::object()); }
+  bool fromJSON(const json &js)
+  {
+    bool success =  (mForm ? mForm->fromJSON(js) : false);
+    // update crappy opt interface in case settings are different (TODO: improve)
+    int idx = IDX_NONE; for(int i=0; i<Eopt.size(); i++)   { idx = (Eopt[i]  ?(idx|(1<<i)) : (idx&~(1<<i))); } sigPen.Eopt   = idx;
+    idx     = IDX_NONE; for(int i=0; i<Bopt.size(); i++)   { idx = (Bopt[i]  ?(idx|(1<<i)) : (idx&~(1<<i))); } sigPen.Bopt   = idx;
+    return success;
+  }
   
   DrawInterface(Units<T> *units);
   ~DrawInterface();
 
   void draw(ImFont *superFont=nullptr);
+  void updateAll() { mForm->updateAll(); }
 };
 
 
@@ -46,7 +51,7 @@ DrawInterface<T>::DrawInterface(Units<T> *units)
   SettingGroup *matGroup = new SettingGroup("Add Material (Alt+Click)",   "matPen", { }, false);
   
   // signal pen
-  auto *sSPA   = new Setting<bool>  ("Active",         "sPenActive",   &sigPen.active);
+  auto *sSPA   = new Setting<bool> ("Active",          "sPenActive",   &sigPen.active);
   sigGroup->add(sSPA);
   auto *sSPR0  = new Setting<VT3>  ("Radius 0",        "sPenRad0",     &sigPen.radius0);
   sSPR0->setFormat(VT3{1.0f, 1.0f, 1.0f}, VT3{10.0f, 10.0f, 10.0f}, "%0.4f");
@@ -70,63 +75,46 @@ DrawInterface<T>::DrawInterface(Units<T> *units)
   sigGroup->add(sSPS);
   auto *sSPAL  = new Setting<bool> ("Align to Cell",   "sPenAlign",    &sigPen.cellAlign);
   sigGroup->add(sSPAL);
+  
+  auto *sSPMS  = new Setting<bool> ("Mouse Speed",     "mouseSpeed",   &sigPen.speed);
+  sigGroup->add(sSPMS);
+  auto *sSPMSM = new Setting<T>    ("Speed Multiplier\n","speedMult",    &sigPen.speedMult);
+  sSPMSM->setFormat(0.1f, 1.0f, "%0.4f");
+  sigGroup->add(sSPMSM);
+  
   auto *sSPM   = new Setting<T>    ("Amplitude",       "sPenMult",     &sigPen.mult);
   sSPM->setFormat(0.1f, 1.0f, "%0.4f");
   sigGroup->add(sSPM);
-  auto *sSPF   = new Setting<T>    ("Frequency",     "sPenFreq",   &sigPen.frequency, sigPen.frequency,
+  auto *sSPF   = new Setting<T>    ("Frequency",       "sPenFreq",     &sigPen.frequency, sigPen.frequency,
                                     [this]() { sigPen.wavelength = mUnits->c() / sigPen.frequency; });
   sSPF->setFormat(0.01f, 0.1f, "%0.4f"); sSPF->setMin(0.0f);
   sigGroup->add(sSPF);
-  auto *sSPW   = new Setting<T>    ("Wavelength",    "sPenWLen",   &sigPen.wavelength, sigPen.wavelength,
+  auto *sSPW   = new Setting<T>    ("Wavelength",      "sPenWLen",     &sigPen.wavelength, sigPen.wavelength,
                                     [this]() { sigPen.frequency = mUnits->c() / sigPen.wavelength; });
   sSPW->setFormat(0.1f, 1.0f, "%0.4f"); sSPW->setMin(0.0f);
   sigGroup->add(sSPW);
   
-  // auto *sSPQ   = new Setting<float2>("Q",   "sPenQ",   &sigPen.Qmult);
-  // sSPQ->labels = {"(+)", "(-)"};
-  // sSPQ->setFormat  (float2{0.01f, 0.01f}, float2{0.1f, 0.1f}, "%0.4f");
-  // auto *sSPQPV = new Setting<float3>("VQ+", "sPenQpv", &sigPen.QPVmult);
-  // sSPQPV->setFormat(float3{0.01f, 0.01f, 0.01f},  float3{0.1f, 0.1f, 0.1f}, "%0.4f");
-  // auto *sSPQNV = new Setting<float3>("VQ-", "sPenQnv", &sigPen.QNVmult);
-  // sSPQNV->setFormat(float3{0.01f, 0.01f, 0.01f},  float3{0.1f, 0.1f, 0.1f}, "%0.4f");
-  auto *sSPE   = new Setting<float3>("E",   "sPenE",   &sigPen.Emult);
-  sSPE->setFormat  (float3{0.01f, 0.01f, 0.01f}, float3{0.1f, 0.1f, 0.1f}, "%0.4f");
-  auto *sSPB   = new Setting<float3>("B",   "sPenB",   &sigPen.Bmult);
-  sSPB->setFormat  (float3{0.01f, 0.01f, 0.01f}, float3{0.1f, 0.1f, 0.1f}, "%0.4f");
-  // sigGroup->add(sSPQ); sigGroup->add(sSPQPV); sigGroup->add(sSPQNV);
-  sigGroup->add(sSPE); sigGroup->add(sSPB);
+  auto *sSPE = new Setting<float3>("E", "sPenE", &sigPen.Emult);
+  sSPE->setFormat(float3{0.01f, 0.01f, 0.01f}, float3{0.1f, 0.1f, 0.1f}, "%0.4f");
+  sigGroup->add(sSPE);
+  auto *sSPB = new Setting<float3>("B", "sPenB", &sigPen.Bmult);
+  sSPB->setFormat(float3{0.01f, 0.01f, 0.01f}, float3{0.1f, 0.1f, 0.1f}, "%0.4f");
+  sigGroup->add(sSPB);
   
-  // auto *sSPQb    = new Setting<std::vector<bool>>("Options", "sPenQopt", &Qopt);
-  // sSPQb->vColumns = 5; sSPQb->vRowLabels = {{0, "Q  "}};
-  // sSPQb->vColLabels   = {{0, "   R "}, {1, "  R^2"}, {2, "   θ "}, {3, "sin(t)"}, {4, "cos(t)"}}; sSPQb->drawColLabels = true;
-  // sSPQb->vRowLabels   = {{0, "Q  "}};
-  // sSPQb->updateCallback   =
-  //   [this]() { int idx = IDX_NONE; for(int i=0; i<Qopt.size(); i++)   { idx = (Qopt[i]  ?(idx|(1<<i)) : (idx&~(1<<i))); } sigPen.Qopt   = idx; };
-  // auto *sSPQPVb  = new Setting<std::vector<bool>>("", "sPenQPVopt", &QPVopt);
-  // sSPQPVb->vColumns = 5;  sSPQPVb->vRowLabels = {{0, "QPV"}};
-  // sSPQPVb->vColLabels = {{0, "   R "}, {1, "  R^2"}, {2, "   θ "}, {3, "sin(t)"}, {4, "cos(t)"}}; 
-  // sSPQPVb->updateCallback =
-  //   [this]() { int idx = IDX_NONE; for(int i=0; i<QPVopt.size(); i++) { idx = (QPVopt[i]?(idx|(1<<i)) : (idx&~(1<<i))); } sigPen.QPVopt = idx; };
-  // auto *sSPQNVb  = new Setting<std::vector<bool>>("", "sPenQNVopt", &QNVopt);
-  // sSPQNVb->vColumns = 5;  sSPQNVb->vRowLabels = {{0, "QNV"}};
-  // sSPQNVb->vColLabels = {{0, "   R "}, {1, "  R^2"}, {2, "   θ "}, {3, "sin(t)"}, {4, "cos(t)"}}; 
-  // sSPQNVb->updateCallback =
-  //   [this]() { int idx = IDX_NONE; for(int i=0; i<QNVopt.size(); i++) { idx = (QNVopt[i]?(idx|(1<<i)) : (idx&~(1<<i))); } sigPen.QNVopt = idx; };
-  auto *sSPEb    = new Setting<std::vector<bool>>("", "sPenEopt", &Eopt);
+  auto *sSPEb = new Setting<std::vector<bool>>("", "sPenEopt", &Eopt);
   sSPEb->vColumns = 5;  sSPEb->vRowLabels = {{0, "E  "}};
-  sSPEb->vColLabels   = {{0, "   R "}, {1, "  R^2"}, {2, "   θ "}, {3, "sin(t)"}, {4, "cos(t)"}};  sSPEb->drawColLabels = true;
-  sSPEb->updateCallback   =
-    [this]() { int idx = IDX_NONE; for(int i=0; i<Eopt.size(); i++)   { idx = (Eopt[i]  ?(idx|(1<<i)) : (idx&~(1<<i))); } sigPen.Eopt   = idx; };
-  auto *sSPBb    = new Setting<std::vector<bool>>("", "sPenBopt", &Bopt);
+  sSPEb->vColLabels = {{0, "   R "}, {1, "  R^2"}, {2, "   θ "}, {3, "sin(t)"}, {4, "cos(t)"}}; sSPEb->drawColLabels = true;
+  sSPEb->updateCallback =
+    [this]() { int idx = IDX_NONE; for(int i = 0; i < Eopt.size(); i++) { idx = (Eopt[i] ? (idx|(1<<i)) : (idx&~(1<<i))); } sigPen.Eopt = idx; };
+  sigGroup->add(sSPEb);
+  auto *sSPBb = new Setting<std::vector<bool>>("", "sPenBopt", &Bopt);
   sSPBb->vColumns = 5;  sSPBb->vRowLabels = {{0, "B  "}};
-  sSPBb->vColLabels   = {{0, "   R "}, {1, "  R^2"}, {2, "   θ "}, {3, "sin(t)"}, {4, "cos(t)"}}; 
-  sSPBb->updateCallback   =
-    [this]() { int idx = IDX_NONE; for(int i=0; i<Bopt.size(); i++)   { idx = (Bopt[i]  ?(idx|(1<<i)) : (idx&~(1<<i))); } sigPen.Bopt   = idx; };
-  // sigGroup->add(sSPQb); sigGroup->add(sSPQPVb); sigGroup->add(sSPQNVb);
-  sigGroup->add(sSPEb); sigGroup->add(sSPBb);
-
+  sSPBb->vColLabels = {{0, "   R "}, {1, "  R^2"}, {2, "   θ "}, {3, "sin(t)"}, {4, "cos(t)"}}; 
+  sSPBb->updateCallback =
+    [this]() { int idx = IDX_NONE; for(int i = 0; i < Bopt.size(); i++) { idx = (Bopt[i] ? (idx|(1<<i)) : (idx&~(1<<i))); } sigPen.Bopt = idx; };
+  sigGroup->add(sSPBb);
+  
   // material pen
-  matPen.material.setVacuum(false);
   auto *sMPA  = new Setting<bool> ("Active",          "mPenActive", &matPen.active);
   matGroup->add(sMPA);
   auto *sMPR0 = new Setting<VT3>  ("Radius 0",        "mPenRad0",   &matPen.radius0);

@@ -9,8 +9,6 @@
 
 #include "vector.hpp"
 
-
-
 //// COMPILE-TIME TEMPLATES FOR GENERALIZED DIMENSIONALITY ////
 template<typename T> struct Dim { static constexpr int N = 1; typedef T   BASE_T;    typedef T       LOWER; typedef int  SIZE_T; };
 template<> struct Dim<int2>     { static constexpr int N = 2; typedef int BASE_T;    typedef int     LOWER; typedef int2 SIZE_T; };

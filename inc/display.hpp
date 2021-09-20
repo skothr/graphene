@@ -12,14 +12,14 @@ struct VectorFieldParams
   // vector field
   bool  drawVectors     = false; // draws vector field on screen
   bool  borderedVectors = false; // uses fancy bordered polygons instead of standard GL_LINES (NOTE: slower)   TODO: optimize with VBO
-  bool  smoothVectors   = false; // uses bilinear interpolation, centering at samples mouse instead of exact cell centers
-  int   vecMRadius      = 256;   // draws vectors for cells within radius around mouse
+  bool  smoothVectors   = true;  // uses bilinear interpolation, centering at samples mouse instead of exact cell centers
+  int   vecMRadius      = 64;    // draws vectors for cells within radius around mouse
   int   vecSpacing      = 1;     // base spacing 
   int   vecCRadius      = 1024;  // only draws maximum of this radius number of vectors, adding spacing  
-  float vecMultE        = 3.0f;  // E length multiplier
-  float vecMultB        = 3.0f;  // B length multiplier
+  float vecMultE        = 1.0f;  // E length multiplier
+  float vecMultB        = 1.0f;  // B length multiplier
   float vecLineW        = 0.2f;  // line width
-  float vecAlpha        = 0.25f; // line opacity
+  float vecAlpha        = 0.2f;  // line opacity
   float vecBorderW      = 1.0f;  // border width
   float vecBAlpha       = 1.0f;  // border opacity
 };
@@ -28,12 +28,12 @@ template<typename T>
 struct DisplayInterface
 {
   // flags
-  bool showEMField    = true;
-  bool showMatField   = true;
-  bool show3DField    = true;
-  bool drawAxes       = true; // 3D axes
-  bool drawOutline    = true; // 3D outline of field
-  bool vsync          = true; // vertical sync refresh
+  bool vsync       = true; // vertical sync refresh
+  bool showEMView  = true;
+  bool showMatView = true;
+  bool show3DView  = true;
+  bool drawAxes    = true; // axes at origin in each view
+  bool drawOutline = true; // outline of field in each view
   
   // main parameters
   RenderParams<T>      *rp = nullptr; bool rpDelete = false;
@@ -48,6 +48,7 @@ struct DisplayInterface
   ~DisplayInterface();
 
   void draw();
+  void updateAll() { mForm->updateAll(); }
 };
 
 
@@ -60,20 +61,20 @@ DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParam
   
   mForm = new SettingForm("Display Settings", 180, 300);
 
-
   // flags
-  auto *sSFEM  = new Setting<bool> ("Show EM Field",       "showEMField",  &showEMField);
+  auto *sVS    = new Setting<bool> ("vSync",               "vsync",        &vsync, vsync, [&]() { glfwSwapInterval(vsync ? 1 : 0); });
+  sVS->setHelp("");
+  mForm->add(sVS);
+  auto *sSFEM  = new Setting<bool> ("Show EM View",        "showEMView",   &showEMView);
   mForm->add(sSFEM);
-  auto *sSFMAT  = new Setting<bool>("Show Material Field", "showMatField", &showMatField);
+  auto *sSFMAT  = new Setting<bool>("Show Material View",  "showMatView",  &showMatView);
   mForm->add(sSFMAT);
-  auto *sSF3D  = new Setting<bool> ("Show 3D Field",       "show3DField",  &show3DField);
+  auto *sSF3D  = new Setting<bool> ("Show 3D View",        "show3DView",   &show3DView);
   mForm->add(sSF3D);
   auto *sSFA   = new Setting<bool> ("Show Axes",           "showAxes",     &drawAxes);
   mForm->add(sSFA);
   auto *sSFO   = new Setting<bool> ("Show Field Outline",  "showOutline",  &drawOutline);
   mForm->add(sSFO);
-  auto *sVS    = new Setting<bool> ("vSync",               "vsync",        &vsync, vsync, [&]() { glfwSwapInterval(vsync ? 1 : 0); });
-  mForm->add(sVS);
 
   // render params
   auto *sRZL = new Setting<int2> ("Z Range", "zRange", &rp->zRange, rp->zRange);

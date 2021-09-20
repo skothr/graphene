@@ -25,8 +25,8 @@ __global__ void renderFieldEM_k(EMField<T> src, CudaTexture dst, RenderParams<T>
 {
   typedef typename DimType<T,3>::VEC_T VT3;
   typedef typename DimType<T,4>::VEC_T VT4;
-  long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
     {
       int ti = ix + iy*dst.size.x;
@@ -68,8 +68,8 @@ __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, Render
 {
   typedef typename DimType<T,3>::VEC_T VT3;
   typedef typename DimType<T,4>::VEC_T VT4;
-  long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
     {
       int ti = ix + iy*dst.size.x;
@@ -113,14 +113,14 @@ __global__ void rtRenderFieldEM_k(EMField<T> src, CudaTexture dst, CameraDesc<T>
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   typedef typename DimType<T,4>::VEC_T VT4;
-  long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
     {
       Ray<T> ray = cam.castRay(VT2{ix/(T)dst.size.x, iy/(T)dst.size.y}, aspect);
       VT4 color = rayTraceField(src, ray, rp, cp);
       
-      long long ti = ix + iy*dst.size.x;
+      long ti = ix + iy*dst.size.x;
       //dst[ti] = (color.w < 0.0f ? VT4{0.0f, 0.0f, 0.0f, 1.0f} : float4{(float)color.x, (float)color.y, (float)color.z, 1.0f);
       dst[ti] += float4{ max(0.0f, min(1.0f, (float)color.x)), max(0.0f, min(1.0f, (float)color.y)), max(0.0f, min(1.0f, (float)color.z)), 1.0f };
     }
@@ -131,14 +131,14 @@ __global__ void rtRenderFieldMat_k(EMField<T> src, CudaTexture dst, CameraDesc<T
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   typedef typename DimType<T,4>::VEC_T VT4;
-  long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
     {
       Ray<T> ray = cam.castRay(VT2{ix/(T)dst.size.x, iy/(T)dst.size.y}, aspect);
       VT4 color = rayTraceField(src, ray, rp, cp);
       
-      long long ti = ix + iy*dst.size.x;
+      long ti = ix + iy*dst.size.x;
       // dst[ti] = (color.w < 0.0f ? float4{0.0f, 0.0f, 0.0f, 1.0f} : float4{(float)color.x, (float)color.y, (float)color.z, 1.0f});
       dst[ti] += float4{ max(0.0f, min(1.0f, (float)color.x)), max(0.0f, min(1.0f, (float)color.y)), max(0.0f, min(1.0f, (float)color.z)), 1.0f };
     }

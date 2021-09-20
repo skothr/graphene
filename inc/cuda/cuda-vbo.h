@@ -24,7 +24,7 @@ typedef float4 Vertex;
 // --> contains vertex data for drawing with opengl
 struct CudaVBO
 {
-  unsigned long long size = 0; // buffer size (number of vertices)
+  unsigned long size = 0; // buffer size (number of vertices)
   bool   mapped = false;
   bool   bound  = false;
   GLuint glVbo  = 0;
@@ -34,7 +34,7 @@ struct CudaVBO
   __device__ const Vertex& operator[](unsigned int i) const { return dData[i]; }
   __device__       Vertex& operator[](unsigned int i)       { return dData[i]; }
   
-  bool create(unsigned long long sz);
+  bool create(unsigned long sz);
   void destroy();
   
   bool allocated() const { return (gCudaInitialized && size > 0 && glVbo); }
@@ -54,7 +54,7 @@ struct CudaVBO
   }
   
   // GL interop
-  void initGL(unsigned long long sz);  // initialize CUDA-->opengl interop
+  void initGL(unsigned long sz);  // initialize CUDA-->opengl interop
   void bind();    // bind for use with opengl
   void release(); // unbind
   void draw();    // draw vertices to screen (NOTE: probably need a shader, etc. attached)
@@ -63,7 +63,7 @@ struct CudaVBO
   void clear() { if(allocated() && map()) { cudaMemset(dData, 0, size*sizeof(Vertex)); unmap(); } }
 };
 
-inline bool CudaVBO::create(unsigned long long sz)
+inline bool CudaVBO::create(unsigned long sz)
 {
   initCudaDevice();
   if(gCudaInitialized)
@@ -88,7 +88,7 @@ inline bool CudaVBO::create(unsigned long long sz)
   return false;
 }
 
-inline void CudaVBO::initGL(unsigned long long sz)
+inline void CudaVBO::initGL(unsigned long sz)
 {
   // delete old buffers
   glBindBuffer(GL_ARRAY_BUFFER, 0);

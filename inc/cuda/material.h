@@ -20,7 +20,7 @@ struct Material
   union { T permeability = 1.0f; T mu;             }; // μ  mu      -- magnetic permeability (B)
   union { T conductivity = 0.0f; T sigma;   T sig; }; // σ  sigma   -- material conductivity (Q) (?)
 
-  __host__ __device__ Material() { }
+  Material() = default;
   __host__ __device__ Material(T permit, T permeab, T conduct, bool vacuum_=true) // *NOTE*: logic reversed within class (see member declaration)
     : permittivity(permit), permeability(permeab), conductivity(conduct), nonVacuum(!vacuum_) { }
 

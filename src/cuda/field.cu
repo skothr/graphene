@@ -20,12 +20,12 @@
 // fills field with constant value
 template<typename T> __global__ void fillFieldValue_k(Field<T> dst, T val)
 {
-  long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long long iy = blockIdx.y*blockDim.y + threadIdx.y;
-  long long iz = blockIdx.z*blockDim.z + threadIdx.z;
+  long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix >= 0 && iy >= 0 && ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
-      unsigned long long i = dst.idx(ix, iy, iz);
+      unsigned long i = dst.idx(ix, iy, iz);
       dst[i] = val;
     }
 }
@@ -34,12 +34,12 @@ template<typename T> __global__ void fillFieldValue_k(Field<T> dst, T val)
 template<typename T>
 __global__ void fillFieldMaterial_k(Field<Material<T>> dst, CudaExpression<T> *dExprEp, CudaExpression<T> *dExprMu, CudaExpression<T> *dExprSig)
 {
-  long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long long iy = blockIdx.y*blockDim.y + threadIdx.y;
-  long long iz = blockIdx.z*blockDim.z + threadIdx.z;
+  long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix >= 0 && iy >= 0 && ix < dst.size.x && iy < dst.size.y && iz < dst.size.z && dExprEp && dExprMu && dExprSig)
     {
-      unsigned long long i = dst.idx(ix, iy, iz);
+      unsigned long i = dst.idx(ix, iy, iz);
       Material<T> M = dst[i];
       
       // allowed expression variables
@@ -52,7 +52,7 @@ __global__ void fillFieldMaterial_k(Field<Material<T>> dst, CudaExpression<T> *d
 
       // run expression
       const int nVars = 8;
-      float vars[nVars]; // {"px", "py", "pz", "sx", "sy", "sz", "r", "t"}
+      T vars[nVars]; // {"px", "py", "pz", "sx", "sy", "sz", "r", "t"}
       vars[0] = p.x; vars[1] = p.y; vars[2] = p.z; // "px" / "py" / "pz"
       vars[3] = s.x; vars[4] = s.y; vars[5] = s.z; // "sx" / "sy" / "sz"
       vars[6] = r;   vars[7] = t;                  // "r" / "t"
@@ -70,12 +70,12 @@ template<typename T> __global__ void fillField_k(Field<T> dst, CudaExpression<T>
 template<typename T> __global__ void fillFieldChannel_k(Field<T> dst, CudaExpression<typename Dim<T>::BASE_T> *expr, int channel=-1);
 template<> __global__ void fillField_k<float>(Field<float> dst, CudaExpression<float> *expr)
 {
-  unsigned long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  unsigned long long iy = blockIdx.y*blockDim.y + threadIdx.y;
-  unsigned long long iz = blockIdx.z*blockDim.z + threadIdx.z;
+  unsigned long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  unsigned long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  unsigned long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
-      unsigned long long i = dst.idx(ix, iy, iz);
+      unsigned long i = dst.idx(ix, iy, iz);
 
       // allowed expression variables
       float3 s = float3{(float)dst.size.x, (float)dst.size.y, (float)dst.size.z}; // (s --> size)
@@ -96,12 +96,12 @@ template<> __global__ void fillField_k<float>(Field<float> dst, CudaExpression<f
 }
 template<> __global__ void fillField_k<float3>(Field<float3> dst, CudaExpression<float3> *expr)
 {
-  long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  long long iy = blockIdx.y*blockDim.y + threadIdx.y;
-  long long iz = blockIdx.z*blockDim.z + threadIdx.z;
+  long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
-      unsigned long long i = dst.idx(ix, iy,iz);
+      unsigned long i = dst.idx(ix, iy,iz);
 
       // allowed expression variables
       float3 s    = makeV<float3>(dst.size); //float3{(float)dst.size.x, (float)dst.size.y, 1.0}; // (s --> size)
@@ -128,12 +128,12 @@ template<> __global__ void fillField_k<float3>(Field<float3> dst, CudaExpression
 // only set one component/channel of each cell (used for setting +/- charge in Q.x/y
 template<> __global__ void fillFieldChannel_k<float2>(Field<float2> dst, CudaExpression<float> *expr, int channel)
 {
-  unsigned long long ix = blockIdx.x*blockDim.x + threadIdx.x;
-  unsigned long long iy = blockIdx.y*blockDim.y + threadIdx.y;
-  unsigned long long iz = blockIdx.z*blockDim.z + threadIdx.z;
+  unsigned long ix = blockIdx.x*blockDim.x + threadIdx.x;
+  unsigned long iy = blockIdx.y*blockDim.y + threadIdx.y;
+  unsigned long iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
-      unsigned long long i = dst.idx(ix, iy, iz);
+      unsigned long i = dst.idx(ix, iy, iz);
       // allowed expression variables
       float3 s    = float3{(float)dst.size.x, (float)dst.size.y, (float)dst.size.z}; // (s --> size)
       float3 p    = float3{(float)ix, (float)iy, (float)iz};           // (p --> position)
@@ -183,9 +183,9 @@ void fillField(Field<T> &dst, CudaExpression<T> *dExpr)
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       if(dExpr) { fillField_k<<<grid, threads>>>(dst, dExpr); }
       else { std::cout << "====> WARNING: fillField skipped -- null expression pointer ("
-                       << "dExpr: "<< (long long)((void*)dExpr) << ")\n"; }
+                       << "dExpr: "<< (long)((void*)dExpr) << ")\n"; }
     }
-  else { std::cout << "Skipped Field<float> fill --> " << dst.size << " --> " << (long long)((void*)dExpr) << "\n"; }
+  else { std::cout << "Skipped Field<float> fill --> " << dst.size << " --> " << (long)((void*)dExpr) << "\n"; }
 }
 
 template<typename T>
@@ -201,7 +201,7 @@ void fillFieldMaterial<T>(Field<Material<T>> &dst, CudaExpression<T> *dExprEp, C
       else
         {
           std::cout << "====> WARNING: fillFieldMateral skipped -- null expression pointer ("
-                    << "ε: "<< (long long)((void*)dExprEp) << "|μ: " << (long long)((void*)dExprMu) << "|σ: " << (long long)((void*)dExprSig) << ")\n";
+                    << "ε: "<< (long)((void*)dExprEp) << "|μ: " << (long)((void*)dExprMu) << "|σ: " << (long)((void*)dExprSig) << ")\n";
         }
     }
   else { std::cout << "Skipped Field<float> Material fill --> " << dst.size << " \n"; }
@@ -285,9 +285,9 @@ __global__ void updateElectric_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
       if(!cp.reflect) 
         {
           const int bs = 1;
-          int xOffset = src.size.x <= 2*bs ? 0 : ((ip0.x < bs ? 1 : 0) + (ip0.x+bs >= src.size.x ? -1 : 0));
-          int yOffset = src.size.y <= 2*bs ? 0 : ((ip0.y < bs ? 1 : 0) + (ip0.y+bs >= src.size.y ? -1 : 0));
-          int zOffset = src.size.z <= 2*bs ? 0 : ((ip0.z < bs ? 1 : 0) + (ip0.z+bs >= src.size.z ? -1 : 0));
+          int xOffset = src.size.x <= 2*bs ? 0 : ((ip0.x < bs ? 1 : 0) + (ip0.x >= src.size.x-2*bs ? -1 : 0));
+          int yOffset = src.size.y <= 2*bs ? 0 : ((ip0.y < bs ? 1 : 0) + (ip0.y >= src.size.y-2*bs ? -1 : 0));
+          int zOffset = src.size.z <= 2*bs ? 0 : ((ip0.z < bs ? 1 : 0) + (ip0.z >= src.size.z-2*bs ? -1 : 0));
           if(xOffset != 0 || yOffset != 0 || zOffset != 0)
             {
               int i = src.idx(max(0, min(src.size.x-1, ip0.x + xOffset)),
@@ -359,9 +359,9 @@ __global__ void updateMagnetic_k(EMField<T> src, EMField<T> dst, FieldParams<T> 
       if(!cp.reflect)
         {
           const int bs = 1;
-          int xOffset = src.size.x <= 2*bs ? 0 : ((ip0.x < bs ? 1 : 0) + (ip0.x+bs >= src.size.x ? -1 : 0));
-          int yOffset = src.size.y <= 2*bs ? 0 : ((ip0.y < bs ? 1 : 0) + (ip0.y+bs >= src.size.y ? -1 : 0));
-          int zOffset = src.size.z <= 2*bs ? 0 : ((ip0.z < bs ? 1 : 0) + (ip0.z+bs >= src.size.z ? -1 : 0));
+          int xOffset = src.size.x <= 2*bs ? 0 : ((ip0.x < bs ? 1 : 0) + (ip0.x >= src.size.x-2*bs ? -1 : 0));
+          int yOffset = src.size.y <= 2*bs ? 0 : ((ip0.y < bs ? 1 : 0) + (ip0.y >= src.size.y-2*bs ? -1 : 0));
+          int zOffset = src.size.z <= 2*bs ? 0 : ((ip0.z < bs ? 1 : 0) + (ip0.z >= src.size.z-2*bs ? -1 : 0));
           if(xOffset != 0 || yOffset != 0 || zOffset != 0)
             {
               int i = src.idx(max(0, min(src.size.x-1, ip0.x + xOffset)),

@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <bitset>
 #include "glfwKeys.hpp"
 #include "tools.hpp"
 
@@ -112,8 +113,8 @@ public:
     description    = other.description;
     action         = other.action;
     shiftMult = other.shiftMult;
-    ctrlMult = other.ctrlMult;
-    altMult = other.altMult;
+    ctrlMult  = other.ctrlMult;
+    altMult   = other.altMult;
     return *this;
   }
   // comparison
@@ -152,16 +153,16 @@ public:
     if(pressed && action)
       {
         float mult = 1.0f;
-        if((flags & KEYBINDING_MOD_MULT) && seq.size() > 0 && sequence.size() > 0)
+        if(flags & KEYBINDING_MOD_MULT)
           {
-            int m = seq.back().mods & ~sequence.back().mods; // exclude modifiers defined as part of base sequence
+            int m = seq.back().mods & ~sequence.back().mods; // exclude mods defined as part of base sequence
             mult *= (((m & GLFW_MOD_SHIFT)   ? shiftMult : 1.0f) *
-                     ((m & GLFW_MOD_CONTROL) ? ctrlMult : 1.0f) *
-                     ((m & GLFW_MOD_ALT)     ? altMult : 1.0f));
+                     ((m & GLFW_MOD_CONTROL) ? ctrlMult  : 1.0f) *
+                     ((m & GLFW_MOD_ALT)     ? altMult   : 1.0f));
           }
-        if(verbose) { std::cout << "\n==== " << toString() << " --> "
-                                << name << ((flags & KEYBINDING_MOD_MULT) ? (" (x" + std::to_string(mult) + ")") : "")
-                                << " | " << description << "\n"; }
+        std::cout << "\n==== " << toString() << " --> "
+                  << name << ((flags & KEYBINDING_MOD_MULT) ? (" (x" + std::to_string(mult) + ")") : "")
+                  << " | " << description << "\n";
         action(mult); activated = true;
       }
     pressed = false;
@@ -170,11 +171,10 @@ public:
 
   void reset() { fromString(defaultBinding); }
 
-
   void setModMults(float shift=0.1f, float ctrl=2.0f, float alt=10.0f) { shiftMult = shift; ctrlMult = ctrl; altMult = alt; }
   void setShiftMult(float shift) { shiftMult = shift; }
-  void setCtrlMult(float ctrl) { ctrlMult = ctrl; }
-  void setAltMult(float alt) { altMult = alt; }
+  void setCtrlMult(float ctrl)   { ctrlMult  = ctrl;  }
+  void setAltMult(float alt)     { altMult   = alt;   }
 
   void fromString(const std::string &keyStr)
   {

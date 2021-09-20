@@ -18,6 +18,8 @@ using json = nlohmann::json;
 #define JSON_SPACES 4
 #define DEFAULT_FORMAT "%.6f"
 
+#define HELP_ICON "?"
+
 typedef std::function<void(void)> SettingUpdateCB;
 typedef std::function<bool(void)> SettingEnabledCB;
 // e.g. ==> [](bool busy, bool changed) -> bool { changed |= InputInt([...]); return busy; }}
@@ -34,6 +36,7 @@ class SettingBase
 protected:
   std::string mName;
   std::string mId;
+  std::string mHelpText;
   float mLabelColW = 200; // width of column with setting name labels    
   float mInputColW = 150; // width of column with setting input widget(s)
     
@@ -62,6 +65,8 @@ public:
   virtual bool getDelete()  const { return false; }
 
   virtual bool onDraw(float scale, bool busy, bool &changed, bool visible) { return busy; }
+
+  virtual void updateAll() { if(updateCallback) { updateCallback(); } }
   
   // TODO: improve flexibility
   bool draw(float scale, bool busy, bool &changed, bool visible)
@@ -70,6 +75,7 @@ public:
       {
         if(!isGroup())
           {
+            drawHelp();
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(mName.c_str());
             ImGui::SameLine(mLabelColW*scale);
@@ -84,6 +90,22 @@ public:
     return busy;
   }
 
+  void setHelp(const std::string &text) { mHelpText = text; }
+  void drawHelp()
+  {
+    if(!mHelpText.empty())
+      {
+        Vec2f tSize = ImGui::CalcTextSize(HELP_ICON);
+        Vec2f p0 = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(p0 - Vec2f(tSize.x + ImGui::GetStyle().ItemSpacing.x, 0));
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(Vec4f(1, 1, 1, 0.5f), HELP_ICON);
+        if(ImGui::IsItemHovered())
+          { ImGui::SetTooltip("%s", mHelpText.c_str()); }
+        ImGui::SetCursorPos(p0);
+      }
+  }
+    
   std::ostream& print(std::ostream &os) const
   {
     //os << getId() << " -->  " << std::setw(JSON_SPACES) << toJSON();
@@ -111,7 +133,6 @@ protected:
   std::string mFormat = "";
   bool mEditUpdate = true;
   
-
 public:
   typedef Setting<T> type;
 
@@ -127,26 +148,26 @@ public:
   Setting(const std::string &name, const std::string &id, T *ptr, const T &defaultVal=T(),
           const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
           const SettingEnabledCB &enableFunc=nullptr)
-    : SettingBase(name, id, updateCb, drawFunc, enableFunc), mData(ptr), mDefault(*mData) { }
-  
+    : SettingBase(name, id, updateCb, drawFunc, enableFunc), mData(ptr), mDefault(*mData)
+  { }
   Setting(const std::string &name, const std::string &id, const T &val, const T &defaultVal=T(),
           const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
           const SettingEnabledCB &enableFunc=nullptr)
-    : Setting(name, id, new T(val), defaultVal, updateCb, drawFunc, enableFunc) { mDelete = true; }
-  
+    : Setting(name, id, new T(val), defaultVal, updateCb, drawFunc, enableFunc)
+  { mDelete = true; }
   Setting(const std::string &name, const std::string &id,
           const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
           const SettingEnabledCB &enableFunc=nullptr)
-    : Setting(name, id, T(), T(), updateCb, drawFunc, enableFunc) { }
-  
+    : Setting(name, id, T(), T(), updateCb, drawFunc, enableFunc)
+  { }
   // destruction
   virtual ~Setting() { if(mDelete && mData) { delete mData; } }
 
   void setFormat(const T &step=T(), const T &bigStep=T(), const std::string &format="") { mStep = step; mBigStep = bigStep; mFormat = format; }
   void setMin   (const T &minVal) { mMinVal = minVal; mMinSet = true; }
   void setMax   (const T &maxVal) { mMaxVal = maxVal; mMaxSet = true; }
-  void setEditUpdate(bool update) { mEditUpdate = update; }
-
+  void setEditUpdate(bool update) { mEditUpdate = update; } // ?
+  
   const T& value() const { return *mData; }
   T& value()             { return *mData; }
   
@@ -224,7 +245,8 @@ inline bool Setting<std::vector<bool>>::fromJSON(const json &js)
         }
       return true;
     }
-  else              { return false; }
+  else
+    { return false; }
 }
   
 //// SETTING DRAW SPECIALIZATIONS (BY TYPE) ////
@@ -272,7 +294,12 @@ template<> inline bool Setting<std::vector<bool>>::onDraw(float scale, bool busy
       if((i % vColumns) == 0)
         { // row label / offset
           auto iter = vRowLabels.find(i/vColumns);
-          if(iter != vRowLabels.end()) { ImGui::TextUnformatted(iter->second.c_str()); ImGui::SameLine(); }
+          if(iter != vRowLabels.end())
+            {
+              ImGui::AlignTextToFramePadding();
+              ImGui::TextUnformatted(iter->second.c_str());
+              ImGui::SameLine();
+            }
         }
       ImGui::SetCursorPos(Vec2f(p0.x+xOffset + (i%vColumns)*colW + widgetOffset, ImGui::GetCursorPos().y));
       
@@ -816,10 +843,7 @@ public:
   SettingGroup(const std::string &name_, const std::string &id_, const std::vector<SettingBase*> &contents,
                bool collapse=false, bool deleteContents=true, const SettingUpdateCB &cb=nullptr)
     : SettingBase(name_, id_, cb), mContents(contents), mCollapse(collapse), mDelete(deleteContents)
-  {
-    // TODO?
-    // if(mCollapse) { mContents.push_back(new Setting<bool>("Group Open", "open", &mCOpen)); }
-  }
+  { }
   ~SettingGroup()
   {
     if(mDelete)
@@ -847,7 +871,13 @@ public:
   virtual void setInputColWidth(float w) override { SettingBase::setInputColWidth(w); for(auto s : mContents) { s->setInputColWidth(w); } }
 
   // virtual bool getDelete() const override { return mDelete; }
-    
+
+  virtual void updateAll() override
+  {
+    for(auto s : mContents) { s->updateAll(); }
+    if(updateCallback) { updateCallback(); }
+  }
+  
   void setColumns(int numColumns, bool horizontal=false)
   {
     mNumColumns = numColumns;
@@ -908,21 +938,14 @@ inline bool SettingGroup::fromJSON(const json &js)
         { for(int i = 0; i < mContents.size(); i++) { mContents[i]->fromJSON(contents[mContents[i]->getId()]); } }
       else { success = false; }
     }
-  else { success = false; }
+  else { std::cout << "====> WARNING: SettingGroup couldn't find 'contents'\n"; success = false; }
   return success;
 }
   
 //// SETTING GROUP DRAW //// 
 // TODO?: Add flag (or something) to prevent interaction during node placement (debounce)
 inline bool SettingGroup::drawContents(float scale, bool busy, bool &changed, bool visible)
-{ // draws settings arranged in columns
-
-  // TODO
-  // if(mNumColumns == 0)
-  //   { // determine number of columns from available area and setting sizes
-  //     Vec2f areaSize = Vec2f(ImGui::GetContentRegionMax()) - ImGui::GetWindowPos();
-  //   }
-    
+{
   ImGui::Indent();
   ImGui::BeginGroup();
   {
@@ -933,19 +956,6 @@ inline bool SettingGroup::drawContents(float scale, bool busy, bool &changed, bo
         for(int i = 0; i < mContents.size(); i++)
           {
             SettingBase *s = mContents[numPerCol - (i % numPerCol)];
-            if(i % mNumColumns == 0)
-              {
-                // ImGui::BeginGroup();
-                // // get column width
-                // float labelColW = 0;
-                // for(int j = i; j < i+numPerCol; j++)
-                //   {
-                //     labelColW = std::max(labelColW, ImGui::CalcTextSize(mContents[numPerCol - (j % numPerCol)]->getName().c_str()).x/scale);
-                //     // inputColW = std::max(labelColW, ImGui::CalcTextSize(mContents[numPerCol - (j % numPerCol)]->name()).x/scale);
-                //   }
-                // for(int j = i; j < i+numPerCol; j++)
-                //   { mContents[numPerCol - (j % numPerCol)]->setLabelColWidth(labelColW+10.0f); }
-              }
             changed = false;
             busy |= s->draw(scale, false, changed, visible);
             
@@ -964,19 +974,7 @@ inline bool SettingGroup::drawContents(float scale, bool busy, bool &changed, bo
         for(int i = 0; i < mContents.size(); i++)
           {
             SettingBase *s = mContents[i];
-            if(i % numPerCol == 0)
-              {
-                // // get column width
-                // float labelColW = 0;
-                // int lastInCol = std::min(i+numPerCol, (int)mContents.size());
-                // for(int j = i; j < lastInCol; j++)
-                //   {
-                //     labelColW = std::max(labelColW, ImGui::CalcTextSize(mContents[j]->getName().c_str()).x/scale);
-                //     // inputColW = std::max(labelColW, ImGui::CalcTextSize(mContents[numPerCol - (j % numPerCol)]->name()).x/scale); // TODO?
-                //   }
-                // for(int j = i; j < lastInCol; j++) { mContents[j]->setLabelColWidth(labelColW+10.0f); }
-                ImGui::BeginGroup();
-              }
+            if(i % numPerCol == 0) { ImGui::BeginGroup(); } // start column group
               
             changed = false;
             busy |= s->draw(scale, false, changed, visible);
@@ -984,8 +982,7 @@ inline bool SettingGroup::drawContents(float scale, bool busy, bool &changed, bo
             if((i % numPerCol) == numPerCol-1 || i == mContents.size()-1)
               { // last element in column
                 ImGui::EndGroup();
-                if(i < (mContents.size()-1)) // next column
-                  { ImGui::SameLine(); }
+                if(i < (mContents.size()-1)) { ImGui::SameLine(); } // next column
               }
           }
       }
@@ -1011,6 +1008,7 @@ inline bool SettingGroup::onDraw(float scale, bool busy, bool &changed, bool vis
   else
     {
       mCOpen = true; // no collapse -- always open
+      drawHelp();
       ImGui::AlignTextToFramePadding();
       ImGui::TextUnformatted(mName.c_str()); // draw title
       ImGui::Separator();
