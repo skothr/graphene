@@ -177,41 +177,4 @@ __host__ __device__ inline double3 faradaysLaw_B(const double3 &B0, const double
 }
 
 
-
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-//// example code
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-// updateAlphaBeta
-// {
-//     uniform Field mSrc;
-//     uniform float dt;
-//     uniform float cs; // cell size
-//     varying float3 uv = float3{ix, iy, iz}/src.size; // tex coords
-//      {
-//         float3 p0 = uv*src.size;
-//
-//         // Get material values
-//         vec3 mat = texture2D(material, uv).rgb;
-//         float permeability = mat.x; float permittivity = mat.y; float conductivity = mat.z;
-//
-//         // Calculate alpha and beta for electric field
-//         float cEl     = conductivity * dt/(2*permeability));
-//         float dEl     = 1 / (1 + cEl);
-//         float alphaEl = (1 - cEl) * dEl;
-//         float betaEl  = dt / (permeability * cellSize) * dEl;
-//
-//         // Calculate alpha and beta for magnetic field
-//         float cMag     = conductivity * dt / (2*permittivity);
-//         float dMag     = 1 / (1 + cMag);
-//         float alphaMag = (1 - cMag) * dMag;
-//         float betaMag  = dt / (permittivity * cellSize) * dMag;
-
-//         dst.Q[p0] = vec4(alphaEl, betaEl, alphaMag, betaMag);
-//      }
-// }
-
 #endif // PHYSICS_H

@@ -41,9 +41,11 @@ protected:
   float mInputColW = 150; // width of column with setting input widget(s)
     
 public:
+  bool *toggle = nullptr;
   SettingUpdateCB   updateCallback  = nullptr; // called when value is updated
   SettingCustomDraw drawCustom      = nullptr; // custom draw callback (instead of using template overload below) 
   SettingEnabledCB  enabledCallback = nullptr; // custom draw callback (instead of using template overload below) 
+  SettingEnabledCB  visibleCallback = nullptr; // custom draw callback (instead of using template overload below) 
   SettingBase(const std::string &name, const std::string &id, const SettingUpdateCB &updateCb=nullptr,
               const SettingCustomDraw &drawFunc=nullptr,
               const SettingEnabledCB &enableFunc=nullptr)
@@ -71,7 +73,9 @@ public:
   // TODO: improve flexibility
   bool draw(float scale, bool busy, bool &changed, bool visible)
   {
-    if(!enabledCallback || enabledCallback())
+    bool sVisible = (!visibleCallback || visibleCallback());
+    bool sEnabled = (!enabledCallback || enabledCallback());
+    if(sVisible)
       {
         if(!isGroup())
           {
@@ -82,10 +86,25 @@ public:
             ImGui::SetNextItemWidth(mInputColW*scale);
           }
 
-        ImGui::BeginGroup(); 
-        if(drawCustom) { busy = drawCustom(busy, changed); }
-        else           { busy = onDraw(scale, busy, changed, visible); }
+        if(!sEnabled) { ImGui::PushDisabled(true); }
+        ImGui::BeginGroup();
+        {
+          if(toggle)
+            {
+              bool t = *toggle;
+              changed |= ImGui::Checkbox(("##"+mId+"-toggle").c_str(), &t);
+              *toggle = t;
+              ImGui::SameLine();
+              ImGui::PushDisabled(!(*toggle));
+            }
+
+          if(drawCustom) { busy = drawCustom(busy, changed); }
+          else           { busy = onDraw(scale, busy, changed, visible); }
+        
+          if(toggle) { ImGui::PopDisabled(); }
+        }
         ImGui::EndGroup();
+        if(!sEnabled) { ImGui::PopDisabled(); }
       }
     return busy;
   }
@@ -187,16 +206,24 @@ template<typename T>
 inline json Setting<T>::toJSON() const
 {
   std::stringstream ss;
-  if(mData) { ss << std::fixed << (*mData); }
-  json js = ss.str();
+  if(mData)  { ss << std::fixed << (*mData); }
+  json js = json::object(); js["value"] = ss.str();
+  if(toggle) { js["active"] = (*toggle ? "1" : "0"); }
   return js;
 }
 template<typename T>
 inline bool Setting<T>::fromJSON(const json &js)
 {
-  std::stringstream ss(js.get<std::string>());
-  if(!js.is_null()) { ss >> (*mData); return true; }
-  else              { return false; }
+  bool success = true;
+  std::stringstream ss;
+  if(js.contains("value"))
+    {
+      ss.str(js["value"].get<std::string>());
+      ss >> (*mData);
+    }
+  else { success = false; }
+  if(toggle && js.contains("active")) { *toggle = (js["active"] != "0"); }
+  return success;
 }
 
 // overloads for string (needs quotes?)
@@ -204,16 +231,24 @@ template<>
 inline json Setting<std::string>::toJSON() const
 {
   std::stringstream ss;
-  if(mData) { ss << std::quoted(*mData); }
-  json js = ss.str();
+  if(mData)  { ss << std::quoted(*mData); }
+  json js = json::object(); js["value"] = ss.str();
+  if(toggle) { js["active"] = (*toggle ? "1" : "0"); }
   return js;
 }
 template<>
 inline bool Setting<std::string>::fromJSON(const json &js)
 {
-  std::stringstream ss(js.get<std::string>());
-  if(!js.is_null()) { ss >> std::quoted(*mData); return true; }
-  else              { return false; }
+  bool success = true;
+  std::stringstream ss;
+  if(js.contains("value"))
+    {
+      ss.str(js["value"].get<std::string>());
+      ss >> std::quoted(*mData);
+    }
+  else { success = false; }
+  if(toggle && js.contains("active")) { *toggle = (js["active"] != "0"); }
+  return success;
 }
 
 
@@ -229,24 +264,27 @@ inline json Setting<std::vector<bool>>::toJSON() const
         { ss << ((*mData)[i] ? 1 : 0) << " "; }
     }
   json js = ss.str();
+  if(toggle) { js["active"] = (*toggle ? "1" : "0"); }
   return js;
 }
 template<>
 inline bool Setting<std::vector<bool>>::fromJSON(const json &js)
 {
-  std::stringstream ss(js.get<std::string>());
-  if(!js.is_null())
+  bool success = true;
+  std::stringstream ss;
+  if(js.contains("value"))
     {
+      ss.str(js["value"].get<std::string>());
       int N; ss >> N; mData->resize(N);
       for(int i = 0; i < N; i++)
         {
           int b; ss >> b;
           (*mData)[i] = (bool)b;
         }
-      return true;
     }
-  else
-    { return false; }
+  else { success = false; }
+  if(toggle && js.contains("active")) { *toggle = (js["active"] != "0"); }
+  return success;
 }
   
 //// SETTING DRAW SPECIALIZATIONS (BY TYPE) ////
@@ -471,7 +509,10 @@ template<> inline bool Setting<Vec4f>::onDraw(float scale, bool busy, bool &chan
   std::string popupName  = "##" + mId + "pop";
   std::string pickerName = "##" + mId + "pick";
   // choose graph background color
-  ImGuiColorEditFlags cFlags = (ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_NoAlpha);
+  ImGuiColorEditFlags cFlags = (ImGuiColorEditFlags_DisplayRGB |
+                                ImGuiColorEditFlags_HDR        |
+                                ImGuiColorEditFlags_Float      |
+                                ImGuiColorEditFlags_AlphaBar);
   if(ImGui::ColorButton(buttonName.c_str(), *mData, cFlags, ImVec2(20, 20)) && !busy)
     {
       lastColor = *mData;
@@ -535,7 +576,7 @@ template<> inline bool Setting<Vec2d>::onDraw(float scale, bool busy, bool &chan
 
 
 //// CUDA VECTORS (NOTE: same as VecXX, copy/pasted) ///////////////////////////////////////////////
-template<> inline bool Setting   <int2>::onDraw(float scale, bool busy, bool &changed, bool visible)
+template<> inline bool Setting<int2>::onDraw(float scale, bool busy, bool &changed, bool visible)
 {
   ImGuiStyle &style = ImGui::GetStyle();
   if(mStep.x == 0)    { mStep.x = 1; }       if(mStep.y == 0)     { mStep.y = 1; }
@@ -637,7 +678,7 @@ template<> inline bool Setting <float2>::onDraw(float scale, bool busy, bool &ch
   return busy;
 }
 
-template<> inline bool Setting <float3>::onDraw(float scale, bool busy, bool &changed, bool visible)
+template<> inline bool Setting<float3>::onDraw(float scale, bool busy, bool &changed, bool visible)
 {
   ImGuiStyle &style = ImGui::GetStyle();
   if(mStep.x == 0.0f)    { mStep.x = 1.0f; }     if(mStep.y == 0.0f)    { mStep.y = 1.0f; }     if(mStep.z == 0.0f)    { mStep.z = 1.0f; }
@@ -687,7 +728,10 @@ template<> inline bool Setting<float4>::onDraw(float scale, bool busy, bool &cha
   std::string popupName  = "##" + mId + "pop";
   std::string pickerName = "##" + mId + "pick";
   // choose graph background color
-  ImGuiColorEditFlags cFlags = (ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_NoAlpha);
+  ImGuiColorEditFlags cFlags = (ImGuiColorEditFlags_DisplayRGB |
+                                ImGuiColorEditFlags_HDR        |
+                                ImGuiColorEditFlags_Float      |
+                                ImGuiColorEditFlags_AlphaBar);
   if(ImGui::ColorButton(buttonName.c_str(), Vec4f(*mData), cFlags, ImVec2(20, 20)) && !busy)
     {
       lastColor = *mData;
@@ -916,7 +960,8 @@ inline SettingGroup* makeSettingGroup(const std::string &name, const std::string
 inline json SettingGroup::toJSON() const
 {
   json js = json::object();
-  if(mCollapse) { js["open"] = mCOpen; }
+  if(mCollapse) { js["open"]   =  mCOpen; }
+  if(toggle)    { js["active"] = *toggle; }
   json contents = json::object();
   for(auto s : mContents) { contents[s->getId()] = s->toJSON(); }
     
@@ -930,6 +975,11 @@ inline bool SettingGroup::fromJSON(const json &js)
     {
       if(js.contains("open")) { mCOpen = js["open"].get<bool>(); }
       else                    { success = false; }
+    }
+  if(toggle)
+    {
+      if(js.contains("active")) { *toggle = js["active"].get<bool>(); }
+      else                      { success = false; }
     }
   if(js.contains("contents"))
     {
@@ -995,6 +1045,13 @@ inline bool SettingGroup::drawContents(float scale, bool busy, bool &changed, bo
 inline bool SettingGroup::onDraw(float scale, bool busy, bool &changed, bool visible)
 { // SETTING GROUP
   ImGuiTreeNodeFlags flags = (ImGuiTreeNodeFlags_FramePadding | ImGuiTreeNodeFlags_SpanAvailWidth);
+  if(toggle)
+    {
+      bool t = *toggle;
+      changed |= ImGui::Checkbox("##toggle", &t);
+      *toggle = t;
+      ImGui::SameLine();
+    }
   if(mCollapse)
     {
       ImGui::SetNextTreeNodeOpen(mCOpen);

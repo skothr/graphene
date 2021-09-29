@@ -1,5 +1,5 @@
-#ifndef CUDA_VBO_H
-#define CUDA_VBO_H
+#ifndef CUDA_VBO_CUH
+#define CUDA_VBO_CUH
 
 #include <string>
 #include <sstream>
@@ -218,4 +218,4 @@ inline void CudaVBO::unmap()
 
 
 
-#endif // CUDA_VBO_H
+#endif // CUDA_VBO_CUH

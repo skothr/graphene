@@ -16,11 +16,12 @@
 #include "keyBinding.hpp"
 #include "mathParser.hpp"
 #include "field.hpp"
+#include "fluid.cuh"
 #include "units.hpp"
 #include "physics.h"
 #include "raytrace.h"
 #include "render.cuh"
-#include "cuda-vbo.h"
+#include "cuda-vbo.cuh"
 
 #define SETTINGS_SAVE_FILE "./.settings.conf"
 #define JSON_SPACES 4
@@ -33,8 +34,8 @@
 #define CFV2 typename DimType<CFT, 2>::VEC_T
 #define CFV3 typename DimType<CFT, 3>::VEC_T
 #define CFV4 typename DimType<CFT, 4>::VEC_T
-#define STATE_BUFFER_SIZE  1
-#define DESTROY_LAST_STATE true //(STATE_BUFFER_SIZE <= 1)
+#define STATE_BUFFER_SIZE  2
+#define DESTROY_LAST_STATE false //(STATE_BUFFER_SIZE <= 1)
 
 // font settings
 #define MAIN_FONT_HEIGHT  14.0f
@@ -87,7 +88,7 @@ struct SimParams
   bool debug   = false;        // toggle debugging (e.g. syncs device between steps for error checking)
   bool verbose = false;        // toggle verbose printout
 
-  FieldParams<CFT>       cp; // cuda field params
+  FluidParams<CFT>       cp; // cuda field params
   RenderParams<CFT>      rp; // cuda render params
   VectorFieldParams<CFT> vp; // vector draw params
 
@@ -167,8 +168,13 @@ private:
   CudaVBO      mVecBuffer;
   std::deque<FieldBase*> mStates;   // N-buffered states (e.g. for Runge-Kutta integration (TODO?))
   
-  Field<float3> *mInputE = nullptr; // accumulate E/B  signals added by the user
-  Field<float3> *mInputB = nullptr;
+  Field<float3> *mInputV  = nullptr; // accumulate signals added by the user
+  Field<float>  *mInputP  = nullptr;
+  Field<float>  *mInputQn = nullptr;
+  Field<float>  *mInputQp = nullptr;
+  Field<float3> *mInputQv = nullptr;
+  Field<float3> *mInputE  = nullptr;
+  Field<float3> *mInputB  = nullptr;
 
   std::vector<FVector> mVectorField2D;
 
@@ -182,7 +188,7 @@ private:
   TabMenu *mTabs = nullptr;
   
   ImDrawList *mFieldDrawList = nullptr;
-  KeyManager *mKeyManager = nullptr;
+  KeyManager *mKeyManager    = nullptr;
 
   Camera<CFT> mCamera;
   Rect2f mSimView2D; // view in sim space
@@ -195,9 +201,6 @@ private:
   Vec2f mMouseSimPosLast;
   CFV3  mSigMPos; // 3D pos of active signal pen
   CFV3  mMatMPos; // 3D pos of active material pen
-
-  EMField<CFT> mSignalField;
-  bool mNewSignal = false;
   
   Vec2f simToScreen2D(const Vec2f &pSim,    const Rect2f &simView, const Rect2f &screenView, bool vector=false);
   Vec2f screenToSim2D(const Vec2f &pScreen, const Rect2f &simView, const Rect2f &screenView, bool vector=false);
@@ -212,7 +215,7 @@ private:
   void drawEllipse2D(ScreenView<CFT> &view, const Vec2f &center, const Vec2f &radius, const Vec4f &color);
   
   void resetViews();
-  void cudaRender(FieldParams<CFT> &cp);
+  void cudaRender(FluidParams<CFT> &cp);
   
   void handleInput2D(ScreenView<CFT> &view);
   void handleInput3D(ScreenView<CFT> &view);
@@ -276,6 +279,7 @@ public:
 
   void resetSignals();
   void resetMaterials();
+  void resetFluid();
   void resetSim();
   void togglePause();
 

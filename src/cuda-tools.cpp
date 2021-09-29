@@ -41,3 +41,4 @@ bool initCudaDevice(int devId)
     }
   return true;
 }
+

@@ -10,26 +10,6 @@
 
 // General tools/helpers
 
-
-#ifndef ENABLE_CUDA // not needed for building CUDA files (std::quoted undefined)
-
-// returns name (first token in str) and removes it from original
-// TODO: better solution -- confusing
-inline std::string popName(std::string &str)
-{
-  std::istringstream ss(str);
-  std::string name;
-  ss >> std::quoted(name);
-  
-  std::ostringstream tmp; tmp << ss.rdbuf();
-  str = tmp.str();
-  return name;
-}
-
-#endif // ENABLE_CUDA
-
-
-
 // converts given value to a string with specified precision
 // TODO: find a better place for this
 template <typename T>
@@ -50,41 +30,7 @@ T from_string(const std::string &valStr)
   return val;
 }
 
-// converts given angle to formatted string
-inline std::string angle_string(double angle, bool spacing=true, bool negAlign=true, bool pzeros=false, int maxDigits=3)
-{
-  bool neg = (angle < 0.0);
-  angle = std::abs(angle);
-  
-  double degrees = std::floor(angle);
-  double minutes = (angle - std::floor(angle))*60.0;
-  double seconds = ((minutes - std::floor(minutes))*60.0);
-
-  std::string signPref = (neg ? "-" : (spacing && negAlign ? " " : ""));
-  std::string dPref = "";
-  std::string mPref = "";
-  std::string sPref = "";
-  std::string pref = (pzeros ? "0" : " ");
-  if(spacing)
-    {
-      if(maxDigits >= 2 && degrees /  10.0 < 1.0) { dPref += pref; }
-      if(maxDigits >= 3 && degrees / 100.0 < 1.0) { dPref += pref; }
-      if(minutes /  10.0 < 1.0) { mPref += pref; }
-      //if(minutes / 100.0 < 1.0) { mPref += " "; }
-      if(seconds /  10.0 < 1.0) { sPref += pref; }
-      //if(seconds / 100.0 < 1.0) { sPref += " "; }
-    }
-  std::ostringstream out;
-  out << std::fixed << dPref << signPref << (int)degrees << "°" << mPref << (int)minutes << "'" << sPref << (int)seconds << "\"";
-  return out.str();
-}
-//
-
-
-
-
 // simple file management
-
 inline bool directoryExists(const std::string &path)
 {
   struct stat info;
@@ -130,49 +76,52 @@ inline bool makeDirectory(const std::string &path)
 }
 
 
-// provides access to simple info for an std::function object
-template<typename T>  struct FunctionInfo;
-template<typename R, typename ...Args>
-struct FunctionInfo<std::function<R(Args...)>>
-{
-  static const size_t nargs = sizeof...(Args);
-  typedef R returnType;
-  // individual argument types --> print name of type with:
-  //      std::cout << typeid(FunctionInfo<f>::arg<0>::type).name() << "\n";
-  template<size_t i> struct arg
-  { typedef typename std::tuple_element<i, std::tuple<Args...>>::type type; };
-};
+// // provides access to simple info for an std::function object
+// template<typename T>  struct FunctionInfo;
+// template<typename R, typename ...Args>
+// struct FunctionInfo<std::function<R(Args...)>>
+// {
+//   static const size_t nargs = sizeof...(Args);
+//   typedef R returnType;
+//   // individual argument types --> print name of type with:
+//   //      std::cout << typeid(FunctionInfo<f>::arg<0>::type).name() << "\n";
+//   template<size_t i> struct arg
+//   { typedef typename std::tuple_element<i, std::tuple<Args...>>::type type; };
+// };
 
-
-
-
-// structure for storing vectors of booleans normally
-struct BoolStruct
-{
-  bool data;
-  BoolStruct(bool val = false) : data(val) { }
-  operator bool() const { return data; }
-  friend std::ostream& operator<<(std::ostream &os, const BoolStruct &b);
-  friend std::istream& operator>>(std::istream &is, BoolStruct &b);
-};
-inline std::ostream& operator<<(std::ostream &os, const BoolStruct &b)
-{ os << (b.data ? "1" : "0") << " "; return os; }
-inline std::istream& operator>>(std::istream &is, BoolStruct &b)
-{
-  std::string str;
-  is >> str; b.data = (str != "0");
-  return is;
-}
+// // structure for storing vectors of booleans normally
+// struct BoolStruct
+// {
+//   bool data;
+//   BoolStruct(bool val = false) : data(val) { }
+//   operator bool() const { return data; }
+//   friend std::ostream& operator<<(std::ostream &os, const BoolStruct &b);
+//   friend std::istream& operator>>(std::istream &is, BoolStruct &b);
+// };
+// inline std::ostream& operator<<(std::ostream &os, const BoolStruct &b)
+// { os << (b.data ? "1" : "0") << " "; return os; }
+// inline std::istream& operator>>(std::istream &is, BoolStruct &b)
+// {
+//   std::string str;
+//   is >> str; b.data = (str != "0");
+//   return is;
+// }
 
 
 
 // defines (some) bitwise operators for an enum that works as a flag type
 #define ENUM_FLAG_OPERATORS(TYPE)                                       \
-  inline TYPE  operator~ (TYPE t) { return static_cast<TYPE>(~static_cast<int>(t)); } \
-  inline TYPE& operator|=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<int>(t0) | static_cast<int>(t1)); return t0; } \
-  inline TYPE& operator&=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<int>(t0) & static_cast<int>(t1)); return t0; } \
-  inline TYPE  operator| (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<int>(t0) | static_cast<int>(t1)); } \
-  inline TYPE  operator& (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<int>(t0) & static_cast<int>(t1)); }
+  inline constexpr TYPE  operator~ (TYPE t)            { return static_cast<TYPE>(~static_cast<int>(t)); } \
+  inline           TYPE& operator|=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<int>(t0) | static_cast<int>(t1)); return t0; } \
+  inline           TYPE& operator&=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<int>(t0) & static_cast<int>(t1)); return t0; } \
+  inline constexpr TYPE  operator| (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<int>(t0) | static_cast<int>(t1)); } \
+  inline constexpr TYPE  operator& (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<int>(t0) & static_cast<int>(t1)); }
+#define ENUM_FLAG_OPERATORS_LL(TYPE)                                    \
+  inline constexpr TYPE  operator~ (TYPE t)            { return static_cast<TYPE>(~static_cast<long long>(t)); } \
+  inline           TYPE& operator|=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<long long>(t0) | static_cast<long long>(t1)); return t0; } \
+  inline           TYPE& operator&=(TYPE &t0, TYPE t1) { t0   = static_cast<TYPE>( static_cast<long long>(t0) & static_cast<long long>(t1)); return t0; } \
+  inline constexpr TYPE  operator| (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<long long>(t0) | static_cast<long long>(t1)); } \
+  inline constexpr TYPE  operator& (TYPE  t0, TYPE t1) { return static_cast<TYPE>( static_cast<long long>(t0) & static_cast<long long>(t1)); }
 
 
 #endif // TOOLS_HPP

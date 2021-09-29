@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
 #include <bitset>
 #include "glfwKeys.hpp"
 #include "tools.hpp"
@@ -137,11 +138,12 @@ public:
     for(auto i = 0; i < seq.size(); i++)
       {
         int modOverlap = (seq[i].mods & sequence[i].mods);
-        if(seq[i].key != sequence[i].key || ((flags & KEYBINDING_MOD_MULT) ?
-                                             (sequence[i].mods != modOverlap) :
-                                             (seq[i].mods != sequence[i].mods)) ||
-           (seq.back().repeat && !(flags & KEYBINDING_REPEAT)))
-          { return false; }
+        if(seq[i].key != sequence[i].key || ((!(flags & KEYBINDING_GLOBAL) || sequence[i].mods != 0) &&
+                                             (((flags & KEYBINDING_MOD_MULT) ?
+                                               (sequence[i].mods != modOverlap) :
+                                               (seq[i].mods != sequence[i].mods)) ||
+                                              (seq.back().repeat && !(flags & KEYBINDING_REPEAT)))))
+          { pressed = false; return false; }
       }
     pressed = true;
     return pressed;

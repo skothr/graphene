@@ -27,6 +27,9 @@ using json = nlohmann::json;
 #include "display.hpp"
 #include "render.cuh"
 
+#include "fluid.cuh"
+#include "maxwell.cuh"
+
 // prints aligned numbers for tooltip
 inline std::string fAlign(float f, int maxDigits)
 {
@@ -68,13 +71,15 @@ SimWindow::SimWindow(GLFWwindow *window)
                 KEYBINDING_GLOBAL),
      KeyBinding("Reset Sim",       "F5",          "Reset full simulation (signals/materials/frame)", [this]() { resetSim(); },
                 KEYBINDING_GLOBAL),
-     KeyBinding("Reset Signals",   "F9",          "Reset signals, leaving materials intact",         [this]() { resetSignals(); },
+     KeyBinding("Reset Signals",   "F7",          "Reset signals, leaving materials intact",         [this]() { resetSignals(); },
                 KEYBINDING_GLOBAL),
-     KeyBinding("Reset Materials", "F10",         "Reset materials, leaving signals intact",         [this]() { resetMaterials(); },
+     KeyBinding("Reset Fluid",     "F8",          "Reset fluid variables",                           [this]() { resetFluid(); },
+                KEYBINDING_GLOBAL),
+     KeyBinding("Reset Materials", "F9",          "Reset materials, leaving signals intact",         [this]() { resetMaterials(); },
                 KEYBINDING_GLOBAL),
      
      KeyBinding("Toggle Physics",  "Space",       "Start/stop simulation physics",                   [this]() { togglePause(); },
-                KEYBINDING_NONE),
+                KEYBINDING_GLOBAL),
      KeyBinding("Step Forward",    "Up",          "Single physics step (+dt)", [this](CFT mult) { if(!mFieldUI->running) { mSingleStepMult =  mult; } },
                 (KEYBINDING_REPEAT | KEYBINDING_MOD_MULT)),
      KeyBinding("Step Backward",   "Down",        "Single physics step (-dt)", [this](CFT mult) { if(!mFieldUI->running) { mSingleStepMult = -mult; } },
@@ -100,7 +105,7 @@ SimWindow::SimWindow(GLFWwindow *window)
     {
      { "System",       { "Quit", },
        {} },
-     { "Sim Control",  { "Reset Sim", "Reset Signals", "Reset Materials", "Reset Views",
+     { "Sim Control",  { "Reset Sim", "Reset Signals", "Reset Materials","Reset Fluid", "Reset Views",
                          "Toggle Physics", "Step Forward", "Step Backward" },
        {} },
      { "Modes/Popups", { "Toggle Debug", "Toggle Verbose", "Key Bindings", "ImGui Demo", "Font Demo" },
@@ -178,8 +183,8 @@ bool SimWindow::init()
       ftDemo = new FreeTypeTest(); // font demo window
       
       mFieldUI = new FieldInterface<CFT>(&mParams.cp,
-                                         [this]() // fieldRes update
-                                         { resizeFields(mFieldUI->fieldRes); resetSim(); },
+                                         [this]() // field size update
+                                         { resizeFields(mParams.cp.fs); resetSim(); },
                                          [this]() // texRes2D update
                                          {
                                            std::cout << "Resizing 2D textures --> " << mEMTex.size << "/" << mMatTex.size << " --> " << mFieldUI->texRes2D << "\n";
@@ -194,7 +199,7 @@ bool SimWindow::init()
       
       mUnitsUI   = new UnitsInterface<CFT>(&mUnits, superFont);
       mDrawUI    = new DrawInterface<CFT>(&mUnits);
-      mDisplayUI = new DisplayInterface<CFT>(&mParams.rp, &mParams.vp, &mFieldUI->fieldRes.z);
+      mDisplayUI = new DisplayInterface<CFT>(&mParams.rp, &mParams.vp, &mParams.cp.fs.z);
 
       // file output (TODO: separate object (?))
       mFileOutUI = new SettingForm("File Output", SETTINGS_LABEL_COL_W, SETTINGS_INPUT_COL_W);
@@ -221,7 +226,7 @@ bool SimWindow::init()
                        };
       mFileOutUI->add(sE);
       auto *sPC  = new Setting<int> ("PNG Compression", "pngComp",   &mParams.pngCompression);
-      sPC->enabledCallback = [this]() -> bool { return (mParams.outExt.find(".png") != std::string::npos); };
+      sPC->visibleCallback = [this]() -> bool { return (mParams.outExt.find(".png") != std::string::npos); };
       sPC->drawCustom = [this, sPC](bool busy, bool changed) -> bool
                         { changed |= ImGui::SliderInt("##pngComp", &mParams.pngCompression, 1, 10); return busy; };
       mFileOutUI->add(sPC);
@@ -260,12 +265,14 @@ bool SimWindow::init()
           return false;
         }
       // create field state queue
-      if(mFieldUI->fieldRes.x > 0 && mFieldUI->fieldRes.y > 0 && mFieldUI->fieldRes.z > 0)
+      if(mParams.cp.fs.x > 0 && mParams.cp.fs.y > 0 && mParams.cp.fs.z > 0)
         {
-          std::cout << "Creating field state queue (" << STATE_BUFFER_SIZE << "x " << mFieldUI->fieldRes << ")...\n";
-          for(int i = 0; i < STATE_BUFFER_SIZE; i++) { mStates.push_back(new EMField<CFT>()); }
-          mInputE = new Field<CFV3>(); mInputB = new Field<CFV3>();
-          resizeFields(mFieldUI->fieldRes);
+          std::cout << "Creating field state queue (" << STATE_BUFFER_SIZE << "x " << mParams.cp.fs << ")...\n";
+          for(int i = 0; i < STATE_BUFFER_SIZE; i++) { mStates.push_back(new FluidField<CFT>()); }
+          mInputV  = new Field<CFV3>(); mInputP  = new Field<CFT>();  
+          mInputQn = new Field<CFT>();  mInputQp = new Field<CFT>();  mInputQv = new Field<CFV3>();
+          mInputE  = new Field<CFV3>(); mInputB  = new Field<CFV3>();
+          resizeFields(mParams.cp.fs);
         }
       // create textures
       int3 ts2 = int3{mFieldUI->texRes2D.x, mFieldUI->texRes2D.y, 1};
@@ -279,11 +286,16 @@ bool SimWindow::init()
       
       // create initial state expressions
       std::cout << "Creating initial condition expressions...\n";
+      mFieldUI->initVExpr   = toExpression<CFV3>(mFieldUI->initVStr);
+      mFieldUI->initPExpr   = toExpression<CFT> (mFieldUI->initPStr);
+      mFieldUI->initQnExpr  = toExpression<CFT> (mFieldUI->initQnStr);
+      mFieldUI->initQpExpr  = toExpression<CFT> (mFieldUI->initQpStr);
+      mFieldUI->initQvExpr  = toExpression<CFV3>(mFieldUI->initQvStr);
       mFieldUI->initEExpr   = toExpression<CFV3>(mFieldUI->initEStr);
       mFieldUI->initBExpr   = toExpression<CFV3>(mFieldUI->initBStr);
-      mFieldUI->initEpExpr  = toExpression<float>(mFieldUI->initEpStr);
-      mFieldUI->initMuExpr  = toExpression<float>(mFieldUI->initMuStr);
-      mFieldUI->initSigExpr = toExpression<float>(mFieldUI->initSigStr);
+      mFieldUI->initEpExpr  = toExpression<CFT>(mFieldUI->initEpStr);
+      mFieldUI->initMuExpr  = toExpression<CFT>(mFieldUI->initMuStr);
+      mFieldUI->initSigExpr = toExpression<CFT>(mFieldUI->initSigStr);
 
       // update to finalize loaded settings
       mFieldUI->updateAll();
@@ -292,7 +304,6 @@ bool SimWindow::init()
       mDisplayUI->updateAll();
       mFileOutUI->updateAll();
       mOtherUI->updateAll();
-
       
       //// set up base path for rendering
       checkBaseRenderPath();
@@ -322,8 +333,13 @@ void SimWindow::cleanup()
             }
         }
       mStates.clear();      
-      if(mInputE) { mInputE->destroy(); delete mInputE; mInputE = nullptr; }
-      if(mInputB) { mInputB->destroy(); delete mInputB; mInputB = nullptr; }
+      if(mInputV)  { mInputV->destroy();  delete mInputV;  mInputV  = nullptr; }
+      if(mInputP)  { mInputP->destroy();  delete mInputP;  mInputP  = nullptr; }
+      if(mInputQn) { mInputQn->destroy(); delete mInputQn; mInputQn = nullptr; }
+      if(mInputQp) { mInputQp->destroy(); delete mInputQp; mInputQp = nullptr; }
+      if(mInputQv) { mInputQv->destroy(); delete mInputQv; mInputQv = nullptr; }
+      if(mInputE)  { mInputE->destroy();  delete mInputE;  mInputE  = nullptr; }
+      if(mInputB)  { mInputB->destroy();  delete mInputB;  mInputB  = nullptr; }
       
       std::cout << "Destroying CUDA textures...\n";
       mEMTex.destroy(); mMatTex.destroy(); m3DTex.destroy(); m3DGlTex.destroy();
@@ -451,59 +467,80 @@ bool SimWindow::resizeFields(const Vec3i &sz)
   bool success = true;
   for(int i = 0; i < STATE_BUFFER_SIZE; i++)
     {
-      EMField<CFT> *f = reinterpret_cast<EMField<CFT>*>(mStates[i]);
-      if(!f->create(mFieldUI->fieldRes)) { std::cout << "Field creation failed! Invalid state.\n"; success = false; break; }
-      fillFieldValue(reinterpret_cast<EMField<CFT>*>(f)->mat, mUnits.vacuum());
+      FluidField<CFT> *f = reinterpret_cast<FluidField<CFT>*>(mStates[i]);
+      if(!f->create(mParams.cp.fs)) { std::cout << "Field creation failed! Invalid state.\n"; success = false; break; }
+      fillFieldValue(reinterpret_cast<FluidField<CFT>*>(f)->mat, mUnits.vacuum());
     }
-  if(!mInputE->create(mFieldUI->fieldRes)) { std::cout << "Field creation failed! Invalid signal input field (E).\n"; success = false; }
-  if(!mInputB->create(mFieldUI->fieldRes)) { std::cout << "Field creation failed! Invalid signal input field (B).\n"; success = false; }
-  mDrawUI->sigPen.depth = mFieldUI->fieldRes.z/2;
-  mDrawUI->matPen.depth = mFieldUI->fieldRes.z/2;
-  mDisplayUI->rp->zRange = int2{0, mFieldUI->fieldRes.z-1};
+  if(!mInputV->create (mParams.cp.fs)) { std::cout << "Field creation failed! Invalid signal input field (v).\n";  success = false; }
+  if(!mInputP->create (mParams.cp.fs)) { std::cout << "Field creation failed! Invalid signal input field (p).\n";  success = false; }
+  if(!mInputQn->create(mParams.cp.fs)) { std::cout << "Field creation failed! Invalid signal input field (Qn).\n"; success = false; }
+  if(!mInputQp->create(mParams.cp.fs)) { std::cout << "Field creation failed! Invalid signal input field (Qp).\n"; success = false; }
+  if(!mInputQv->create(mParams.cp.fs)) { std::cout << "Field creation failed! Invalid signal input field (Qv).\n"; success = false; }
+  if(!mInputE->create (mParams.cp.fs)) { std::cout << "Field creation failed! Invalid signal input field (E).\n";  success = false; }
+  if(!mInputB->create (mParams.cp.fs)) { std::cout << "Field creation failed! Invalid signal input field (B).\n";  success = false; }
+
+  mDrawUI->sigPen.depth = mParams.cp.fs.z/2;
+  mDrawUI->matPen.depth = mParams.cp.fs.z/2;
+  mDisplayUI->rp->zRange = int2{0, mParams.cp.fs.z-1};
   if(success) { resetSim(); }
   return success;
 }
 
 // TODO: improve expression variable framework
 template<typename T> std::vector<std::string> getVarNames() { return {"px", "py", "pz", "sx", "sy", "sz", "r", "t"}; }
-template<> std::vector<std::string> getVarNames<float>()    { return {"px", "py", "pz", "sx", "sy", "sz", "r", "t"}; }
+template<> std::vector<std::string> getVarNames<CFT> ()     { return {"px", "py", "pz", "sx", "sy", "sz", "r", "t"}; }
 template<> std::vector<std::string> getVarNames<CFV3>()     { return {"p", "s", "r", "n", "t"}; }
 
 void SimWindow::resetSignals()
 {
   std::cout << "SIGNAL RESET\n";
-  
-  mFieldUI->initEExpr = toExpression<CFV3>(mFieldUI->initEStr, false);
-  mFieldUI->initBExpr = toExpression<CFV3>(mFieldUI->initBStr, false);
+  // recreate expressions
+  if(mFieldUI->initQnExpr){delete mFieldUI->initQnExpr;}  mFieldUI->initQnExpr = toExpression<CFT> ((mFieldUI->initQnActive?mFieldUI->initQnStr:"0"), false);
+  if(mFieldUI->initQpExpr){delete mFieldUI->initQpExpr;}  mFieldUI->initQpExpr = toExpression<CFT> ((mFieldUI->initQpActive?mFieldUI->initQpStr:"0"), false);
+  if(mFieldUI->initQvExpr){delete mFieldUI->initQvExpr;}  mFieldUI->initQvExpr = toExpression<CFV3>((mFieldUI->initQvActive?mFieldUI->initQvStr:"0"), false);
+  if(mFieldUI->initEExpr) {delete mFieldUI->initEExpr; }  mFieldUI->initEExpr  = toExpression<CFV3>((mFieldUI->initEActive ?mFieldUI->initEStr :"0"), false);
+  if(mFieldUI->initBExpr) {delete mFieldUI->initBExpr; }  mFieldUI->initBExpr  = toExpression<CFV3>((mFieldUI->initBActive ?mFieldUI->initBStr :"0"), false);
   if(mParams.verbose)
     {
-      std::cout << "E:  " << mFieldUI->initEExpr->toString(true) << "\n";
-      std::cout << "B:  " << mFieldUI->initBExpr->toString(true) << "\n";
+      std::cout << "Q-: " << mFieldUI->initQnExpr->toString(true) << "\n";
+      std::cout << "Q+: " << mFieldUI->initQpExpr->toString(true) << "\n";
+      std::cout << "Qv: " << mFieldUI->initQvExpr->toString(true) << "\n";
+      std::cout << "E:  " << mFieldUI->initEExpr->toString(true)  << "\n";
+      std::cout << "B:  " << mFieldUI->initBExpr->toString(true)  << "\n";
     }
   
-  // create/update expressions
+  // create or update expressions
+  if(!mFieldUI->mFillQn)
+    { mFieldUI->mFillQn = toCudaExpression<CFT> (mFieldUI->initQnExpr, getVarNames<CFT>());  std::cout << " --> Q- INIT EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillQp)
+    { mFieldUI->mFillQp = toCudaExpression<CFT> (mFieldUI->initQpExpr, getVarNames<CFT>());  std::cout << " --> Q+ INIT EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillQv)
+    { mFieldUI->mFillQv = toCudaExpression<CFV3>(mFieldUI->initQvExpr, getVarNames<CFV3>()); std::cout << " --> Qv INIT EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillE)
-    { mFieldUI->mFillE = toCudaExpression<CFV3>(mFieldUI->initEExpr, getVarNames<CFV3>()); std::cout << " --> E INIT EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillE  = toCudaExpression<CFV3>(mFieldUI->initEExpr,  getVarNames<CFV3>()); std::cout << " --> E  INIT EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillB)
-    { mFieldUI->mFillB = toCudaExpression<CFV3>(mFieldUI->initBExpr, getVarNames<CFV3>()); std::cout << " --> B INIT EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillB  = toCudaExpression<CFV3>(mFieldUI->initBExpr,  getVarNames<CFV3>()); std::cout << " --> B  INIT EXPRESSION UPDATED\n"; }
   // fill all states
   for(int i = 0; i < mStates.size(); i++)
     {
-      EMField<CFT> *f = reinterpret_cast<EMField<CFT>*>(mStates[mStates.size()-1-i]);
-      fillField<CFV3>(f->E, mFieldUI->mFillE);
-      fillField<CFV3>(f->B, mFieldUI->mFillB);
+      FluidField<CFT> *f = reinterpret_cast<FluidField<CFT>*>(mStates[mStates.size()-1-i]);
+      fillField<CFT> (f->Qn, mFieldUI->mFillQn);
+      fillField<CFT> (f->Qp, mFieldUI->mFillQp);
+      fillField<CFV3>(f->Qv, mFieldUI->mFillQv);
+      fillField<CFV3>(f->E,  mFieldUI->mFillE);
+      fillField<CFV3>(f->B,  mFieldUI->mFillB);
     }
-  mInputE->clear(); mInputB->clear(); // clear remaining inputs
-  // cudaDeviceSynchronize(); // TODO: settle on specific synchronization point(s)
+  mInputQn->clear(); mInputQp->clear(); mInputQv->clear(); mInputE->clear(); mInputB->clear(); // clear remaining inputs
 }
 
 
 void SimWindow::resetMaterials()
 {
   std::cout << "MATERIAL RESET\n";
-  if(mFieldUI->initEpExpr)  { delete mFieldUI->initEpExpr;  } mFieldUI->initEpExpr  = toExpression<float>(mFieldUI->initEpStr,  false);
-  if(mFieldUI->initMuExpr)  { delete mFieldUI->initMuExpr;  } mFieldUI->initMuExpr  = toExpression<float>(mFieldUI->initMuStr,  false);
-  if(mFieldUI->initSigExpr) { delete mFieldUI->initSigExpr; } mFieldUI->initSigExpr = toExpression<float>(mFieldUI->initSigStr, false);
+  // recreate expressions
+  if(mFieldUI->initEpExpr) {delete mFieldUI->initEpExpr; }  mFieldUI->initEpExpr  = toExpression<CFT>((mFieldUI->initEpActive ?mFieldUI->initEpStr :"1"), false);
+  if(mFieldUI->initMuExpr) {delete mFieldUI->initMuExpr; }  mFieldUI->initMuExpr  = toExpression<CFT>((mFieldUI->initMuActive ?mFieldUI->initMuStr :"1"), false);
+  if(mFieldUI->initSigExpr){delete mFieldUI->initSigExpr;}  mFieldUI->initSigExpr = toExpression<CFT>((mFieldUI->initSigActive?mFieldUI->initSigStr:"0"), false);
   
   if(mParams.verbose)
     {
@@ -512,20 +549,62 @@ void SimWindow::resetMaterials()
       std::cout << "σ:  " << mFieldUI->initSigExpr->toString(true) << "\n";
     }
   
+  // create or update expressions
   if(!mFieldUI->mFillEp)
-    { mFieldUI->mFillEp  = toCudaExpression<float >(mFieldUI->initEpExpr,  getVarNames<float >()); std::cout << " --> ε INIT EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillEp  = toCudaExpression<CFT>(mFieldUI->initEpExpr,  getVarNames<CFT>()); std::cout << " --> ε  INIT EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillMu)
-    { mFieldUI->mFillMu  = toCudaExpression<float >(mFieldUI->initMuExpr,  getVarNames<float >()); std::cout << " --> μ INIT EXPRESSION UPDATED\n"; }
+    { mFieldUI->mFillMu  = toCudaExpression<CFT>(mFieldUI->initMuExpr,  getVarNames<CFT>()); std::cout << " --> μ  INIT EXPRESSION UPDATED\n"; }
   if(!mFieldUI->mFillSig)
-    { mFieldUI->mFillSig = toCudaExpression<float >(mFieldUI->initSigExpr, getVarNames<float >()); std::cout << " --> σ INIT EXPRESSION UPDATED\n"; }
-  
-  for(int i = 0; i < mStates.size(); i++)
-    { // reset materials in each state
-      EMField<CFT> *f = reinterpret_cast<EMField<CFT>*>(mStates[mStates.size()-1-i]);
-      fillFieldMaterial<float>(f->mat, mFieldUI->mFillEp, mFieldUI->mFillMu, mFieldUI->mFillSig);
+    { mFieldUI->mFillSig = toCudaExpression<CFT>(mFieldUI->initSigExpr, getVarNames<CFT>()); std::cout << " --> σ  INIT EXPRESSION UPDATED\n"; }
+
+  // fill all states
+  if(mFieldUI->initEpStr == "1" && mFieldUI->initMuStr == "1" && mFieldUI->initSigStr == "0")
+    {
+      for(int i = 0; i < mStates.size(); i++)
+        { // reset materials in each state to VACUUM
+          FluidField<CFT> *f = reinterpret_cast<FluidField<CFT>*>(mStates[mStates.size()-1-i]);
+          f->mat.clear();
+        }
     }
-  // cudaDeviceSynchronize(); // TODO: settle on specific synchronization point(s)
+  else
+    {
+      for(int i = 0; i < mStates.size(); i++)
+        { // fill materials in each state with parametetric expressions
+          FluidField<CFT> *f = reinterpret_cast<FluidField<CFT>*>(mStates[mStates.size()-1-i]);
+          fillFieldMaterial<CFT>(f->mat, mFieldUI->mFillEp, mFieldUI->mFillMu, mFieldUI->mFillSig);
+        }
+    }
 }
+
+
+void SimWindow::resetFluid()
+{
+  std::cout << "FLUID RESET\n";
+
+  // recreate expressions  
+  if(mFieldUI->initVExpr){delete mFieldUI->initVExpr;}  mFieldUI->initVExpr = toExpression<CFV3>((mFieldUI->initVActive?mFieldUI->initVStr:"0"), false);
+  if(mFieldUI->initPExpr){delete mFieldUI->initPExpr;}  mFieldUI->initPExpr = toExpression<CFT> ((mFieldUI->initPActive?mFieldUI->initPStr:"0"), false);
+  if(mParams.verbose)
+    {
+      std::cout << "V:  " << mFieldUI->initVExpr->toString(true)  << "\n";
+      std::cout << "P:  " << mFieldUI->initPExpr->toString(true)  << "\n";
+    }
+  
+  // create or update expressions
+  if(!mFieldUI->mFillV)
+    { mFieldUI->mFillV  = toCudaExpression<CFV3>(mFieldUI->initVExpr,  getVarNames<CFV3>()); std::cout << " --> V  INIT EXPRESSION UPDATED\n"; }
+  if(!mFieldUI->mFillP)
+    { mFieldUI->mFillP  = toCudaExpression<CFT> (mFieldUI->initPExpr,  getVarNames<CFT>());  std::cout << " --> P  INIT EXPRESSION UPDATED\n"; }
+  // fill all states
+  for(int i = 0; i < mStates.size(); i++)
+    {
+      FluidField<CFT> *f = reinterpret_cast<FluidField<CFT>*>(mStates[mStates.size()-1-i]);
+      fillField<CFV3>(f->v,  mFieldUI->mFillV);
+      fillField<CFT> (f->p,  mFieldUI->mFillP);
+    }
+  mInputV->clear(); mInputP->clear(); // clear remaining inputs
+}
+
 
 void SimWindow::resetSim()
 {
@@ -535,6 +614,7 @@ void SimWindow::resetSim()
   mInfo.uStep = 0;
   std::cout << " --> "; resetSignals();
   std::cout << " --> "; resetMaterials();
+  std::cout << " --> "; resetFluid();
   
   cudaRender(mParams.cp);
   cudaDeviceSynchronize();
@@ -548,11 +628,11 @@ void SimWindow::resetViews()
   if(!mLockViews && !mForcePause)
     {
       CFT    pad = SIM_VIEW_RESET_INTERNAL_PADDING;
-      Vec2f  fs  = Vec2f(mFieldUI->fieldRes.x, mFieldUI->fieldRes.y);
-      Vec2f  fp  = Vec2f(mFieldUI->cp->fp.x,    mFieldUI->cp->fp.y);
+      Vec2f  fs  = Vec2f(mParams.cp.fs.x, mParams.cp.fs.y);
+      Vec2f  fp  = Vec2f(mParams.cp.fp.x, mParams.cp.fp.y);
       Vec2f  fsPadded = fs * (1.0 + 2.0*pad);
 
-      float fAspect = mFieldUI->fieldRes.x/(float)mFieldUI->fieldRes.y;
+      float fAspect = mParams.cp.fs.x/(float)mParams.cp.fs.y;
       Vec2f aspect2D = Vec2f(mEMView.r.aspect()/fAspect, 1.0);
       if(aspect2D.x < 1.0) { aspect2D.y = 1.0/aspect2D.x; aspect2D.x = 1.0; }
       Vec2f aspect3D = Vec2f(m3DView.r.aspect()/fAspect, 1.0);
@@ -573,7 +653,7 @@ void SimWindow::resetViews()
       // reset 3D camera
       mCamera.fov   = fov; mCamera.near = 0.001f; mCamera.far = 100000.0f;
       mCamera.pos   = CFV3{ fs.x*mUnits.dL/2, fs.y*mUnits.dL/2, // camera position (centered over field)
-                            zOffset + mFieldUI->fieldRes.z*mUnits.dL};
+                            zOffset + mParams.cp.fs.z*mUnits.dL};
       mCamera.right = CFV3{1.0f,  0.0f,  0.0f}; // camera x direction
       mCamera.up    = CFV3{0.0f,  1.0f,  0.0f}; // camera y direction
       mCamera.dir   = CFV3{0.0f,  0.0f, -1.0f}; // camera z direction
@@ -589,15 +669,15 @@ void SimWindow::togglePause()
   std::cout << (mFieldUI->running ? "STARTED" : "STOPPED") << " SIMULATION.\n";
 }
 
-static EMField<CFT> *g_temp = nullptr; // temp state (avoids destroying input source state)
+static FluidField<CFT> *g_temp = nullptr; // temp state (avoids destroying input source state)
 void SimWindow::update()
 {
   ImGuiIO &io = ImGui::GetIO();
-  if(mFieldUI->fieldRes.x > 0 && mFieldUI->fieldRes.y > 0)
+  if(mParams.cp.fs.x > 0 && mParams.cp.fs.y > 0)
     {
       bool singleStep = false;
       mParams.cp.t    = mInfo.t;
-      FieldParams cp = mParams.cp;
+      FluidParams<CFT> cp = mParams.cp;
       cp.u = mUnits;
       if(mSingleStepMult != 0.0f)
         {
@@ -606,12 +686,12 @@ void SimWindow::update()
           singleStep = true;
         }
       
-      if(!g_temp)                            { g_temp = new EMField<CFT>();  }
-      if(g_temp->size != mFieldUI->fieldRes) { g_temp->create(mFieldUI->fieldRes); }
+      if(!g_temp)                       { g_temp = new FluidField<CFT>();  }
+      if(g_temp->size != mParams.cp.fs) { g_temp->create(mParams.cp.fs); }
       
-      EMField<CFT> *src  = reinterpret_cast<EMField<CFT>*>(mStates.back());  // previous field state
-      EMField<CFT> *dst  = reinterpret_cast<EMField<CFT>*>(mStates.front()); // oldest state (recycle)
-      EMField<CFT> *temp = reinterpret_cast<EMField<CFT>*>(g_temp);          // temp intermediate state
+      FluidField<CFT> *src  = reinterpret_cast<FluidField<CFT>*>(mStates.back());  // previous field state
+      FluidField<CFT> *dst  = reinterpret_cast<FluidField<CFT>*>(mStates.front()); // oldest state (recycle)
+      FluidField<CFT> *temp = reinterpret_cast<FluidField<CFT>*>(g_temp);          // temp intermediate state
       
       // apply external forces from user
       CFV3 mposSim = CFV3{NAN, NAN, NAN};
@@ -619,7 +699,7 @@ void SimWindow::update()
       else if(mMatView.hovered) { mposSim = to_cuda(mMatView.mposSim); }
       else if(m3DView.hovered)  { mposSim = to_cuda(m3DView.mposSim);  }
       float  cs = mUnits.dL;
-      CFV3 fs = CFV3{(float)mFieldUI->fieldRes.x, (float)mFieldUI->fieldRes.y, (float)mFieldUI->fieldRes.z};
+      CFV3 fs = CFV3{(float)mParams.cp.fs.x, (float)mParams.cp.fs.y, (float)mParams.cp.fs.z};
       CFV3 mpfi = (mposSim) / cs;
       
       // draw signal
@@ -636,15 +716,15 @@ void SimWindow::update()
           if(m3DView.hovered)
             {
               CFV3 fp = to_cuda(m3DView.mposSim);
-              CFV3 vDepth = CFV3{(fp.x <= 1 ? 1.0f : (fp.x >= mFieldUI->fieldRes.x-1 ? -1.0f : 0.0f)),
-                                 (fp.y <= 1 ? 1.0f : (fp.y >= mFieldUI->fieldRes.y-1 ? -1.0f : 0.0f)),
-                                 (fp.z <= 1 ? 1.0f : (fp.z >= mFieldUI->fieldRes.z-1 ? -1.0f : 0.0f)) };
+              CFV3 vDepth = CFV3{(fp.x <= 1 ? 1.0f : (fp.x >= mParams.cp.fs.x-1 ? -1.0f : 0.0f)),
+                                 (fp.y <= 1 ? 1.0f : (fp.y >= mParams.cp.fs.y-1 ? -1.0f : 0.0f)),
+                                 (fp.z <= 1 ? 1.0f : (fp.z >= mParams.cp.fs.z-1 ? -1.0f : 0.0f)) };
               p = fp + vDepth*mDrawUI->sigPen.depth;
               apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_CONTROL));
             }
           if(mEMView.hovered || mMatView.hovered)
             {
-              mpfi.z = mFieldUI->fieldRes.z - 1 - mDrawUI->sigPen.depth; // Z depth relative to top visible layer
+              mpfi.z = mParams.cp.fs.z - 1 - mDrawUI->sigPen.depth; // Z depth relative to top visible layer
               p = CFV3{mpfi.x, mpfi.y, mpfi.z};
               apply = (( mEMView.clickBtns(MOUSEBTN_LEFT) &&  mEMView.clickMods(GLFW_MOD_CONTROL)) ||
                        (mMatView.clickBtns(MOUSEBTN_LEFT) && mMatView.clickMods(GLFW_MOD_CONTROL)));
@@ -668,13 +748,16 @@ void SimWindow::update()
                     }
 
                   if(mFieldUI->running)
-                    { addSignal(p, *mInputE, *mInputB, mDrawUI->sigPen, cp); }
+                    { addSignal(p, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQv, *mInputE, *mInputB, mDrawUI->sigPen, cp); }
                   else
-                    { addSignal(p, src->E, src->B, mDrawUI->sigPen, cp); }
+                    {
+                      //mInputV->clear(); mInputP->clear(); mInputQn->clear(); mInputQp->clear(); mInputQv->clear(); mInputE->clear(); mInputB->clear();
+                      addSignal(p, src->v, src->p, src->Qn, src->Qp, src->Qv, src->E, src->B, mDrawUI->sigPen, cp);
+                    }
                 }
             }
         }
-      if(!active) { mDrawUI->sigPen.startTime = -1.0; } // inactive -- reset start time
+      if(!active) { mDrawUI->sigPen.startTime = -1.0; } // reset start time
       
       // add material
       mParams.rp.matPenHighlight = false;
@@ -687,17 +770,17 @@ void SimWindow::update()
           if(m3DView.hovered)
             {
               CFV3 fp = to_cuda(m3DView.mposSim);
-              CFV3 vDepth = CFV3{(fp.x <= 1 ? 1.0f : (fp.x >= mFieldUI->fieldRes.x-1 ? -1.0f : 0.0f)),
-                                 (fp.y <= 1 ? 1.0f : (fp.y >= mFieldUI->fieldRes.y-1 ? -1.0f : 0.0f)),
-                                 (fp.z <= 1 ? 1.0f : (fp.z >= mFieldUI->fieldRes.z-1 ? -1.0f : 0.0f)) };
+              CFV3 vDepth = CFV3{(fp.x <= 1 ? 1.0f : (fp.x >= mParams.cp.fs.x-1 ? -1.0f : 0.0f)),
+                                 (fp.y <= 1 ? 1.0f : (fp.y >= mParams.cp.fs.y-1 ? -1.0f : 0.0f)),
+                                 (fp.z <= 1 ? 1.0f : (fp.z >= mParams.cp.fs.z-1 ? -1.0f : 0.0f)) };
               p = fp + vDepth*mDrawUI->matPen.depth;
               apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_ALT));
             }
           if(mEMView.hovered || mMatView.hovered)
             {
-              mpfi.z = mFieldUI->fieldRes.z-1-mDrawUI->matPen.depth; // Z depth relative to top visible layer
+              mpfi.z = mParams.cp.fs.z-1-mDrawUI->matPen.depth; // Z depth relative to top visible layer
               p = CFV3{mpfi.x, mpfi.y, mpfi.z};
-              apply = ((mEMView.clickBtns(MOUSEBTN_LEFT) &&  mEMView.clickMods(GLFW_MOD_ALT)) ||
+              apply = ((mEMView.clickBtns(MOUSEBTN_LEFT)  && mEMView.clickMods(GLFW_MOD_ALT)) ||
                        (mMatView.clickBtns(MOUSEBTN_LEFT) && mMatView.clickMods(GLFW_MOD_ALT)));
             }
 
@@ -720,29 +803,72 @@ void SimWindow::update()
           if(DESTROY_LAST_STATE) { temp = src; }         // overwrite source state (currently unneeded if number of states is <= 1)
           else                   { src->copyTo(*temp); } // don't overwrite previous state (use temp)
           
-          //// step Q field (TODO)
-          if(mFieldUI->updateQ) { updateCharge  (*temp, *dst, cp); std::swap(temp, dst); } // step Q
-
-          
           // (NOTE: remove added sources to avoid persistent lumps building up)
-          addSignal(*mInputB, temp->B, cp,  1.0f); //// add B input signal
-          addSignal(*mInputE, temp->E, cp,  1.0f); //// add E input signal
-                    
-          //// step E field
-          if(mFieldUI->updateE) { updateElectric(*temp, *dst, cp); std::swap(temp, dst); } //////// step E ////////
-          cp.t += cp.u.dt/2.0f;                                                            // increment first half time step
-          
-          //// step B field
-          if(mFieldUI->updateB) { updateMagnetic(*temp, *dst, cp); std::swap(temp, dst); } //////// step B ////////
-          cp.t += cp.u.dt/2.0f;                                                            // increment second half time step
+          if(mFieldUI->updateFluid)
+            {
+              addSignal(*mInputV,  temp->v,  cp, 1.0f); //// add V  input signal
+              addSignal(*mInputP,  temp->p,  cp, 1.0f); //// add P  input signal
+            }
 
-          addSignal(*mInputB, temp->B, cp, -1.0f); //// remove added B input signal
-          addSignal(*mInputE, temp->E, cp, -1.0f); //// remove added E input signal
+          if(mFieldUI->updateQ)
+            {
+              addSignal(*mInputQn, temp->Qn, cp, 1.0f); //// add Qn input signal
+              addSignal(*mInputQp, temp->Qp, cp, 1.0f); //// add Qp input signal
+              addSignal(*mInputQv, temp->Qv, cp, 1.0f); //// add Qv input signal
+            }
+
+          if(mFieldUI->updateE || mFieldUI->updateB)
+            {
+              addSignal(*mInputE,  temp->E,  cp, 1.0f); //// add E  input signal
+              addSignal(*mInputB,  temp->B,  cp, 1.0f); //// add B  input signal
+            }
           
-          if(mFieldUI->inputDecay) { decaySignal(*mInputE, cp); } //else { mInputE->clear(); } //// decay E input signal (blend over time)
-          if(mFieldUI->inputDecay) { decaySignal(*mInputB, cp); } //else { mInputB->clear(); } //// decay B input signal (blend over time)
+          //// E
+          if(mFieldUI->updateE)  //////// step E ////////
+            { updateElectric(*temp, *dst, cp); std::swap(temp, dst); }
+          cp.t += cp.u.dt/2.0f; // increment first half time step
+          //// B
+          if(mFieldUI->updateB)  //////// step B ////////
+            { updateMagnetic(*temp, *dst, cp); std::swap(temp, dst); }
+          cp.t += cp.u.dt/2.0f; // increment second half time step
+          //// Q
+          if(mFieldUI->updateQ)  //////// step Q ////////
+            { updateCharge  (*temp, *dst, cp); std::swap(temp, dst); }
+
           
-          std::swap(temp, dst);    // swap final result back into dst
+          if(mFieldUI->updateE || mFieldUI->updateB)
+            {
+              addSignal(*mInputE,  temp->E,  cp, -1.0f); //// remove added E  input signal
+              addSignal(*mInputB,  temp->B,  cp, -1.0f); //// remove added B  input signal
+              if(mFieldUI->inputDecay) { decaySignal(*mInputE, cp); } //// decay E  input signal (blend over time)
+              if(mFieldUI->inputDecay) { decaySignal(*mInputB, cp); } //// decay B  input signal (blend over time)
+            }
+
+          //// V, P
+          if(mFieldUI->updateFluid) { fluidStep (*temp, *dst, cp); std::swap(temp, dst); } //// step fluid ////
+
+          if(mFieldUI->inputDecay)
+            {
+              if(mFieldUI->updateQ)
+                {
+                  // addSignal(*mInputQp, temp->Qp, cp, -1.0f); //// remove added Qp input signal
+                  // addSignal(*mInputQn, temp->Qn, cp, -1.0f); //// remove added Qn input signal
+                  // addSignal(*mInputQv, temp->Qv, cp, -1.0f); //// remove added Qv input signal
+                  decaySignal(*mInputQn, cp); //// decay Qn input signal (blend over time)
+                  decaySignal(*mInputQp, cp); //// decay Qp input signal (blend over time)
+                  decaySignal(*mInputQv, cp); //// decay Qv input signal (blend over time)
+                }
+              // mInputQn->clear(); mInputQp->clear(); mInputQv->clear(); mInputV->clear(); mInputP->clear();
+              if(mFieldUI->updateFluid)
+                {
+                  // addSignal(*mInputV, temp->v, cp, -1.0f); //// remove added V input signal
+                  // addSignal(*mInputP, temp->p, cp, -1.0f); //// remove added P input signal
+                  decaySignal(*mInputV, cp); //// decay Qp input signal (blend over time)
+                  decaySignal(*mInputP, cp); //// decay Qv input signal (blend over time)
+                }
+            }
+
+          std::swap(temp,   dst);  // swap final result back into dst
           std::swap(g_temp, temp); // use other state as new temp (pointer changes if number of steps is odd)
           mStates.pop_front(); mStates.push_back(dst);
 
@@ -756,21 +882,23 @@ void SimWindow::update()
     }
 }
 
-void SimWindow::cudaRender(FieldParams<CFT> &cp)
+void SimWindow::cudaRender(FluidParams<CFT> &cp)
 {
   //// render field
-  EMField<CFT> *renderSrc = reinterpret_cast<EMField<CFT>*>(mStates.back());
+  FluidField<CFT> *renderSrc = reinterpret_cast<FluidField<CFT>*>(mStates.back());
   // render 2D EM views
   if(mDisplayUI->showEMView)  { mEMTex.clear();  renderFieldEM  (*renderSrc,     mEMTex,  mParams.rp, mParams.cp); }
   if(mDisplayUI->showMatView) { mMatTex.clear(); renderFieldMat (renderSrc->mat, mMatTex, mParams.rp, mParams.cp); }
   // render 3D EM view
-  Vec2f aspect = Vec2f(m3DView.r.aspect(), 1.0f);
-  if(mDisplayUI->show3DView) { m3DTex.clear(); raytraceFieldEM(*renderSrc, m3DTex, mCamera, mParams.rp, cp, aspect); }
-
   if(mFileRendering)
     { // render separately file output (different aspect ratio)
-      aspect = Vec2f(m3DGlView.r.aspect(), 1.0);
-      if(mDisplayUI->show3DView) { m3DGlTex.clear();  raytraceFieldEM(*renderSrc, m3DGlTex, mCamera, mParams.rp, cp, aspect); }
+      Vec2f aspect = Vec2f(m3DGlView.r.aspect(), 1.0);
+      if(mDisplayUI->show3DView) { m3DGlTex.clear(); raytraceFieldEM(*renderSrc, m3DGlTex, mCamera, mParams.rp, cp, aspect); }
+    }
+  else
+    {
+      Vec2f aspect = Vec2f(m3DView.r.aspect(), 1.0f);
+      if(mDisplayUI->show3DView) { m3DTex.clear(); raytraceFieldEM(*renderSrc, m3DTex, mCamera, mParams.rp, cp, aspect); }
     }
 }
 
@@ -851,25 +979,36 @@ void SimWindow::handleInput2D(ScreenView<CFT> &view)
   // tooltip 
   if(view.hovered && io.KeyShift)
     {
-      float2 fs = float2{(float)mFieldUI->fieldRes.x, (float)mFieldUI->fieldRes.y};
+      float2 fs = float2{(float)mParams.cp.fs.x, (float)mParams.cp.fs.y};
       float2 cs = float2{mUnits.dL, mUnits.dL};
       Vec2i fi    = makeV<int2>(floor((float2{mposSim.x, mposSim.y} / cs)));
-      Vec2i fiAdj = Vec2i(std::max(0, std::min(mFieldUI->fieldRes.x-1, fi.x)), std::max(0, std::min(mFieldUI->fieldRes.y-1, fi.y)));
+      Vec2i fiAdj = Vec2i(std::max(0, std::min(mParams.cp.fs.x-1, fi.x)), std::max(0, std::min(mParams.cp.fs.y-1, fi.y)));
 
       int zi = mDisplayUI->rp->zRange.y;
       
       // pull device data
+      std::vector<CFV3> v  (mStates.size(), CFV3{NAN, NAN, NAN});
+      std::vector<CFT>  p  (mStates.size(), (CFT)NAN);
+      std::vector<CFT>  Qn (mStates.size(), (CFT)NAN);
+      std::vector<CFT>  Qp (mStates.size(), (CFT)NAN);
+      std::vector<CFV3> Qv (mStates.size(), CFV3{NAN, NAN, NAN});
       std::vector<CFV3> E  (mStates.size(), CFV3{NAN, NAN, NAN});
       std::vector<CFV3> B  (mStates.size(), CFV3{NAN, NAN, NAN});
       std::vector<Material<float>> mat(mStates.size(), Material<float>());
-      if(fi.x >= 0 && fi.x < mFieldUI->fieldRes.x && fi.y >= 0 && fi.y < mFieldUI->fieldRes.y)
+      if(fi.x >= 0 && fi.x < mParams.cp.fs.x && fi.y >= 0 && fi.y < mParams.cp.fs.y)
         {
           for(int i = 0; i < mStates.size(); i++)
             {
-              EMField<CFT> *src = reinterpret_cast<EMField<CFT>*>(mStates[mStates.size()-1-i]);
+              FluidField<CFT> *src = reinterpret_cast<FluidField<CFT>*>(mStates[mStates.size()-1-i]);
               if(src)
                 {
                   // get data from top displayed layer (TODO: average or graph layers?)
+                  cudaMemcpy(&v[i],   src->v.dData   + src->v.idx  (fi.x, fi.y, zi), sizeof(CFV3), cudaMemcpyDeviceToHost);
+                  cudaMemcpy(&p[i],   src->p.dData   + src->p.idx  (fi.x, fi.y, zi), sizeof(CFT),  cudaMemcpyDeviceToHost);
+                  cudaMemcpy(&Qn[i],  src->Qn.dData  + src->Qn.idx (fi.x, fi.y, zi), sizeof(CFT),  cudaMemcpyDeviceToHost);
+                  cudaMemcpy(&Qp[i],  src->Qp.dData  + src->Qp.idx (fi.x, fi.y, zi), sizeof(CFT),  cudaMemcpyDeviceToHost);
+                  cudaMemcpy(&Qv[i],  src->Qv.dData  + src->Qv.idx (fi.x, fi.y, zi), sizeof(CFV3), cudaMemcpyDeviceToHost);
+
                   cudaMemcpy(&E[i],   src->E.dData   + src->E.idx  (fi.x, fi.y, zi), sizeof(CFV3), cudaMemcpyDeviceToHost);
                   cudaMemcpy(&B[i],   src->B.dData   + src->B.idx  (fi.x, fi.y, zi), sizeof(CFV3), cudaMemcpyDeviceToHost);
                   cudaMemcpy(&mat[i], src->mat.dData + src->mat.idx(fi.x, fi.y, zi), sizeof(Material<CFT>), cudaMemcpyDeviceToHost);
@@ -887,7 +1026,6 @@ void SimWindow::handleInput2D(ScreenView<CFT> &view)
         Vec2f p0 = ImGui::GetCursorScreenPos();
         for(int i = 0; i < mStates.size(); i++)
           {
-            // int i = mStates.size() - 1 - i0;
             ImGui::BeginGroup();
             {
               Vec2f sp0 = Vec2f(ImGui::GetCursorScreenPos()) + Vec2f(tSize.x + dataPadding.x, 0);
@@ -902,6 +1040,10 @@ void SimWindow::handleInput2D(ScreenView<CFT> &view)
               {
                 float xpos = ImGui::GetCursorPos().x;
                 ImGui::Text("(State Pointer: %ld", (long)(void*)(mStates[mStates.size()-1-i]));
+                ImGui::Text(" v   = < %12s, %12s, %12s >", fAlign(v[i].x,   4).c_str(), fAlign(v[i].y,   4).c_str(), fAlign(v[i].z,   4).c_str());
+                ImGui::Text(" p   =   %12s",               fAlign(p[i],     4).c_str());
+                ImGui::Text(" Q   =   (-) %8s, (+) %8s = %8s", fAlign(Qn[i],   4).c_str(), fAlign(Qp[i],   4).c_str(), fAlign(Qp[i]-Qn[i],   4).c_str());
+                ImGui::Text(" Qv  = < %12s, %12s, %12s >", fAlign(Qv[i].x,  4).c_str(), fAlign(Qv[i].y,  4).c_str(), fAlign(Qv[i].z,  4).c_str());
                 ImGui::Text(" E   = < %12s, %12s, %12s >", fAlign(E[i].x,   4).c_str(), fAlign(E[i].y,   4).c_str(), fAlign(E[i].z,   4).c_str());
                 ImGui::Text(" B   = < %12s, %12s, %12s >", fAlign(B[i].x,   4).c_str(), fAlign(B[i].y,   4).c_str(), fAlign(B[i].z,   4).c_str());
                 ImGui::Spacing(); ImGui::Spacing();
@@ -945,7 +1087,7 @@ void SimWindow::handleInput3D(ScreenView<CFT> &view)
   ImGuiIO    &io    = ImGui::GetIO();
   
   Vec2f aspect = Vec2f(view.r.aspect(), 1.0);
-  CFV3  fs     = CFV3{(CFT)mFieldUI->fieldRes.x, (CFT)mFieldUI->fieldRes.y, (CFT)mFieldUI->fieldRes.z};
+  CFV3  fs     = CFV3{(CFT)mParams.cp.fs.x, (CFT)mParams.cp.fs.y, (CFT)mParams.cp.fs.z};
   CFV3  fSize  = fs*mUnits.dL;
   Ray<CFT> ray; // ray projected from mouse position within view
   Vec2f mpos = ImGui::GetMousePos();
@@ -954,12 +1096,12 @@ void SimWindow::handleInput3D(ScreenView<CFT> &view)
   if(view.hovered)
     {
       ray = mCamera.castRay(to_cuda(Vec2f((mpos - view.r.p1)/view.r.size())), float2{aspect.x, aspect.y});
-      Vec2f tp = cubeIntersectHost(Vec3f(mFieldUI->cp->fp*mUnits.dL), Vec3f(fSize), ray);
+      Vec2f tp = cubeIntersectHost(Vec3f(mParams.cp.fp*mUnits.dL), Vec3f(fSize), ray);
 
       if(tp.x >= 0.0) // tmin
         {
           Vec3f wp = ray.pos + ray.dir*(tp.x+0.0001); // world-space pos of field outer intersection
-          Vec3f fp = (wp - mFieldUI->cp->fp*mUnits.dL) / fSize * fs;
+          Vec3f fp = (wp - mParams.cp.fp*mUnits.dL) / fSize * fs;
           view.mposSim = fp;
         }
       else { view.mposSim = CFV3{NAN, NAN, NAN}; }
@@ -1001,9 +1143,9 @@ void SimWindow::handleInput3D(ScreenView<CFT> &view)
     { // left/middle drag --> pan camera
       Vec2f dmp = ImGui::GetMouseDragDelta(btn); ImGui::ResetMouseDragDelta(btn);
       dmp.x *= -1.0f;
-      CFV3 fpos = CFV3{mFieldUI->cp->fp.x, mFieldUI->cp->fp.y, mFieldUI->cp->fp.z};
+      CFV3 fpos = CFV3{mParams.cp.fp.x, mParams.cp.fp.y, mParams.cp.fp.z};
       CFV3 cpos = CFV3{mCamera.pos.x, mCamera.pos.y, mCamera.pos.z};
-      CFV3 fsize = CFV3{(float)mFieldUI->fieldRes.x, (float)mFieldUI->fieldRes.y, (float)mFieldUI->fieldRes.z};
+      CFV3 fsize = CFV3{(float)mParams.cp.fs.x, (float)mParams.cp.fs.y, (float)mParams.cp.fs.z};
       CFT lengthMult = (length(cpos-fpos) +
                         length(cpos - (fpos + fsize)) +
                         length(cpos-(fpos + fsize/2.0)) +
@@ -1020,7 +1162,7 @@ void SimWindow::handleInput3D(ScreenView<CFT> &view)
       Vec2f dmp = Vec2f(ImGui::GetMouseDragDelta(btn)); ImGui::ResetMouseDragDelta(btn);
       dmp = -dmp;
       float2 rAngles = float2{dmp.x, dmp.y} / float2{viewSize.x, viewSize.y} * 6.0 * tan(mCamera.fov/2*M_PI/180.0) * shiftMult;
-      CFV3 rOffset = CFV3{(CFT)mFieldUI->fieldRes.x, (CFT)mFieldUI->fieldRes.y, (CFT)mFieldUI->fieldRes.z}*mUnits.dL / 2.0;
+      CFV3 rOffset = CFV3{(CFT)mParams.cp.fs.x, (CFT)mParams.cp.fs.y, (CFT)mParams.cp.fs.z}*mUnits.dL / 2.0;
       
       mCamera.pos -= rOffset; // offset to center rotation
       mCamera.rotate(rAngles);
@@ -1051,12 +1193,12 @@ void SimWindow::handleInput(const Vec2f &frameSize, const std::string &id)
       if(io.MouseWheel != 0 && delta == 0) { delta = io.MouseWheel < 0 ? -1 : 1; }
       if(ImGui::IsKeyDown(GLFW_KEY_MINUS))      // (-)+SCROLL --> adjust lower z index (absorbs mouse wheel input)
         {
-          mParams.rp.zRange.x = std::max(0, std::min(mFieldUI->fieldRes.z-1, mParams.rp.zRange.x+delta)); io.MouseWheel = 0.0f;
+          mParams.rp.zRange.x = std::max(0, std::min(mParams.cp.fs.z-1, mParams.rp.zRange.x+delta)); io.MouseWheel = 0.0f;
           mParams.rp.zRange.y = std::max(mParams.rp.zRange.x, mParams.rp.zRange.y);
         }
       else if(ImGui::IsKeyDown(GLFW_KEY_EQUAL)) // (+)+SCROLL --> adjust upper z index (absorbs mouse wheel input)
         {
-          mParams.rp.zRange.y = std::max(0, std::min(mFieldUI->fieldRes.z-1, mParams.rp.zRange.y+delta)); io.MouseWheel = 0.0f;
+          mParams.rp.zRange.y = std::max(0, std::min(mParams.cp.fs.z-1, mParams.rp.zRange.y+delta)); io.MouseWheel = 0.0f;
           mParams.rp.zRange.x = std::min(mParams.rp.zRange.x, mParams.rp.zRange.y);
         }
     }
@@ -1092,12 +1234,12 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view)
   Vec2f fp   = screenToSim2D(mpos, mSimView2D, view.r)/mUnits.dL;
   
   // draw vector field data
-  EMField<CFT> *src = reinterpret_cast<EMField<CFT>*>(mStates.back());
+  FluidField<CFT> *src = reinterpret_cast<FluidField<CFT>*>(mStates.back());
   if(src && view.hovered && mParams.vp.drawVectors && mFieldDrawList)
     {
       Vec2i fi    = makeV<int2>(float2{floor(fp.x), floor(fp.y)});
       Vec2f fo    = fp - fi;
-      Vec2i fiAdj = Vec2i(std::max(0, std::min(mFieldUI->fieldRes.x-1, fi.x)), std::max(0, std::min(mFieldUI->fieldRes.y-1, fi.y)));
+      Vec2i fiAdj = Vec2i(std::max(0, std::min(mParams.cp.fs.x-1, fi.x)), std::max(0, std::min(mParams.cp.fs.y-1, fi.y)));
 
       int vRad     = mParams.vp.vecMRadius;
       int cRad     = mParams.vp.vecCRadius;
@@ -1106,71 +1248,73 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view)
       float viewScale = max(mSimView2D.size() / view.r.size());
       
       int2 iMin = int2{std::max(fi.x-vRad*vSpacing, 0), std::max(fi.y-vRad*vSpacing, 0)};
-      int2 iMax = int2{std::min(fi.x+vRad*vSpacing, mFieldUI->fieldRes.x-1)+1,
-                       std::min(fi.y+vRad*vSpacing, mFieldUI->fieldRes.y-1)+1};
+      int2 iMax = int2{std::min(fi.x+vRad*vSpacing, mParams.cp.fs.x-1)+1,
+                       std::min(fi.y+vRad*vSpacing, mParams.cp.fs.y-1)+1};
       
       int2 iStart = int2{0, 0};
       int2 iEnd   = int2{(iMax.x - iMin.x)/vSpacing, (iMax.y - iMin.y)/vSpacing};
 
       // if(mNewFrameVec)
-        {
-          src->E.pullData(); src->B.pullData();
-          float avgE = 0.0f; float avgB = 0.0f;
-          mVectorField2D.clear();
-          int zTop = mParams.rp.zRange.y;
-          for(int ix = iStart.x; ix <= iEnd.x; ix++)
-            for(int iy = iStart.y; iy <= iEnd.y; iy++)
-              {
-                int xi = iMin.x + ix*vSpacing; int yi = iMin.y + iy*vSpacing; int zi = zTop;
-                float2 dp = float2{(float)(xi-fi.x), (float)(yi-fi.y)};
-                if(dot(dp, dp) <= (float)(vRad*vRad))
-                  {
-                    int i = src->idx(xi, yi, zi);
-                    Vec3f p = Vec3f(xi+0.5f, yi+0.5f, zi+0.5f);
-                    Vec2f sp = simToScreen2D(p, mSimView2D, view.r);
-                    Vec3f sampleP = Vec3f(xi, yi, zi);
-                    Vec3f vE; Vec3f vB;
-                    if(mParams.vp.smoothVectors)
-                      {
-                        sampleP = Vec3f(xi+fo.x, yi+fo.y, zi);
-                        if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y)
-                          {
-                            bool x1p   = sampleP.x+1 >= src->size.x; bool y1p = sampleP.y+1 >= src->size.y;
-                            bool x1y1p = x1p || y1p;
+      {
+        float avgE = 0.0f; float avgB = 0.0f;
+        src->E.pullData(); src->B.pullData();
+        mVectorField2D.clear();
+        int zTop = mParams.rp.zRange.y;
+        for(int ix = iStart.x; ix <= iEnd.x; ix++)
+          for(int iy = iStart.y; iy <= iEnd.y; iy++)
+            {
+              int xi = iMin.x + ix*vSpacing; int yi = iMin.y + iy*vSpacing; int zi = zTop;
+              float2 dp = float2{(float)(xi-fi.x), (float)(yi-fi.y)};
+              if(dot(dp, dp) <= (float)(vRad*vRad))
+                {
+                  int i = src->idx(xi, yi, zi);
+                  Vec3f p = Vec3f(xi+0.5f, yi+0.5f, zi+0.5f);
+                  Vec2f sp = simToScreen2D(p, mSimView2D, view.r);
+                  Vec3f sampleP = Vec3f(xi, yi, zi);
+                  Vec3f vE; Vec3f vB;
+                  if(mParams.vp.smoothVectors)
+                    {
+                      sampleP = Vec3f(xi+fo.x, yi+fo.y, zi);
+                      if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y)
+                        {
+                          bool x1p   = sampleP.x+1 >= src->size.x; bool y1p = sampleP.y+1 >= src->size.y;
+                          bool x1y1p = x1p || y1p;
                     
-                            Vec3f E00 = Vec3f(src->E.hData[src->E.idx((int)sampleP.x,(int)sampleP.y, zi)]);
-                            Vec3f E01 = (x1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y,   zi)]));
-                            Vec3f E10 = (y1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x,   (int)sampleP.y+1, zi)]));
-                            Vec3f E11 = (x1y1p ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y+1, zi)]));
-                            Vec3f B00 = Vec3f(src->B.hData[src->B.idx((int)sampleP.x,(int)sampleP.y, zi)]);
-                            Vec3f B01 = (x1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y,   zi)]));
-                            Vec3f B10 = (y1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x,   (int)sampleP.y+1, zi)]));
-                            Vec3f B11 = (x1y1p ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y+1, zi)]));
+                          Vec3f E00 = Vec3f(src->E.hData[src->E.idx((int)sampleP.x,(int)sampleP.y, zi)]);
+                          Vec3f E01 = (x1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y,   zi)]));
+                          Vec3f E10 = (y1p   ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x,   (int)sampleP.y+1, zi)]));
+                          Vec3f E11 = (x1y1p ? E00 : Vec3f(src->E.hData[src->E.idx((int)sampleP.x+1, (int)sampleP.y+1, zi)]));
+                          Vec3f B00 = Vec3f(src->B.hData[src->B.idx((int)sampleP.x,(int)sampleP.y, zi)]);
+                          Vec3f B01 = (x1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y,   zi)]));
+                          Vec3f B10 = (y1p   ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x,   (int)sampleP.y+1, zi)]));
+                          Vec3f B11 = (x1y1p ? B00 : Vec3f(src->B.hData[src->B.idx((int)sampleP.x+1, (int)sampleP.y+1, zi)]));
 
-                            sp = simToScreen2D(sampleP, mSimView2D, view.r);
-                            vE = blerp(E00, E01, E10, E11, fo);
-                            vB = blerp(B00, B01, B10, B11, fo);
-                          }
-                      }
-                    else
-                      {
-                        if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y && sampleP.z >= 0 && sampleP.z < src->size.z)
-                          {
-                            sp = simToScreen2D((sampleP+0.5f), mSimView2D, view.r);
-                            i  = src->idx(sampleP.x, sampleP.y, sampleP.z);
-                            vE = src->E.hData[i];
-                            vB = src->B.hData[i];
-                          }
-                      }
-                    float magE = length(vE); //length(screenToSim2D(Vec2f(vLenE, 0), mSimView2D, view.r, true) );
-                    float magB = length(vB); //length(screenToSim2D(Vec2f(vLenB, 0), mSimView2D, view.r, true) );
+                          sp = simToScreen2D(sampleP, mSimView2D, view.r);
+                          vE = blerp(E00, E01, E10, E11, fo);
+                          vB = blerp(B00, B01, B10, B11, fo);
+                        }
+                    }
+                  else
+                    {
+                      if(sampleP.x >= 0 && sampleP.x < src->size.x && sampleP.y >= 0 && sampleP.y < src->size.y && sampleP.z >= 0 && sampleP.z < src->size.z)
+                        {
+                          sp = simToScreen2D((sampleP+0.5f), mSimView2D, view.r);
+                          i  = src->idx(sampleP.x, sampleP.y, sampleP.z);
+                          vE = src->E.hData[i];
+                          vB = src->B.hData[i];
+                        }
+                    }
+                  float magE = length(vE);
+                  float magB = length(vB);
 
-                    mVectorField2D.push_back(FVector{p, sampleP, vE, vB});
-                    avgE += magE; avgB += magB;
-                  }
-              }
-          mNewFrameVec = false;
-        }
+                  mVectorField2D.push_back(FVector{p, sampleP, vE, vB});
+                  avgE += magE; avgB += magB;
+                }
+            }
+        std::cout << "VEC AVG E: " << avgE/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
+        std::cout << "VEC AVG B: " << avgB/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
+        mNewFrameVec = false;
+      }
       for(auto &v : mVectorField2D)
         {
           Vec2f sp  = simToScreen2D(v.sp*mUnits.dL, mSimView2D, view.r);
@@ -1178,28 +1322,30 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view)
           Vec2f dpB = simToScreen2D(v.vB, mSimView2D, view.r, true)*mParams.vp.vecMultB;
           
           float lAlpha = mParams.vp.vecAlpha;
-          Vec4f Ecol1  = mParams.rp.Ecol;
-          Vec4f Bcol1  = mParams.rp.Bcol;
+          Vec4f Ecol1  = *mParams.rp.getColor(FLUID_RENDER_E);
+          Vec4f Bcol1  = *mParams.rp.getColor(FLUID_RENDER_B);
           Vec4f Ecol   = Vec4f(Ecol1.x, Ecol1.y, Ecol1.z, lAlpha);
           Vec4f Bcol   = Vec4f(Bcol1.x, Bcol1.y, Bcol1.z, lAlpha);
           float lw = (mParams.vp.vecLineW   / viewScale);
           if(!mParams.vp.borderedVectors)
             {
               mFieldDrawList->AddLine(sp, sp+dpE, ImColor(Ecol), lw);
+              mFieldDrawList->AddLine(sp+dpE, sp+dpE*0.9f-Vec2f(dpE.y, -dpE.x)*0.1f, ImColor(Ecol), lw/2);
+              mFieldDrawList->AddLine(sp+dpE, sp+dpE*0.9f+Vec2f(dpE.y, -dpE.x)*0.1f, ImColor(Ecol), lw/2);
               mFieldDrawList->AddLine(sp, sp+dpB, ImColor(Bcol), lw);
+              mFieldDrawList->AddLine(sp+dpB, sp+dpB*0.9f-Vec2f(dpB.y, -dpB.x)*0.1f, ImColor(Bcol), lw/2);
+              mFieldDrawList->AddLine(sp+dpB, sp+dpB*0.9f+Vec2f(dpB.y, -dpB.x)*0.1f, ImColor(Bcol), lw/2);
             }
           else
             {
               float bAlpha = (lAlpha + mParams.vp.vecBAlpha)/2.0f;
-              float shear0 = 0.1f;//0.5f; 
+              float shear0 = 0.4f;
               float shear1 = 1.0f;
               float bw     = (mParams.vp.vecBorderW / viewScale);
               drawLine(mFieldDrawList, sp, sp+dpE, Ecol, lw, Vec4f(0, 0, 0, bAlpha), bw, shear0, shear1);
               drawLine(mFieldDrawList, sp, sp+dpB, Bcol, lw, Vec4f(0, 0, 0, bAlpha), bw, shear0, shear1);
             }
         }
-      // std::cout << "VEC AVG E: " << avgE/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
-      // std::cout << "VEC AVG B: " << avgB/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
     }
 }
 
@@ -1210,8 +1356,8 @@ void SimWindow::draw2DOverlay(ScreenView<CFT> &view)
   // draw axes at origin
   if(mDisplayUI->drawAxes)
     {
-      float scale  = max(mFieldUI->fieldRes)*mUnits.dL*0.25f;
-      float zScale = std::max(mFieldUI->fieldRes.z*mUnits.dL*0.15f, scale/3.0f);
+      float scale  = max(mParams.cp.fs)*mUnits.dL*0.25f;
+      float zScale = std::max(mParams.cp.fs.z*mUnits.dL*0.15f, scale/3.0f);
       Vec2f tSize = ImGui::CalcTextSize("X");
       float pad = 5.0f;
       float zW0 = 1.0f; float zW1 = 10.0f; // width of 
@@ -1228,14 +1374,14 @@ void SimWindow::draw2DOverlay(ScreenView<CFT> &view)
       drawList->AddText((Spy+Sorigin)/2.0f - Vec2f(tSize.x, tSize.y/2.0f) - Vec2f(2.0f*pad, 0), ImColor(Y_COLOR), "Y");
 
       // Z
-      if(mFieldUI->fieldRes.z > 1)
+      if(mParams.cp.fs.z > 1)
         {
           float zAngle = M_PI*4.0f/3.0f;
           Vec2f zVec   = Vec2f(cos(zAngle), sin(zAngle));
           Vec2f zVNorm = Vec2f(zVec.y, zVec.x);
           Vec2f Spz    = simToScreen2D(WO0 + zScale*zVec, mSimView2D, view.r);
-          float zMin = mParams.rp.zRange.x/(float)(mFieldUI->fieldRes.z-1);
-          float zMax = mParams.rp.zRange.y/(float)(mFieldUI->fieldRes.z-1);
+          float zMin = mParams.rp.zRange.x/(float)(mParams.cp.fs.z-1);
+          float zMax = mParams.rp.zRange.y/(float)(mParams.cp.fs.z-1);
 
           Vec2f SpzMin = simToScreen2D(WO0 + zScale*zVec*zMin, mSimView2D, view.r);
           Vec2f SpzMax = simToScreen2D(WO0 + zScale*zVec*zMax, mSimView2D, view.r);
@@ -1261,18 +1407,18 @@ void SimWindow::draw2DOverlay(ScreenView<CFT> &view)
   // draw outline around field
   if(mDisplayUI->drawOutline)
     {
-      Vec3f Wfp0 = Vec3f(mFieldUI->cp->fp.x,   mFieldUI->cp->fp.y,   mFieldUI->cp->fp.z)   * mUnits.dL;
-      Vec3f Wfs  = Vec3f(mFieldUI->fieldRes.x, mFieldUI->fieldRes.y, mFieldUI->fieldRes.z) * mUnits.dL;
+      Vec3f Wfp0 = Vec3f(mParams.cp.fp.x, mParams.cp.fp.y, mParams.cp.fp.z) * mUnits.dL;
+      Vec3f Wfs  = Vec3f(mParams.cp.fs.x, mParams.cp.fs.y, mParams.cp.fs.z) * mUnits.dL;
       drawRect2D(view, Vec2f(Wfp0.x, Wfp0.y), Vec2f(Wfp0.x+Wfs.x, Wfp0.y+Wfs.y), RADIUS_COLOR);
     }
 
   // draw positional axes of active signal pen 
   if(!isnan(mSigMPos) && !mLockViews && !mForcePause)
     {
-      Vec3f W01n  = Vec3f(mFieldUI->cp->fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W01p  = Vec3f(mFieldUI->cp->fp.x + mFieldUI->fieldRes.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W10p  = Vec3f(mSigMPos.x, mFieldUI->cp->fp.y + mFieldUI->fieldRes.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W10n  = Vec3f(mSigMPos.x, mFieldUI->cp->fp.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W01n  = Vec3f(mParams.cp.fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W01p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W10p  = Vec3f(mSigMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W10n  = Vec3f(mSigMPos.x, mParams.cp.fp.y, mSigMPos.z)*mUnits.dL;
       // transform (NOTE: hacky)
       Vec2f S01n = simToScreen2D(W01n, mSimView2D, view.r);
       Vec2f S01p = simToScreen2D(W01p, mSimView2D, view.r);
@@ -1319,10 +1465,10 @@ void SimWindow::draw2DOverlay(ScreenView<CFT> &view)
   // draw positional axes of active material pen 
   if(!isnan(mMatMPos) && !mLockViews && !mForcePause)
     {
-      Vec3f W01n  = Vec3f(mFieldUI->cp->fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W01p  = Vec3f(mFieldUI->cp->fp.x + mFieldUI->fieldRes.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W10p  = Vec3f(mMatMPos.x, mFieldUI->cp->fp.y + mFieldUI->fieldRes.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W10n  = Vec3f(mMatMPos.x, mFieldUI->cp->fp.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W01n  = Vec3f(mParams.cp.fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W01p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W10p  = Vec3f(mMatMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W10n  = Vec3f(mMatMPos.x, mParams.cp.fp.y, mMatMPos.z)*mUnits.dL;
       // transform (NOTE: hacky)
       Vec2f S01n = simToScreen2D(W01n, mSimView2D, view.r);
       Vec2f S01p = simToScreen2D(W01p, mSimView2D, view.r);
@@ -1380,7 +1526,7 @@ void SimWindow::draw3DOverlay(ScreenView<CFT> &view)
   // draw X/Y/Z axes at origin (R/G/B)
   if(mDisplayUI->drawAxes)
     {
-      float scale = max(mFieldUI->fieldRes)*mUnits.dL*0.25f;
+      float scale = max(mParams.cp.fs)*mUnits.dL*0.25f;
       Vec3f WO0 = Vec3f(0,0,0); // origin
       Vec3f Wpx = WO0 + Vec3f(scale, 0, 0);
       Vec3f Wpy = WO0 + Vec3f(0, scale, 0);
@@ -1400,20 +1546,20 @@ void SimWindow::draw3DOverlay(ScreenView<CFT> &view)
   // draw outline around field
   if(mDisplayUI->drawOutline)
     {
-      Vec3f Wp = Vec3f(mFieldUI->cp->fp.x,   mFieldUI->cp->fp.y,   mFieldUI->cp->fp.z)   * mUnits.dL;
-      Vec3f Ws = Vec3f(mFieldUI->fieldRes.x, mFieldUI->fieldRes.y, mFieldUI->fieldRes.z) * mUnits.dL;
+      Vec3f Wp = Vec3f(mParams.cp.fp.x, mParams.cp.fp.y, mParams.cp.fp.z) * mUnits.dL;
+      Vec3f Ws = Vec3f(mParams.cp.fs.x, mParams.cp.fs.y, mParams.cp.fs.z) * mUnits.dL;
       drawRect3D(view, Wp, Wp+Ws, OUTLINE_COLOR);
     }
 
   // draw positional axes of active signal pen 
   if(!isnan(mSigMPos) && !mLockViews && !mForcePause)
     {
-      Vec3f W001n  = Vec3f(mFieldUI->cp->fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W001p  = Vec3f(mFieldUI->cp->fp.x + mFieldUI->fieldRes.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W010p  = Vec3f(mSigMPos.x, mFieldUI->cp->fp.y + mFieldUI->fieldRes.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W010n  = Vec3f(mSigMPos.x, mFieldUI->cp->fp.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W100n  = Vec3f(mSigMPos.x, mSigMPos.y, mFieldUI->cp->fp.x)*mUnits.dL;
-      Vec3f W100p  = Vec3f(mSigMPos.x, mSigMPos.y, mFieldUI->cp->fp.z + mFieldUI->fieldRes.z)*mUnits.dL;
+      Vec3f W001n  = Vec3f(mParams.cp.fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W001p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W010p  = Vec3f(mSigMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W010n  = Vec3f(mSigMPos.x, mParams.cp.fp.y, mSigMPos.z)*mUnits.dL;
+      Vec3f W100n  = Vec3f(mSigMPos.x, mSigMPos.y, mParams.cp.fp.x)*mUnits.dL;
+      Vec3f W100p  = Vec3f(mSigMPos.x, mSigMPos.y, mParams.cp.fp.z + mParams.cp.fs.z)*mUnits.dL;
       // transform (NOTE: hacky)
       bool C001n = false; bool C001p = false; bool C010n = false; bool C010p = false; bool C100n = false; bool C100p = false;
       Vec2f S001n = view.r.p1 + (Vec2f(1,1)-mCamera.worldToView(W001n, aspect, &C001n)) * view.r.size()/aspect - aOffset;
@@ -1472,12 +1618,12 @@ void SimWindow::draw3DOverlay(ScreenView<CFT> &view)
   // draw positional axes of active material pen 
   if(!isnan(mMatMPos) && !mLockViews && !mForcePause)
     {
-      Vec3f W001n  = Vec3f(mFieldUI->cp->fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W010n  = Vec3f(mMatMPos.x, mFieldUI->cp->fp.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W100n  = Vec3f(mMatMPos.x, mMatMPos.y, mFieldUI->cp->fp.z)*mUnits.dL;
-      Vec3f W001p  = Vec3f(mFieldUI->cp->fp.x + mFieldUI->fieldRes.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W010p  = Vec3f(mMatMPos.x, mFieldUI->cp->fp.y + mFieldUI->fieldRes.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W100p  = Vec3f(mMatMPos.x, mMatMPos.y, mFieldUI->cp->fp.z + mFieldUI->fieldRes.z)*mUnits.dL;
+      Vec3f W001n  = Vec3f(mParams.cp.fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W010n  = Vec3f(mMatMPos.x, mParams.cp.fp.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W100n  = Vec3f(mMatMPos.x, mMatMPos.y, mParams.cp.fp.z)*mUnits.dL;
+      Vec3f W001p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W010p  = Vec3f(mMatMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mMatMPos.z)*mUnits.dL;
+      Vec3f W100p  = Vec3f(mMatMPos.x, mMatMPos.y, mParams.cp.fp.z + mParams.cp.fs.z)*mUnits.dL;
       // transform (NOTE: hacky)
       bool C001n = false; bool C010n = false; bool C100n = false; bool C001p = false; bool C010p = false; bool C100p = false;
       Vec2f S001n = view.r.p1 + (Vec2f(1,1)-mCamera.worldToView(W001n, aspect, &C001n)) * view.r.size()/aspect - aOffset;
@@ -1587,7 +1733,7 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
 
   // adjust aspect ratios if window size has changed (double precision used due to noticeable floating point error while resizing (?))
   //  TODO: improve
-  double  fAspect      = mFieldUI->fieldRes.x/(double)mFieldUI->fieldRes.y;
+  double  fAspect      = mParams.cp.fs.x/(double)mParams.cp.fs.y;
   double  simAspect    = mSimView2D.aspect()/fAspect;
   double  dispAspect2D = mEMView.r.aspect()/fAspect;
   double  aRatio       = dispAspect2D/simAspect;
@@ -1618,11 +1764,16 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
         ImGui::BeginChild("##emView", mEMView.r.size(), true, wFlags);
         {
+          ImGui::SetCursorPos(Vec2f(10,10));
+          ImGui::PushFont(titleFontB);
+          ImGui::TextUnformatted("E/M");
+          ImGui::PopFont();
+          
           mFieldDrawList = ImGui::GetWindowDrawList();
-          Vec2f fp = Vec2f(mFieldUI->cp->fp.x, mFieldUI->cp->fp.y);
+          Vec2f fp = Vec2f(mParams.cp.fp.x, mParams.cp.fp.y);
           Vec2f fScreenPos  = simToScreen2D(fp, mSimView2D, mEMView.r);
-          Vec2f fCursorPos  = simToScreen2D(fp + Vec2f(0.0f, mFieldUI->fieldRes.y*mUnits.dL), mSimView2D, mEMView.r);
-          Vec2f fScreenSize = simToScreen2D(makeV<CFV3>(mFieldUI->fieldRes)*mUnits.dL, mSimView2D, mEMView.r, true);
+          Vec2f fCursorPos  = simToScreen2D(fp + Vec2f(0.0f, mParams.cp.fs.y*mUnits.dL), mSimView2D, mEMView.r);
+          Vec2f fScreenSize = simToScreen2D(makeV<CFV3>(mParams.cp.fs)*mUnits.dL, mSimView2D, mEMView.r, true);
           Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
           mEMTex.bind();
           ImGui::SetCursorScreenPos(fCursorPos);
@@ -1645,11 +1796,16 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
         ImGui::BeginChild("##matView", mMatView.r.size(), true, wFlags);
         {
+          ImGui::SetCursorPos(Vec2f(10,10));
+          ImGui::PushFont(titleFontB);
+          ImGui::TextUnformatted("Material");
+          ImGui::PopFont();
+          
           mFieldDrawList = ImGui::GetWindowDrawList();
-          Vec2f fp = Vec2f(mFieldUI->cp->fp.x, mFieldUI->cp->fp.y);
+          Vec2f fp = Vec2f(mParams.cp.fp.x, mParams.cp.fp.y);
           Vec2f fScreenPos  = simToScreen2D(fp, mSimView2D, mMatView.r);
-          Vec2f fCursorPos  = simToScreen2D(fp + Vec2f(0.0f, mFieldUI->fieldRes.y*mUnits.dL), mSimView2D, mMatView.r);
-          Vec2f fScreenSize = simToScreen2D(makeV<CFV3>(mFieldUI->fieldRes)*mUnits.dL, mSimView2D, mMatView.r, true);
+          Vec2f fCursorPos  = simToScreen2D(fp + Vec2f(0.0f, mParams.cp.fs.y*mUnits.dL), mSimView2D, mMatView.r);
+          Vec2f fScreenSize = simToScreen2D(makeV<CFV3>(mParams.cp.fs)*mUnits.dL, mSimView2D, mMatView.r, true);
           Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
           mMatTex.bind();
           ImGui::SetCursorScreenPos(fCursorPos);
@@ -1672,15 +1828,31 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
         ImGui::BeginChild("##3DView", view3D->r.size(), true, wFlags);
         {
+          Vec2f aspect = Vec2f(1.0f, 1.0f);
+          if(mFileRendering && id != "offline")
+            {
+              aspect.x = 1.0f/(tex3D->size.x/(float)tex3D->size.y);
+              tex3D = &m3DGlTex;
+              aspect.x *= tex3D->size.x/(float)tex3D->size.y;
+            }
           mFieldDrawList = ImGui::GetWindowDrawList();
+          Vec2f vSize = view3D->r.size()*aspect;
+          Vec2f diff = (view3D->r.size() - vSize);
+          
           Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
           tex3D->bind();
-          ImGui::SetCursorScreenPos(view3D->r.p1);
-          ImGui::Image(reinterpret_cast<ImTextureID>(tex3D->texId()), view3D->r.size(), t0, t1, ImColor(Vec4f(1,1,1,1)));
+          ImGui::SetCursorScreenPos(view3D->r.p1 + diff/2.0f);
+          ImGui::Image(reinterpret_cast<ImTextureID>(tex3D->texId()), vSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
           tex3D->release();
           
           // drawVectorField3D(view3D->r); // TODO: 3D vector field (needs vbo/optimization)
-          draw3DOverlay(*view3D);            
+          draw3DOverlay(*view3D);
+          
+          ImGui::SetCursorScreenPos(view3D->r.p1+Vec2f(10,10));
+          ImGui::PushFont(titleFontB);
+          ImGui::TextUnformatted("3D");
+          ImGui::PopFont();
+          
         }
         ImGui::EndChild();
         ImGui::PopStyleVar();

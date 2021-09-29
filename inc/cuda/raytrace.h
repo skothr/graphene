@@ -6,7 +6,7 @@
 #include "vector-operators.h"
 
 
-#define TOL 0.0005f // tolerance/epsilon to make sure ray fully intersects
+#define TOL 0.0008f // tolerance/epsilon to make sure ray fully intersects
 
 
 
@@ -32,8 +32,8 @@ struct CameraDesc
   VT3 up    = VT3{0.0,  0.0, -1.0};
   
   T fov  = 60.0;   // field of view (degrees)
-  T near = 0.01;   // near plane
-  T far  = 1000.0; // far plane
+  T near = 0.001;   // near plane
+  T far  = 10000.0; // far plane
   
   // sp --> screen pos [0.0, 1.0]
   __host__ __device__ Ray<T> castRay(const VT2 &sp, const VT2 &aspect) const
@@ -162,7 +162,7 @@ __host__  __device__ inline T planeIntersect(const typename DimType<T,3>::VEC_T 
 // returns {tmin, tmax}
 template<typename T>
 __device__ inline typename DimType<T,2>::VEC_T cubeIntersect(const typename DimType<T,3>::VEC_T &pos,
-                                                                const typename DimType<T,3>::VEC_T &size, const Ray<T> &ray)
+                                                             const typename DimType<T,3>::VEC_T &size, const Ray<T> &ray)
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   typedef typename DimType<T,3>::VEC_T VT3;

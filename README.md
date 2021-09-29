@@ -8,56 +8,59 @@ The field equations are solved over an Eulerian grid given initial conditions an
 
 Most parameters are configurable in the settings. With the right tuning, many patterns can be generated similar to those seen in physical electromagnetic phenomena.
 
-| ![simple 2D wave interference](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-materials7.png) | 
-|:--:| 
-| *Simple 2D wave interference (signals drawn in with Ctrl+Click)* |
+
+[See notable screenshots/video](https://drive.google.com/drive/folders/1zEHwl77b6Ec9WtRbWh4XJpnevpABOP_p?usp=sharing)
+
+| <a href="https://drive.google.com/uc?export=view&id=1zl8gu8QQvua1m2o8ijav5wlqP59IcEW6"> <img src="https://drive.google.com/uc?export=view&id=1zl8gu8QQvua1m2o8ijav5wlqP59IcEW6" style="width: 512px; max-width: 100%; height: auto" title="(signals drawn in with Ctrl+Click)" /> </a> |
+|:--:|
+| *Simple 2D wave interference* |
 
 &nbsp;
 &nbsp;
 
-| ![refraction due to different material properties](https://raw.githubusercontent.com/skothr/graphene/dev/images/convex-lens-3d-2.png) | 
-|:--:| 
-| *Refraction through a convex lens with a higher index of refraction (materials drawn in with Alt+Click)* |
+| <a href="https://drive.google.com/uc?export=view&id=1CpcEoaUr8yo6XmALOgEZGP-091WoK5de"> <img src="https://drive.google.com/uc?export=view&id=1CpcEoaUr8yo6XmALOgEZGP-091WoK5de" style="width: 512px; max-width: 100%; height: auto" title="refraction" /> </a> |
+|:--:|
+| *Refraction through a convex lens with a higher index of refraction* |
 
 &nbsp;
 &nbsp;
 
-| ![external reflection](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-materials4.png) | 
-|:--:| 
+| <a href="https://drive.google.com/uc?export=view&id=1Kq0a_GqLWJhaHri3PnhyEGYZnWNCPXJ_"> <img src="https://drive.google.com/uc?export=view&id=1Kq0a_GqLWJhaHri3PnhyEGYZnWNCPXJ_" style="width: 512px; max-width: 100%; height: auto" title="reflection" /> </a> |
+|:--:|
 | *External reflection* |
 
 &nbsp;
 &nbsp;
 
-| ![complex evolution of 3D structures](https://raw.githubusercontent.com/skothr/graphene/main/images/composite-render4.png) | 
-|:--:| 
+| <a href="https://drive.google.com/uc?export=view&id=1nIr-fvvYRoXdr3MjvS1lAsmGIPYdW31c"> <img src="https://drive.google.com/uc?export=view&id=1nIr-fvvYRoXdr3MjvS1lAsmGIPYdW31c" style="width: 512px; max-width: 100%; height: auto" title="complex structures" /> </a> |
+|:--:|
 | *Complex evolution of 3D structures* |
 
 &nbsp;
 &nbsp;
 
-| ![adjustable blending parameters for ray marching](https://raw.githubusercontent.com/skothr/graphene/main/images/composite-render6.png) | 
+| <a href="https://drive.google.com/uc?export=view&id=110WpiDtRWGXFw5nhP4PRF3OTfOctYbmg"> <img src="https://drive.google.com/uc?export=view&id=110WpiDtRWGXFw5nhP4PRF3OTfOctYbmg" style="width: 512px; max-width: 100%; height: auto" title="cell blending for ray traversal" /> </a> |
 |:--:|
-| *Adjustable blending parameters can create interesting effects* |
+| *_Adjustable blending parameters can create interesting effects_* |
 
 &nbsp;
 &nbsp;
 
-| ![emergent patterns similar to physical phenomena](https://raw.githubusercontent.com/skothr/graphene/main/images/vector-field-photon4.png) | 
+| <a href="https://drive.google.com/uc?export=view&id=1LyCm-bnBcS9zJG89WuR1K-Z366x7A59T"> <img src="https://drive.google.com/uc?export=view&id=1LyCm-bnBcS9zJG89WuR1K-Z366x7A59T" style="width: 512px; max-width: 100%; height: auto" title="(e.g. shape of a photon)" /> </a> |
 |:--:|
-| *Emergent patterns with similarities to physical phenomena (e.g. shape of a photon)* |
+| *Emergent patterns with similarities to physical phenomena* |
 
 &nbsp;
 &nbsp;
 
-| ![parametric initial conditions](https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-test1.png) | 
+| <a href="https://drive.google.com/uc?export=view&id=1wgZSPbGA96rzVjen5N08tknNm0ihUT6E"> <img src="https://drive.google.com/uc?export=view&id=1wgZSPbGA96rzVjen5N08tknNm0ihUT6E" style="width: 512px; max-width: 100%; height: auto" title="try: sin(len(r)^2/222)" /> </a> |
 |:--:|
 | *Parametric initial conditions* |
 
 &nbsp;
 &nbsp;
 
-| ![broccoli...?](https://raw.githubusercontent.com/skothr/graphene/main/images/hex-qub.png) | 
+| <a href="https://drive.google.com/uc?export=view&id=1iFxHzkrnFcHcnyn8M7z-7oy_gtHmkWu8"> <img src="https://drive.google.com/uc?export=view&id=1iFxHzkrnFcHcnyn8M7z-7oy_gtHmkWu8" style="width: 512px; max-width: 100%; height: auto" title="broccoli³" /> </a> |
 |:--:|
 | *...?* |
 
@@ -67,7 +70,6 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 # Usage
 ##### - NOTE: Currently only supports Ubuntu(20.04), but may build on other systems with minor modifications
-
 ## Basic dependencies
 
         $ sudo apt install build-essential cmake libglew-dev libglfw3-dev nlohmann-json3-dev libfreetype6-dev
@@ -83,10 +85,26 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
         $ sudo apt install nvidia-cuda-toolkit
 
-## Build
+## Build/Run
 
     $ ./make-release.sh
-    
-## Run
-
     $ ./graphene
+
+* Or alternatively,
+
+    $ mkdir build && cd build
+    $ cmake -DCMAKE_BUILD_TYPE=Release ..
+    $ make -j8
+    $ ./graphene
+
+## Dependencies
+* [GLFW3]        (https://www.glfw.org/)
+* [GLEW]         (http://glew.sourceforge.net/)
+* [Dear ImGui,]  (https://github.com/ocornut/imgui)
+* [FreeType]     (https://www.freetype.org)
+* [stb (stb_image, std_image_write))](https://github.com/nothings/stb)
+* [nlohmann/json](https://github.com/nlohmann/json)
+
+
+## Contact
+* skothr@gmail.com
