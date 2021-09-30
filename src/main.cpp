@@ -20,28 +20,21 @@
 
 #define ENABLE_IMGUI_VIEWPORTS 0
 #define ENABLE_IMGUI_DOCKING   0
-#define START_MAXIMIZED        0
+#define START_MAXIMIZED        1
 #define WINDOW_W 1920
 #define WINDOW_H 1080
-#define PADDING Vec2f(10.0f, 10.0f)
-
-#define FLUID_W 512
-#define FLUID_H 512
-
-#define TEX_W 512
-#define TEX_H 512
 
 #define GL_MAJOR 4
 #define GL_MINOR 6
 #define GLSL_VERSION "#version 450"
 
-bool initialized = false;
-GLFWwindow* window    = nullptr;
-GLFWimage  *appIcon   = nullptr;
-SimWindow  *simWindow = nullptr;
+static bool initialized = false;
+static GLFWwindow* window    = nullptr;
+static GLFWimage  *appIcon   = nullptr;
+static SimWindow  *simWindow = nullptr;
 
-ImGuiContext *mainContext    = ImGui::CreateContext(); // main ImGui context  for live window/interaction
-ImGuiContext *offlineContext = ImGui::CreateContext(); // offline context for rendering to separate framebuffer and saving to image files
+static ImGuiContext *mainContext    = ImGui::CreateContext(); // main ImGui context  for live window/interaction
+static ImGuiContext *offlineContext = ImGui::CreateContext(); // offline context for rendering to separate framebuffer and saving to image files
 
 void cleanup()
 {

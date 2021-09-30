@@ -140,7 +140,6 @@ inline void CudaVBO::release()
     }
 }
 
-
 inline void CudaVBO::draw()
 {
   bind();

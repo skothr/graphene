@@ -851,9 +851,9 @@ void SimWindow::update()
             {
               if(mFieldUI->updateQ)
                 {
-                  // addSignal(*mInputQp, temp->Qp, cp, -1.0f); //// remove added Qp input signal
-                  // addSignal(*mInputQn, temp->Qn, cp, -1.0f); //// remove added Qn input signal
-                  // addSignal(*mInputQv, temp->Qv, cp, -1.0f); //// remove added Qv input signal
+                  addSignal(*mInputQp, temp->Qp, cp, -1.0f); //// remove added Qp input signal
+                  addSignal(*mInputQn, temp->Qn, cp, -1.0f); //// remove added Qn input signal
+                  addSignal(*mInputQv, temp->Qv, cp, -1.0f); //// remove added Qv input signal
                   decaySignal(*mInputQn, cp); //// decay Qn input signal (blend over time)
                   decaySignal(*mInputQp, cp); //// decay Qp input signal (blend over time)
                   decaySignal(*mInputQv, cp); //// decay Qv input signal (blend over time)
@@ -861,8 +861,8 @@ void SimWindow::update()
               // mInputQn->clear(); mInputQp->clear(); mInputQv->clear(); mInputV->clear(); mInputP->clear();
               if(mFieldUI->updateFluid)
                 {
-                  // addSignal(*mInputV, temp->v, cp, -1.0f); //// remove added V input signal
-                  // addSignal(*mInputP, temp->p, cp, -1.0f); //// remove added P input signal
+                  addSignal(*mInputV, temp->v, cp, -1.0f); //// remove added V input signal
+                  addSignal(*mInputP, temp->p, cp, -1.0f); //// remove added P input signal
                   decaySignal(*mInputV, cp); //// decay Qp input signal (blend over time)
                   decaySignal(*mInputP, cp); //// decay Qv input signal (blend over time)
                 }
@@ -1098,9 +1098,9 @@ void SimWindow::handleInput3D(ScreenView<CFT> &view)
       ray = mCamera.castRay(to_cuda(Vec2f((mpos - view.r.p1)/view.r.size())), float2{aspect.x, aspect.y});
       Vec2f tp = cubeIntersectHost(Vec3f(mParams.cp.fp*mUnits.dL), Vec3f(fSize), ray);
 
-      if(tp.x >= 0.0) // tmin
+      if(tp.x > 0.0) // tmin
         {
-          Vec3f wp = ray.pos + ray.dir*(tp.x+0.0001); // world-space pos of field outer intersection
+          Vec3f wp = ray.pos + ray.dir*(tp.x+0.00001); // world-space pos of field outer intersection
           Vec3f fp = (wp - mParams.cp.fp*mUnits.dL) / fSize * fs;
           view.mposSim = fp;
         }
@@ -1126,7 +1126,6 @@ void SimWindow::handleInput3D(ScreenView<CFT> &view)
                    (io.KeyAlt   ? GLFW_MOD_ALT     : 0));
     }
   
-  
   //// view manipulation
   CFT shiftMult = (io.KeyShift ? 0.1f  : 1.0f);
   CFT ctrlMult  = (io.KeyCtrl  ? 4.0f  : 1.0f);
@@ -1134,7 +1133,7 @@ void SimWindow::handleInput3D(ScreenView<CFT> &view)
   CFT keyMult   = shiftMult * ctrlMult * altMult;
 
   Vec2f viewSize = view.r.size();
-  CFT S = (2.0*tan(mCamera.fov/2.0f*M_PI/180.0f));
+  CFT S = (2.0*tan(mCamera.fov/2.0*M_PI/180.0));
   
   ImGuiMouseButton btn = (ImGui::IsMouseDragging(ImGuiMouseButton_Left) ? ImGuiMouseButton_Left :
                           (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ? ImGuiMouseButton_Middle : -1));
@@ -1311,8 +1310,8 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view)
                   avgE += magE; avgB += magB;
                 }
             }
-        std::cout << "VEC AVG E: " << avgE/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
-        std::cout << "VEC AVG B: " << avgB/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
+        // std::cout << "VEC AVG E: " << avgE/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
+        // std::cout << "VEC AVG B: " << avgB/((iMax.x - iMin.x)*(iMax.y - iMin.y)) << "\n";
         mNewFrameVec = false;
       }
       for(auto &v : mVectorField2D)

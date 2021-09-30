@@ -10,8 +10,8 @@
 #include "cuda-tools.cuh"
 #include "mathParser.hpp"
 
-#define BLOCKDIM_X 10
-#define BLOCKDIM_Y 10
+#define BLOCKDIM_X 8
+#define BLOCKDIM_Y 8
 #define BLOCKDIM_Z 8
 
 

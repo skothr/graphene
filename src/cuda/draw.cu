@@ -11,8 +11,8 @@
 #include "cuda-tools.cuh"
 #include "mathParser.hpp"
 
-#define BLOCKDIM_X 10
-#define BLOCKDIM_Y 10
+#define BLOCKDIM_X 8
+#define BLOCKDIM_Y 8
 #define BLOCKDIM_Z 8
 
 
@@ -102,9 +102,9 @@ __global__ void addSignal_k(typename DimType<T, 3>::VEC_T mpos, EMField<T> dst, 
       T overlap = penOverlap3(pCell, mpos, diff, dist2, &pen, cp, 0.0f);
       if(overlap > 0.0f) //penOverlaps(pCell, mpos, diff, dist2, &pen, cp, 0.0f))
         {
-          T dist2Mag = length(dist2);  dist2Mag = (dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag;
-          T distMag  = sqrt(dist2Mag);  distMag = (distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag;
-          VT3 n = normalize(diff);            n = ((isnan(n) || isinf(n)) ? VT3{1.0f, 1.0f, 1.0f} : n);
+          T dist2Mag = length(dist2);   dist2Mag = (dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag;
+          T distMag  = sqrt(dist2Mag);  distMag  = (distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag;
+          VT3 n      = normalize(diff); n        = ((isnan(n) || isinf(n)) ? VT3{1.0f, 1.0f, 1.0f} : n);
 
           T rMult   = (distMag > 0.0f ? 1.0f/distMag : 1.0f);
           T r2Mult  = (dist2Mag >= 1.0f ? 1.0f/dist2Mag : 1.0f);

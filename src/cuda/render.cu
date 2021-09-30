@@ -37,10 +37,11 @@ __global__ void renderFieldEM_k(FluidField<T> src, CudaTexture dst, RenderParams
       for(int iz = max(0, min(src.size.z-1, rp.zRange.y)); iz >= rp.zRange.x; iz--)
         {
           int fi = src.idx(fp.x, fp.y, iz);
-          T qLen = (src.Qp[fi] - src.Qn[fi]); T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
-          VT4 col = rp.emBrightness*rp.emOpacity*(qLen*rp.getFinalColor(FLUID_RENDER_Q) +
-                                                  eLen*rp.getFinalColor(FLUID_RENDER_E) +
-                                                  bLen*rp.getFinalColor(FLUID_RENDER_B));
+          // T qLen = (src.Qp[fi] - src.Qn[fi]); T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
+          // VT4 col = rp.emBrightness*rp.emOpacity*(qLen*rp.getFinalColor(FLUID_RENDER_Q) +
+          //                                         eLen*rp.getFinalColor(FLUID_RENDER_E) +
+          //                                         bLen*rp.getFinalColor(FLUID_RENDER_B));
+          float4 col = (rp.simple ? renderCellSimple(src, fi, rp, cp) : renderCellAll(src, fi, rp, cp));
           // VT4 col = renderCell(src, fi, rp);
 
           VT3 pCell = VT3{(T)fp.x, (T)fp.y, (T)iz}; VT3 pSrc = rp.penPos;

@@ -24,9 +24,11 @@ __device__ typename DimType<T, 4>::VEC_T renderCellSimple(FluidField<T> &src, un
   VT4 color = rp.fBrightness*rp.fOpacity*(length(src.v[i])      * rp.getFinalColor(FLUID_RENDER_V)   +
                                           src.p[i]              * rp.getFinalColor(FLUID_RENDER_P)   +
                                           src.div[i]            * rp.getFinalColor(FLUID_RENDER_D));
-  color  += rp.emBrightness*rp.emOpacity*((src.Qp[i]-src.Qn[i]) * rp.getFinalColor(FLUID_RENDER_Q)    +
-                                          length(src.Qv[i])     * rp.getFinalColor(FLUID_RENDER_QV)   +
-                                          length(src.E[i])      * rp.getFinalColor(FLUID_RENDER_E)    +
+  color  += rp.emBrightness*rp.emOpacity*(src.Qn[i]             * rp.getFinalColor(FLUID_RENDER_QN)  +
+                                          src.Qp[i]             * rp.getFinalColor(FLUID_RENDER_QP)  +
+                                          (src.Qp[i]-src.Qn[i]) * rp.getFinalColor(FLUID_RENDER_Q)   +
+                                          length(src.Qv[i])     * rp.getFinalColor(FLUID_RENDER_QV)  +
+                                          length(src.E[i])      * rp.getFinalColor(FLUID_RENDER_E)   +
                                           length(src.B[i])      * rp.getFinalColor(FLUID_RENDER_B));
   auto M = src.mat[i];
   if(!M.vacuum())
@@ -192,8 +194,8 @@ __device__ typename DimType<T,4>::VEC_T rayTraceField(FluidField<T> &src, Ray<T>
           T tLast = t;
           VT3 fp2 = fp;
           int iterations2 = 0;
-          bool same = false;
-          while(same=((T)floor(fp2.x) == (T)floor(fp.x) && (T)floor(fp2.y) == (T)floor(fp.y) && (T)floor(fp2.z) == (T)floor(fp.z)) &&
+          bool same = ((T)floor(fp2.x) == (T)floor(fp.x) && (T)floor(fp2.y) == (T)floor(fp.y) && (T)floor(fp2.z) == (T)floor(fp.z));
+          while(same &&
                 (t < tp.y || (tp.x == (T)0 && fp2.z >= rp.zRange.x-1 && fp2.z+rp.zRange.x <= rp.zRange.y)) &&
                 iterations2 < MAX_ITER)
             {
@@ -210,6 +212,7 @@ __device__ typename DimType<T,4>::VEC_T rayTraceField(FluidField<T> &src, Ray<T>
               wp   = ray.pos + ray.dir*(t+tol);
               fp2  = (wp - fPos);
               iterations2++;
+              same = ((T)floor(fp2.x) == (T)floor(fp.x) && (T)floor(fp2.y) == (T)floor(fp.y) && (T)floor(fp2.z) == (T)floor(fp.z));
             }
           if(same) { break; }
           
