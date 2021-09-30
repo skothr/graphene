@@ -9,7 +9,7 @@ The field equations are solved over an Eulerian grid given initial conditions an
 Most parameters are configurable in the settings. With the right tuning, many patterns can be generated similar to those seen in physical electromagnetic phenomena.
 
 
-[See notable screenshots/video](https://drive.google.com/drive/folders/1zEHwl77b6Ec9WtRbWh4XJpnevpABOP_p?usp=sharing)
+[Notable screenshots/video](https://drive.google.com/drive/folders/1zEHwl77b6Ec9WtRbWh4XJpnevpABOP_p?usp=sharing)
 
 | <a href="https://drive.google.com/uc?export=view&id=1zl8gu8QQvua1m2o8ijav5wlqP59IcEW6"> <img src="https://drive.google.com/uc?export=view&id=1zl8gu8QQvua1m2o8ijav5wlqP59IcEW6" style="width: 720px; max-width: 120%; height: auto" title="(signals drawn in with Ctrl+Click)" /> </a> |
 |:--:|
@@ -69,11 +69,16 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 
 # Usage
-##### - NOTE: Currently only supports Ubuntu(20.04), but may build on other systems with minor modifications
+##### NOTE: Currently only supports Ubuntu(20.04), but may build on other systems with minor modifications
+
 ## Basic dependencies
     $ sudo apt install build-essential cmake libglew-dev libglfw3-dev nlohmann-json3-dev libfreetype6-dev
         
-### Also requires CUDA and a compatible NVIDIA graphics card
+&nbsp; 
+&nbsp;
+
+## CUDA
+##### (requires a compatible NVIDIA graphics card)
 #### Install NVIDIA driver
     $ sudo apt purge *nvidia*
     $ sudo apt autoremove
@@ -82,19 +87,14 @@ Most parameters are configurable in the settings. With the right tuning, many pa
     $ sudo apt install nvidia-cuda-toolkit
     
 &nbsp;
+&nbsp;
         
 ## Build/Run
-- Auto script
+    $ ./make-release.sh
+    $ ./graphene
 
-      $ ./make-release.sh
-      $ ./graphene
-- Or alternatively,
-
-      $ mkdir build && cd build
-      $ cmake -DCMAKE_BUILD_TYPE=Release ..
-      $ make -j8
-      $ cp graphene .. && cd ..
-      $ ./graphene
+&nbsp;
+&nbsp;
 
 ## Dependencies
 - GLFW3
