@@ -21,9 +21,15 @@ add_library(imgui STATIC
   )
 target_compile_definitions(imgui PRIVATE GLEW_STATIC IMGUI_IMPL_OPENGL_LOADER_GLEW)
 
-set_target_properties (imgui PROPERTIES CXX_STANDARD 20)
-target_compile_options(imgui PRIVATE -static -O3 -ftree-vectorize -mavx) # -flto)
-target_link_options   (imgui PRIVATE -static -O3 -ftree-vectorize -mavx) # -flto)
+set_target_properties (imgui PROPERTIES CXX_STANDARD 17)
+
+if("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+  target_compile_options(imgui PRIVATE -static -O0)
+  target_link_options   (imgui PRIVATE -static -O0)
+else()
+  target_compile_options(imgui PRIVATE -static -O3 -ftree-vectorize -mavx -flto)
+  target_link_options   (imgui PRIVATE -static -O3 -ftree-vectorize -mavx -flto)
+endif()
 
 target_include_directories(imgui PRIVATE ${FREETYPE_INCLUDE_DIRS})
 target_link_libraries     (imgui ${FREETYPE_LIBRARIES})

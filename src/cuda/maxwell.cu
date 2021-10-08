@@ -51,8 +51,8 @@ __global__ void updateCharge_k(FluidField<T> src, FluidField<T> dst, FluidParams
       if(slipPlane(ip-IT{0,0,1}, cp)) { Qv.z = 0; } // abs(Qv.z); }
       if(slipPlane(ip+IT{0,0,1}, cp)) { Qv.z = 0; } //-abs(Qv.z); }
       
-      // Lorentz forces
-      Qv += (Qp-Qn)*cross((Qp>Qn?1:-1)*Qv + v0, B0)*cp.u.dt;
+      // Lorentz forces // (Qp>Qn?1:-1) // <-- ?
+      Qv += (Qp-Qn)*cross(Qv + v0, B0)*cp.u.dt;
       Qv += (Qp-Qn)*E0*cp.u.dt;
       
       if(isnan(Qn)   || isinf(Qn))   { Qn   = 0.0; } if(isnan(Qp)   || isinf(Qp))   { Qp   = 0.0; }
@@ -168,7 +168,7 @@ __global__ void updateElectric_k(FluidField<T> src, FluidField<T> dst, FluidPara
                         (B0.y-Bxn.y) - (B0.x-Byn.x) }; // dBy/dX - dBx/dY
 
       // // apply effect of electric current (TODO: improve)
-      VT3 J = (Qp0-Qn0)*normalize((Qp0 > Qn0 ? 1 : -1)*Qv0 + v0) / cp.u.dL/cp.u.dL/cp.u.dL; // (per unit volume)
+      VT3 J = (Qp0-Qn0)*normalize(Qv0 + v0) / cp.u.dL/cp.u.dL/cp.u.dL; // (per unit volume)
       if(isnan(J.x) || isinf(J.x)) { J.x = 0.0; } if(isnan(J.y) || isinf(J.y)) { J.y = 0.0; } if(isnan(J.z) || isinf(J.z)) { J.z = 0.0; }
       dEdt -= J/cp.u.e0 * cp.u.dt;
       

@@ -2,8 +2,8 @@
 
 #include <imgui.h>
 #include <algorithm>
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
+// #include <nlohmann/json.hpp>
+// using json = nlohmann::json;
 
 #include "setting.hpp"
 #include "glfwKeys.hpp"
@@ -62,10 +62,11 @@ void SettingForm::remove(const std::string &name)
 }
 
 void SettingForm::setLabelColWidth(float w) { mLabelColW = w; for(auto s : mSettings) { s->setLabelColWidth(w); } }
-void SettingForm::setInputColWidth(float w) { mInputColW = w; for(auto s : mSettings) { s->setInputColWidth(w); } }
+void SettingForm::setInputColWidth(float w) { mInputColW = w; for(auto s : mSettings) { s->setInputColWidth(mInputColW); } }
 
 bool SettingForm::draw(float scale, bool busy, bool visible)
 {
+  setInputColWidth(ImGui::GetContentRegionMax().x-mLabelColW - ImGui::GetStyle().ItemSpacing.x);
   Vec2f p0 = ImGui::GetCursorPos();
   ImGui::BeginGroup();
   for(int i = 0; i < mSettings.size(); i++)
@@ -75,6 +76,7 @@ bool SettingForm::draw(float scale, bool busy, bool visible)
       if(changed) { mSettings[i]->updateAll(); } // notify if changed
     }
   ImGui::EndGroup();
+  // mSize = Vec2f(mLabelColW + mInputColW + ImGui::GetStyle().ItemSpacing.x, ImGui::GetCursorPos().y - p0.y);
   mSize = Vec2f(mLabelColW + mInputColW + ImGui::GetStyle().ItemSpacing.x, ImGui::GetCursorPos().y - p0.y);
   return busy;
 }

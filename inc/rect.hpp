@@ -5,6 +5,12 @@
 #include <cmath>
 #include <ostream>
 
+template<typename T> struct Rect;
+
+// shorthand
+typedef Rect<float> Rect2f;
+typedef Rect<double> Rect2d;
+
 template<typename T>
 struct Rect
 {
@@ -16,7 +22,7 @@ struct Rect
   Rect(const Vector<T, 2> &_p1, const Vector<T, 2> &_p2) : p1(_p1), p2(_p2) { }
   Rect<T>& operator=(const Rect<T> &other)     { p1=other.p1; p2=other.p2; return *this; }
   bool operator==(const Rect<T> &other) const  { return (p1 == other.p1 && p2 == other.p2); }
-  bool operator!=(const Rect<T> &other) const  { return (p1 != other.p1 && p2 != other.p2); }
+  bool operator!=(const Rect<T> &other) const  { return (p1 != other.p1 || p2 != other.p2); }
 
   // offset by vector (whole rect)
   Rect<T>&      operator+=(const Vector<T, 2> &offset)       { p1 += offset; p2 += offset; return *this; }
@@ -99,8 +105,8 @@ inline std::ostream& operator<<(std::ostream &os, const Rect<T> &rect)
   return os;
 }
 
-// shorthand
-typedef Rect<float> Rect2f;
-typedef Rect<double> Rect2d;
+template<typename T> bool isnan(const Rect<T> &r) { return (isnan(r.p1) || isnan(r.p2)); };
+template<typename T> bool isinf(const Rect<T> &r) { return (isinf(r.p1) || isinf(r.p2)); };
+
 
 #endif // RECT_HPP

@@ -1,6 +1,10 @@
 #ifndef FIELD_HPP
 #define FIELD_HPP
 
+#include <nlohmann/json.hpp> // json implementation (NOTE: should be in settings.hpp?)
+using json = nlohmann::json;
+
+
 #include "fluid.cuh"
 #include "field.cuh"
 #include "settingForm.hpp"
@@ -15,68 +19,45 @@
 #define TEX_RES_MIN          int2{  1,   1, }
 #define TEX_RES_MAX          int2{4096, 4096}
 
+// wraps resources for initialization via recursive expression
+template<typename T>
+struct FieldInit
+{
+  bool               active  = false;   // if false, initializes to 0
+  std::string        str     = "0";     // expression string
+  Expression<T>     *hExpr   = nullptr; // host   expression (necessary?)
+  CudaExpression<T> *dExpr   = nullptr; // device expression
+};
+
 template<typename T>
 struct FieldInterface
 {
   typedef typename DimType<T, 3>::VEC_T VT3;
-  // int3 fieldRes = int3{256, 256, 8}; // desired resolution (number of cells) of charge field
   int2 texRes2D = int2{1024, 1024};  // desired resolution (number of cells/pixels) of rendered texture
   int2 texRes3D = int2{1024, 1024};  // desired resolution (number of cells/pixels) of rendered texture
   bool texRes3DMatch = true;         // if true, overrides to match current view resolution (depends on size of window)
   
-  FluidParams<T> *cp;      // cuda field params
-  bool running     = true; // play/pause
-  bool updateQ     = true; // toggle charge update step
-  bool updateE     = true; // toggle electric update step
-  bool updateB     = true; // toggle magnetic update step
-  bool updateFluid = true; // toggle magnetic update step
-  
-  bool inputDecay  = true; // toggle input signal decay
-  
-  // (start empty) TODO
-  bool initVActive   = false; // fluid velocity
-  bool initPActive   = false; // fluid pressure
-  bool initQnActive  = false; // - charge
-  bool initQpActive  = false; // + charge
-  bool initQvActive  = false; // charge velocity
-  bool initEActive   = false; // electric field   (Maxwell's equations)
-  bool initBActive   = false; // magnetic field   (Maxwell's equations)
-  bool initEpActive  = false; // material epsilon (permittivity)
-  bool initMuActive  = false; // material mu      (permeability)
-  bool initSigActive = false; // material sigma   (conductivity)
+  FluidParams<T> *cp;       // cuda field params
 
-  std::string initVStr   = "<0, 0, 0>"; // fluid velocity
-  std::string initPStr   = "0"; // fluid pressure
-  std::string initQnStr  = "0"; // - charge
-  std::string initQpStr  = "0"; // + charge
-  std::string initQvStr  = "0"; // charge velocity  
-  std::string initEStr   = "0"; // electric field   (Maxwell's equations)
-  std::string initBStr   = "0"; // magnetic field   (Maxwell's equations)
-  std::string initEpStr  = "1"; // material epsilon (permittivity)
-  std::string initMuStr  = "1"; // material mu      (permeability)
-  std::string initSigStr = "0"; // material sigma   (conductivity)
-  Expression<VT3> *initVExpr   = nullptr; // fluid velocity field
-  Expression<T>   *initPExpr   = nullptr; // fluid pressure field
-  Expression<T>   *initQnExpr  = nullptr; // - charge field
-  Expression<T>   *initQpExpr  = nullptr; // + charge field
-  Expression<VT3> *initQvExpr  = nullptr; // charge velocity field
-  Expression<VT3> *initEExpr   = nullptr; // electric field (Maxwell's equations)
-  Expression<VT3> *initBExpr   = nullptr; // magnetic field (Maxwell's equations)
-  Expression<T>   *initEpExpr  = nullptr; // material epsilon (permittivity)
-  Expression<T>   *initMuExpr  = nullptr; // material mu      (permeability)
-  Expression<T>   *initSigExpr = nullptr; // material sigma   (conductivity)
+  // physics toggles
+  bool running     = false; // toggle all physics (play/pause)
+  bool updateQ     = true;  // toggle charge   update step
+  bool updateE     = true;  // toggle electric update step
+  bool updateB     = true;  // toggle magnetic update step
+  bool updateFluid = true;  // toggle all fluid update steps
+  bool inputDecay  = true;  // toggle input signal decay (for EM weirdness)
 
-  //// CUDA fill expressions
-  CudaExpression<VT3>   *mFillV   = nullptr; // fluid velocity field
-  CudaExpression<float> *mFillP   = nullptr; // fluid pressure field
-  CudaExpression<float> *mFillQn  = nullptr; // - charge field
-  CudaExpression<float> *mFillQp  = nullptr; // + charge field
-  CudaExpression<VT3>   *mFillQv  = nullptr; // charge velocity field
-  CudaExpression<VT3>   *mFillE   = nullptr; // electric field (Maxwell's equations)
-  CudaExpression<VT3>   *mFillB   = nullptr; // magnetic field (Maxwell's equations)
-  CudaExpression<float> *mFillEp  = nullptr; // material epsilon (permittivity)
-  CudaExpression<float> *mFillMu  = nullptr; // material mu      (permeability)
-  CudaExpression<float> *mFillSig = nullptr; // material sigma   (conductivity)
+  // initialization expressions
+  FieldInit<VT3>   initV;   // fluid velocity field
+  FieldInit<float> initP;   // fluid pressure field
+  FieldInit<float> initQn;  // - charge field
+  FieldInit<float> initQp;  // + charge field
+  FieldInit<VT3>   initQv;  // charge velocity field
+  FieldInit<VT3>   initE;   // electric field   (Maxwell's equations)
+  FieldInit<VT3>   initB;   // magnetic field   (Maxwell's equations)
+  FieldInit<float> initEp;  // material epsilon (permittivity)
+  FieldInit<float> initMu;  // material mu      (permeability)
+  FieldInit<float> initSig; // material sigma   (conductivity)
 
   std::function<void()> fieldResCallback; // callback when field resolution is changed
   std::function<void()> texRes2DCallback; // callback when 2D texture resolution is changed
@@ -89,21 +70,21 @@ struct FieldInterface
   
   FieldInterface(FluidParams<T> *cp_, const std::function<void()> &fieldResCb,
                  const std::function<void()> &texRes2DCb, const std::function<void()> &texRes3DCb);
-  ~FieldInterface();
+  ~FieldInterface() { if(mForm) { delete mForm; mForm = nullptr; } }
   
-  void draw();
+  void draw()      { mForm->draw(); }
   void updateAll() { mForm->updateAll(); }
 
   // update callback for when an init expression string is changed
   template<typename U>
-  void initStrUpdateCb(std::string *str, CudaExpression<U> **fillExpr)
+  void initStrUpdateCb(FieldInit<U> *init)
   {
-    if(str && str->empty())   // empty string defaults to 0 (cleared field)
-      { *str = "0"; }
-    if(fillExpr && *fillExpr) // destroy cuda expression (reinitialized with new string by SimWindow)
-      { cudaFree(*fillExpr); *fillExpr = nullptr; }
+    if(init->str.empty()) { init->str = "0"; }                        // empty string defaults to 0 (cleared field)
+    if(init->dExpr) { cudaFree(init->dExpr); init->dExpr = nullptr; } // destroy cuda expression (reinitialized with new string by SimWindow)
   }
 };
+
+
 
 template<typename T>
 FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void()> &frCb, const std::function<void()> &tr2DCb, const std::function<void()> &tr3DCb)
@@ -197,39 +178,41 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUFP2->enabledCallback = [this]() { return updateFluid; };
 
   // init
-  auto *sVINIT   = new Setting<std::string>("V  init (fluid)",    "VInit",   &initVStr,   initVStr,   [&]() { initStrUpdateCb(&initVStr,   &mFillV);   });
-  sVINIT->toggle   = &initVActive;   initGroup->add(sVINIT);
-  auto *sPINIT   = new Setting<std::string>("P  init (fluid)",    "PInit",   &initPStr,   initPStr,   [&]() { initStrUpdateCb(&initPStr,   &mFillP);   });
-  sPINIT->toggle   = &initPActive;   initGroup->add(sPINIT);
-  auto *sQNINIT  = new Setting<std::string>("Q- init (EM)",       "QnInit",  &initQnStr,  initQnStr,  [&]() { initStrUpdateCb(&initQnStr,  &mFillQn);  });
-  sQNINIT->toggle  = &initQnActive;  initGroup->add(sQNINIT);
-  auto *sQPINIT  = new Setting<std::string>("Q+ init (EM)",       "QpInit",  &initQpStr,  initQpStr,  [&]() { initStrUpdateCb(&initQpStr,  &mFillQp);  });
-  sQPINIT->toggle  = &initQpActive;  initGroup->add(sQPINIT);
-  auto *sQVINIT  = new Setting<std::string>("Qv init (EM)",       "QvInit",  &initQvStr,  initQvStr,  [&]() { initStrUpdateCb(&initQvStr,  &mFillQv);  });
-  sQVINIT->toggle  = &initQvActive;  initGroup->add(sQVINIT);
-  auto *sEINIT   = new Setting<std::string>("E  init (EM)",       "EInit",   &initEStr,   initEStr,   [&]() { initStrUpdateCb(&initEStr,   &mFillE);   });
-  sEINIT->toggle   = &initEActive;   initGroup->add(sEINIT);
-  auto *sBINIT   = new Setting<std::string>("B  init (EM)",       "BInit",   &initBStr,   initBStr,   [&]() { initStrUpdateCb(&initBStr,   &mFillB);   });
-  sBINIT->toggle   = &initBActive;   initGroup->add(sBINIT);
-  auto *sEPINIT  = new Setting<std::string>("ε  init (material)", "epInit",  &initEpStr,  initEpStr,  [&]() { initStrUpdateCb(&initEpStr,  &mFillEp);  });
-  sEPINIT->toggle  = &initEpActive;  initGroup->add(sEPINIT);
-  auto *sMUINIT  = new Setting<std::string>("μ  init (material)", "muInit",  &initMuStr,  initMuStr,  [&]() { initStrUpdateCb(&initMuStr,  &mFillMu);  });
-  sMUINIT->toggle  = &initMuActive;  initGroup->add(sMUINIT);
-  auto *sSIGINIT = new Setting<std::string>("σ  init (material)", "sigInit", &initSigStr, initSigStr, [&]() { initStrUpdateCb(&initSigStr, &mFillSig); });
-  sSIGINIT->toggle = &initSigActive; initGroup->add(sSIGINIT);
+  auto *sVINIT   = new Setting<std::string>("V  init (fluid)",    "VInit",   &initV.str);  initGroup->add(sVINIT);
+  sVINIT->updateCallback   = [&]() { initStrUpdateCb(&initV);   };
+  sVINIT->setToggle(&initV.active);
+  auto *sPINIT   = new Setting<std::string>("P  init (fluid)",    "PInit",   &initP.str);  initGroup->add(sPINIT);
+  sPINIT->updateCallback  = [&]() { initStrUpdateCb(&initP);   };
+  sPINIT->setToggle(&initP.active);   
+  auto *sQNINIT  = new Setting<std::string>("Q- init (EM)",       "QnInit",  &initQn.str); initGroup->add(sQNINIT);
+  sQNINIT->updateCallback  = [&]() { initStrUpdateCb(&initQn);  };
+  sQNINIT->setToggle(&initQn.active);  
+  auto *sQPINIT  = new Setting<std::string>("Q+ init (em)",       "QpInit",  &initQp.str); initGroup->add(sQPINIT);
+  sQPINIT->updateCallback  = [&]() { initStrUpdateCb(&initQp);  };
+  sQPINIT->setToggle(&initQp.active);  
+  auto *sQVINIT  = new Setting<std::string>("Qv init (em)",       "QvInit",  &initQv.str); initGroup->add(sQVINIT);
+  sQVINIT->updateCallback  = [&]() { initStrUpdateCb(&initQv);  };
+  sQVINIT->setToggle(&initQv.active);  
+  auto *sEINIT   = new Setting<std::string>("E  init (em)",       "EInit",   &initE.str);  initGroup->add(sEINIT);
+  sEINIT->updateCallback   = [&]() { initStrUpdateCb(&initE);   };
+  sEINIT->setToggle(&initE.active);   
+  auto *sBINIT   = new Setting<std::string>("B  init (em)",       "BInit",   &initB.str);  initGroup->add(sBINIT);
+  sBINIT->updateCallback   = [&]() { initStrUpdateCb(&initB);   };
+  sBINIT->setToggle(&initB.active);
+  auto *sEPINIT  = new Setting<std::string>("ε  init (material)", "epInit",  &initEp.str); initGroup->add(sEPINIT);
+  sEPINIT->updateCallback  = [&]() { initStrUpdateCb(&initEp);  };
+  sEPINIT->setToggle(&initEp.active);
+  auto *sMUINIT  = new Setting<std::string>("μ  init (material)", "muInit",  &initMu.str); initGroup->add(sMUINIT);
+  sMUINIT->updateCallback  = [&]() { initStrUpdateCb(&initMu);  };
+  sMUINIT->setToggle(&initMu.active);
+  auto *sSIGINIT = new Setting<std::string>("σ  init (material)", "sigInit", &initSig.str);initGroup->add(sSIGINIT);
+  sSIGINIT->updateCallback = [&]() { initStrUpdateCb(&initSig); };
+  sSIGINIT->setToggle(&initSig.active);
 
   mForm = new SettingForm("Simulation Settings", 180, 300);
   mForm->add(paramGroup);
   mForm->add(stepGroup);
   mForm->add(initGroup);
 }
-
-template<typename T>
-FieldInterface<T>::~FieldInterface()
-{ if(mForm) { delete mForm; mForm = nullptr; } }
-
-template<typename T>
-void FieldInterface<T>::draw()
-{ mForm->draw(); }
 
 #endif // FIELD_HPP

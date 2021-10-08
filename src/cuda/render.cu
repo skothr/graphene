@@ -36,13 +36,8 @@ __global__ void renderFieldEM_k(FluidField<T> src, CudaTexture dst, RenderParams
       VT4 color = VT4{0.0, 0.0, 0.0, 0.0};
       for(int iz = max(0, min(src.size.z-1, rp.zRange.y)); iz >= rp.zRange.x; iz--)
         {
-          int fi = src.idx(fp.x, fp.y, iz);
-          // T qLen = (src.Qp[fi] - src.Qn[fi]); T eLen = length(src.E[fi]); T bLen = length(src.B[fi]);
-          // VT4 col = rp.emBrightness*rp.emOpacity*(qLen*rp.getFinalColor(FLUID_RENDER_Q) +
-          //                                         eLen*rp.getFinalColor(FLUID_RENDER_E) +
-          //                                         bLen*rp.getFinalColor(FLUID_RENDER_B));
+          int    fi  = src.idx(fp.x, fp.y, iz);
           float4 col = (rp.simple ? renderCellSimple(src, fi, rp, cp) : renderCellAll(src, fi, rp, cp));
-          // VT4 col = renderCell(src, fi, rp);
 
           VT3 pCell = VT3{(T)fp.x, (T)fp.y, (T)iz}; VT3 pSrc = rp.penPos;
           VT3 diff; VT3 diff0; VT3 diff1;  VT3 dist_2; VT3 dist0_2; VT3 dist1_2;
@@ -95,7 +90,6 @@ __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, Render
           if(rp.matPenHighlight &&
              penOverlap3 (pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, 0.0f) &&
              !penOverlap3(pCell, pSrc, diff, diff0, diff1, dist_2, dist0_2, dist1_2, (Pen<T>*)&rp.matPen, cp, -1.0f)) { col += MAT_HIGHLIGHT_COLOR; }
-
           fluidBlend(color, col, rp);
           if(color.x >= 1.0f || color.y >= 1.0f || color.z >= 1.0f) { break; }
         }

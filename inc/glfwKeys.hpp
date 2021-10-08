@@ -69,26 +69,25 @@ static int stringToGlfwKey(const std::string &keyStr)
   else if(keyStr == "LEFT"         ) { return GLFW_KEY_LEFT;          }
   else if(keyStr == "DOWN"         ) { return GLFW_KEY_DOWN;          }
   else if(keyStr == "UP"           ) { return GLFW_KEY_UP;            }
-  else if(keyStr == "PAGE_UP"      ) { return GLFW_KEY_PAGE_UP;       }
-  else if(keyStr == "PAGE_DOWN"    ) { return GLFW_KEY_PAGE_DOWN;     }
+  else if(keyStr == "PGUP" || keyStr == "PAGEUP"  ) { return GLFW_KEY_PAGE_UP;   }
+  else if(keyStr == "PGDN" || keyStr == "PAGEDOWN") { return GLFW_KEY_PAGE_DOWN; }
   else if(keyStr == "HOME"         ) { return GLFW_KEY_HOME;          }
   else if(keyStr == "END"          ) { return GLFW_KEY_END;           }
   else if(keyStr == "CAPSLOCK"     ) { return GLFW_KEY_CAPS_LOCK;     }
-  else if(keyStr == "SCROLL_LOCK"  ) { return GLFW_KEY_SCROLL_LOCK;   }
+  else if(keyStr == "SCRLK" || keyStr == "SCROLL_LOCK") { return GLFW_KEY_SCROLL_LOCK; }
   else if(keyStr == "NUMLOCK"      ) { return GLFW_KEY_NUM_LOCK;      }
   else if(keyStr == "PRINTSCREEN"  ) { return GLFW_KEY_PRINT_SCREEN;  }
   else if(keyStr == "PAUSE"        ) { return GLFW_KEY_PAUSE;         }
 
   else if(keyStr[0] == 'F' && keyStr.size() > 1) { return (GLFW_KEY_F1 + std::stoi(keyStr.substr(1)) - 1); } // function keys
-
   else if(keyStr == "MENU"         ) { return GLFW_KEY_MENU;          }
-
   else if(keyStr == "LALT"         ) { return GLFW_KEY_LEFT_ALT;      } // modifiers
   else if(keyStr == "RALT"         ) { return GLFW_KEY_RIGHT_ALT;     }
   else if(keyStr == "LCTRL"        ) { return GLFW_KEY_LEFT_CONTROL;  }
   else if(keyStr == "RCTRL"        ) { return GLFW_KEY_RIGHT_CONTROL; }
   else if(keyStr == "LSHIFT"       ) { return GLFW_KEY_LEFT_SHIFT;    }
   else if(keyStr == "RSHIFT"       ) { return GLFW_KEY_RIGHT_SHIFT;   }
+
   
   else                               { return GLFW_KEY_UNKNOWN;       }
 }
@@ -159,12 +158,12 @@ static std::string glfwKeyToString(int key)
     case GLFW_KEY_LEFT:           return "LEFT";
     case GLFW_KEY_DOWN:           return "DOWN";
     case GLFW_KEY_UP:             return "UP";
-    case GLFW_KEY_PAGE_UP:        return "PAGE_UP";
-    case GLFW_KEY_PAGE_DOWN:      return "PAGE_DOWN";
+    case GLFW_KEY_PAGE_UP:        return "PGUP";
+    case GLFW_KEY_PAGE_DOWN:      return "PGDN";
     case GLFW_KEY_HOME:           return "HOME";
     case GLFW_KEY_END:            return "END";
     case GLFW_KEY_CAPS_LOCK:      return "CAPSLOCK";
-    case GLFW_KEY_SCROLL_LOCK:    return "SCROLL_LOCK";
+    case GLFW_KEY_SCROLL_LOCK:    return "SCRLK";
     case GLFW_KEY_NUM_LOCK:       return "NUMLOCK";
     case GLFW_KEY_PRINT_SCREEN:   return "PRINTSCREEN";
     case GLFW_KEY_PAUSE:          return "PAUSE";

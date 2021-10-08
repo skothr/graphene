@@ -6,6 +6,8 @@
 #include <cuda_gl_interop.h>
 
 #include "tools.hpp"
+#include "units.hpp"
+#include "camera.hpp"
 #include "field.cuh"
 #include "cuda-texture.cuh"
 #include "vector-operators.h"
@@ -13,7 +15,6 @@
 #include "physics.h"
 #include "raytrace.h"
 #include "material.h"
-#include "units.hpp"
 
 
 enum RenderFlags : long long
@@ -85,14 +86,11 @@ inline constexpr const char* renderFlagName(RenderFlags f)
   else if(f & FLUID_RENDER_NVX ) { return "-Vx"; }
   else if(f & FLUID_RENDER_NVY ) { return "-Vy"; }
   else if(f & FLUID_RENDER_NVZ ) { return "-Vz"; }
- 
   else if(f & FLUID_RENDER_P   ) { return "P";  }
   else if(f & FLUID_RENDER_D   ) { return "D";  }
- 
   else if(f & FLUID_RENDER_QN  ) { return "Q-"; }
   else if(f & FLUID_RENDER_QP  ) { return "Q+"; }
-  else if(f & FLUID_RENDER_Q   ) { return "Q";  }
- 
+  else if(f & FLUID_RENDER_Q   ) { return "Q";  } 
   else if(f & FLUID_RENDER_QVX ) { return "QVx";  }
   else if(f & FLUID_RENDER_QVY ) { return "QVy";  }
   else if(f & FLUID_RENDER_QVZ ) { return "QVz";  }
@@ -102,8 +100,7 @@ inline constexpr const char* renderFlagName(RenderFlags f)
   else if(f & FLUID_RENDER_QPVZ) { return "+QVz"; }
   else if(f & FLUID_RENDER_QNVX) { return "-QVx"; }
   else if(f & FLUID_RENDER_QNVY) { return "-QVy"; }
-  else if(f & FLUID_RENDER_QNVZ) { return "-QVz"; }
- 
+  else if(f & FLUID_RENDER_QNVZ) { return "-QVz"; } 
   else if(f & FLUID_RENDER_EX  ) { return "Ex"; }
   else if(f & FLUID_RENDER_EY  ) { return "Ey"; }
   else if(f & FLUID_RENDER_EZ  ) { return "Ez"; }
@@ -112,7 +109,6 @@ inline constexpr const char* renderFlagName(RenderFlags f)
   else if(f & FLUID_RENDER_BY  ) { return "By"; }
   else if(f & FLUID_RENDER_BZ  ) { return "Bz"; }
   else if(f & FLUID_RENDER_B   ) { return "B"; }
- 
   else if(f & FLUID_RENDER_EP  ) { return "ε"; }
   else if(f & FLUID_RENDER_MU  ) { return "μ"; }
   else if(f & FLUID_RENDER_SIG ) { return "σ"; }
@@ -200,9 +196,6 @@ struct RenderParams
     return ((i < 0 || !rToggles[i]) ? VT4{0.0, 0.0, 0.0, 0.0} : rMults[i]*rColors[i]);
   }
 };
-
-// forward declarations
-typedef void* ImTextureID;
 
 // field rendering
 template<typename T> void renderFieldEM (FluidField<T>      &src, CudaTexture &dst, const RenderParams<T> &rp, const FluidParams<T> &cp);

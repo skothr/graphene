@@ -1,90 +1,13 @@
 #ifndef DRAW_CUH
 #define DRAW_CUH
 
-#include <GL/glew.h>
 #include <cuda.h>
-#include <cuda_gl_interop.h>
 
 #include "vector-operators.h"
 #include "raytrace.h"
 #include "material.h"
 #include "units.hpp"
-
-
-enum PenType { PEN_NONE, PEN_SIGNAL, PEN_MATERIAL};
-
-template<typename T>
-struct Pen
-{
-  using VT3 = typename DimType<T, 3>::VEC_T;
-  bool active    = true;
-  bool cellAlign = false; // snap offset to center of cell
-  bool square    = false; // draw with square pen
-  bool radial    = false; // multiply by normal (from pen center)
-  bool speed     = true;  // scale by mouse speed
-  
-  int  depth     = 0;     // depth of pen center from view surface
-  VT3  radius0   = VT3{10.0, 10.0, 10.0}; // base pen size in fluid cells
-  VT3  radius1   = VT3{ 0.0,  0.0,  0.0}; // if x,y,z > 0, pen shape will be the intersection of spheres 0/1
-  VT3  rDist     = VT3{ 0.0,  0.0,  0.0}; // positional difference between intersecting spheres
-  T    mult      = 1.0;                   // multiplier (amplitude if signal)
-  T    sizeMult  = 1.0;                   // multiplier (pen size)
-  VT3  xyzMult   = VT3{1.0, 1.0, 1.0};    // multiplier (pen size, each dimension)
-  T   speedMult  = 1.0;                   // multiplier for mouse speed
-
-  T startTime    = -1.0; // time of initial mouse click (< 0 if inactive)
-  T mouseSpeed   = 0.0f; // current mouse speed
-  
-  virtual PenType type() const { return PEN_NONE; }
-};
-
-enum // bit flags for applying multipliers to field values
-  {
-   IDX_NONE = 0x00,
-   IDX_R    = 0x01, // scale signal by 1/length(r)   at each point
-   IDX_R2   = 0x02, // scale signal by 1/length(r)^2 at each point
-   IDX_T    = 0x04, // scale signal by theta   at each point
-   IDX_SIN  = 0x08, // scale signal by sin(2*pi*t*frequency) at each point
-   IDX_COS  = 0x10  // scale signal by cos(2*pi*t*frequency) at each point
-  };
-// for drawing signal in with mouse
-template<typename T>
-struct SignalPen : public Pen<T>
-{
-  virtual PenType type() const override { return PEN_SIGNAL; }
-  using VT2 = typename DimType<T, 2>::VEC_T;
-  using VT3 = typename DimType<T, 3>::VEC_T;
-  
-  T wavelength = 12.0;     // in dL units (cells per period)
-  T frequency  = 1.0/12.0; // Hz(c/t in sim time) for sin/cos mult flags (c --> speed in vacuum = vMat.c())
-
-  VT3 Vmult  = VT3{0.0,  0.0,  0.0};
-  T   Pmult  = 0.0;
-  T   Qnmult = 0.0; T Qpmult = 0.0;
-  VT3 Qvmult = VT3{0.0,  0.0,  0.0};
-  VT3 Emult  = VT3{10.0, 10.0, 10.0}; // X/Y/Z vector multipliers
-  VT3 Bmult  = VT3{0.0,  0.0,  0.0};
-
-  int Vopt   = IDX_NONE; // parameteric option flags (IDX_*)
-  int Popt   = IDX_NONE;
-  int Qpopt  = IDX_NONE;
-  int Qnopt  = IDX_NONE;
-  int Qvopt  = IDX_NONE;
-  int Eopt   = IDX_SIN;
-  int Bopt   = IDX_SIN;
-  
-  SignalPen() { this->mult = 20.0; }
-};
-
-template<typename T>
-struct MaterialPen : public Pen<T>
-{
-  virtual PenType type() const override { return PEN_MATERIAL; }
-  
-  Material<T> material;
-  MaterialPen() : material(2.4, 2.0, 0.0001, false) { }
-};
-
+#include "drawPens.hpp"
 
 //// CUDA ////
 // forward declarations
@@ -93,8 +16,6 @@ template<typename T> class  EMField;
 template<typename T> struct FieldParams;
 template<typename T> struct FluidParams;
 template<typename T> class  FluidField;
-
-
 
 
 // overlap helpers
@@ -333,12 +254,12 @@ template<typename T> void addSignal  (const typename DimType<T, 3>::VEC_T &mpos,
                                       Field<typename DimType<T, 3>::VEC_T> &dstV, Field<T> &dstP,
                                       Field<T> &dstQn, Field<T> &dstQp, Field<typename DimType<T, 3>::VEC_T> &dstQv,
                                       Field<typename DimType<T, 3>::VEC_T> &dstE, Field<typename DimType<T, 3>::VEC_T> &dstB,
-                                      const SignalPen<T> &pen, const FluidParams<T> &cp);
+                                      const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0);
 
 template<typename T> void addSignal  (const typename DimType<T, 3>::VEC_T &mpos, EMField<T> &dst,
-                                      const SignalPen<T> &pen, const FieldParams<T> &cp); // EMField
+                                      const SignalPen<T> &pen, const FieldParams<T> &cp, T mult=1.0); // EMField
 template<typename T> void addSignal  (const typename DimType<T, 3>::VEC_T &mpos, FluidField<T> &dst,
-                                      const SignalPen<T> &pen, const FluidParams<T> &cp); // FluidField
+                                      const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0); // FluidField
 // signal decay
 template<typename T> void decaySignal(Field<T> &src, FieldParams<T> &cp);
 template<typename T> void decaySignal(Field<typename DimType<T, 3>::VEC_T> &src, FieldParams<T> &cp);

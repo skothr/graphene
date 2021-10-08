@@ -34,10 +34,11 @@ struct KeyPress
 
 enum KeyBindingFlags
   {
-   KEYBINDING_NONE     = 0x00, // (no flags set)
-   KEYBINDING_GLOBAL   = 0x01, // binding triggered even when interacting with UI (e.g. editing textbox -- assumes key pattern isn't relevant)
-   KEYBINDING_REPEAT   = 0x02, // binding triggered on key repeat actions (press/hold non-mod keys)
-   KEYBINDING_MOD_MULT = 0x04, // additional mod keys act as multipliers for the binding action (generally: SHIFT --> x0.1 | CTRL --> x2 | ALT --> x10)
+   KEYBINDING_NONE       = 0x00, // (no flags set)
+   KEYBINDING_GLOBAL     = 0x01, // binding triggered even when interacting with UI (e.g. editing textbox -- assumes key pattern isn't relevant)
+   KEYBINDING_REPEAT     = 0x02, // binding triggered on key repeat actions (press/hold non-mod keys)
+   KEYBINDING_EXTRA_MODS = 0x04, // additional mod keys will still trigger this binding
+   KEYBINDING_MOD_MULT   = 0x08, // additional mod keys act as multipliers for the binding action (generally: SHIFT --> x0.1 | CTRL --> x2 | ALT --> x10)
   };
 ENUM_FLAG_OPERATORS(KeyBindingFlags)
 
@@ -90,16 +91,17 @@ public:
   KeyBinding() { }
   
   // NOTE: shift/ctrl/alt multipliers only relevant if KEYBIDING_MOD_MULT is set
-  explicit KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, std::function<void(float mult)> action_,
-                      KeyBindingFlags flags_=KEYBINDING_NONE, float shift=0.1f, float ctrl=2.0f, float alt=10.0f)
+  explicit KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, KeyBindingFlags flags_,
+                      std::function<void(float mult)> action_, float shift=0.1f, float ctrl=2.0f, float alt=10.0f)
     : name(name_), defaultBinding(default_), description(desc_), action(action_), flags(flags_), shiftMult(shift), ctrlMult(ctrl), altMult(alt)
   { fromString(default_); }
 
   // wraps void() action callback with unused argument (for compatibility, KEYBINDING_MOD_MULT)
   //    NOTE: shift/ctrl/alt multipliers only relevant if KEYBIDING_MOD_MULT is set
-  explicit KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, std::function<void()> action_,
-                      KeyBindingFlags flags_=KEYBINDING_NONE, float shift=0.1f, float ctrl=2.0f, float alt=10.0f)
-    : KeyBinding(name_, default_, desc_, [action_](float mult){ action_(); }, flags_, shift, ctrl, alt) { }
+  explicit KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, KeyBindingFlags flags_,
+                      std::function<void()> action_, float shift=0.1f, float ctrl=2.0f, float alt=10.0f)
+    : KeyBinding(name_, default_, desc_, flags_, 
+                 [action_](float mult){ action_(); }, shift, ctrl, alt) { }
 
   // copying
   KeyBinding(const KeyBinding &other)
@@ -138,11 +140,10 @@ public:
     for(auto i = 0; i < seq.size(); i++)
       {
         int modOverlap = (seq[i].mods & sequence[i].mods);
-        if(seq[i].key != sequence[i].key || ((!(flags & KEYBINDING_GLOBAL) || sequence[i].mods != 0) &&
-                                             (((flags & KEYBINDING_MOD_MULT) ?
-                                               (sequence[i].mods != modOverlap) :
-                                               (seq[i].mods != sequence[i].mods)) ||
-                                              (seq.back().repeat && !(flags & KEYBINDING_REPEAT)))))
+        if(seq[i].key != sequence[i].key ||
+           ((!(flags & KEYBINDING_GLOBAL) || sequence[i].mods != 0) &&
+            (((flags & KEYBINDING_MOD_MULT) ? (sequence[i].mods != modOverlap) : (seq[i].mods != sequence[i].mods && !(flags & KEYBINDING_EXTRA_MODS))) ||
+             (seq.back().repeat && !(flags & KEYBINDING_REPEAT)))))
           { pressed = false; return false; }
       }
     pressed = true;

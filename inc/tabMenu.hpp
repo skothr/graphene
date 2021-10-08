@@ -6,7 +6,7 @@
 #include <functional>
 #include "vector.hpp"
 
-#define TABMENU_TAB_PADDING  6.0f
+#define TABMENU_TAB_PADDING  Vec2f(10.0f, 6.0f)
 #define TABMENU_MENU_PADDING 5.0f
 
 // forward declarations
@@ -30,24 +30,26 @@ private:
   std::vector<TabDesc> mTabs;
   int mSelected = 0;
 
-  float mLength       = 0.0f; // direction of text/tabs
-  float mBarWidth     = 0.0f; // thickness of bar
+  float mLength       = 0.0f; // size of area along direction of text/tabs
+  float mBarWidth     = 0.0f; // thickness of bar (if <= 0, based on font size and padding)
   bool  mCollapsible  = false;
+  bool  mHorizontal   = false;
   
 public:
   TabMenu() { }
-  TabMenu(int width, int length, bool collapsible=false);
+  TabMenu(int width, int length);
   
   Vec2f getSize()      const;
   float getBarWidth()  const;
   float getTabLength() const;
 
-  void setItemWidth(int index, int w) { mTabs[index].width = w; }
+  void setItemWidth(int index, int w)      { mTabs[index].width      = w; }
   void setItemFixedWidth(int index, int w) { mTabs[index].fixedWidth = w; }
   
   void setBarWidth(int w);
   void setLength(int l);
-  void setCollapsible(bool collapsible=true);
+  void setCollapsible(bool collapsible);
+  void setHorizontal(bool horizontal);
   
   int add(TabDesc desc);
   void remove(const std::string &label);
@@ -55,7 +57,10 @@ public:
   
   void select(int index); // -1 or index of open tab will collapse bar
   void collapse();
-  void draw();
+  void prev();
+  void next();
+  
+  void draw(const std::string &id);
 };
 
 

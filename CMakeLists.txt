@@ -41,6 +41,7 @@ if(GRPH_ENABLE_CUDA)
     src/cuda/fluid.cu
     src/cuda/maxwell.cu
     src/cuda/render.cu
+    src/cuda/vlines.cu
     )
   set_target_properties(grphcuda PROPERTIES CXX_STANDARD 20)
   set(CUDA_LIBRARIES grphcuda)
@@ -97,6 +98,8 @@ message(STATUS " =")
 add_executable(${TARGET}
   src/cuda-tools.cpp
   src/image.cpp
+  src/glShader.cpp
+  src/keyFrameWidget.cpp
   src/keyManager.cpp
   src/main.cpp
   src/settingForm.cpp

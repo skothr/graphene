@@ -94,6 +94,7 @@ template<> __global__ void fillField_k<float>(Field<float> dst, CudaExpression<f
       dst[i] = expr->calculate(vars);
     }
 }
+
 template<> __global__ void fillField_k<float3>(Field<float3> dst, CudaExpression<float3> *expr)
 {
   long ix = blockIdx.x*blockDim.x + threadIdx.x;

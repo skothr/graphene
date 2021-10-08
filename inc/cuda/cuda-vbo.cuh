@@ -11,14 +11,10 @@
 
 #include "vector-operators.h"
 #include "cuda-tools.h"
-#include "physics.h"
-#include "raytrace.h"
-#include "material.h"
-#include "units.hpp"
+#include "glShader.hpp"
 
 // X/Y/Z position and R/G/B/A color for a vertex 
-//struct Vertex { float4 pos; }; //float4 color; };
-typedef float4 Vertex;
+struct Vertex { float3 pos; float4 color; };
 
 //// CUDA VBO ////
 // --> contains vertex data for drawing with opengl
@@ -27,9 +23,12 @@ struct CudaVBO
   unsigned long size = 0; // buffer size (number of vertices)
   bool   mapped = false;
   bool   bound  = false;
-  GLuint glVbo  = 0;
   Vertex *dData = nullptr;
   cudaGraphicsResource *cuVbo = nullptr;
+  
+  GLuint glVbo  = 0;
+  GLuint glVao  = 0;
+  GlShader *glShader = nullptr;
 
   __device__ const Vertex& operator[](unsigned int i) const { return dData[i]; }
   __device__       Vertex& operator[](unsigned int i)       { return dData[i]; }
@@ -58,8 +57,8 @@ struct CudaVBO
   void bind();    // bind for use with opengl
   void release(); // unbind
   void draw();    // draw vertices to screen (NOTE: probably need a shader, etc. attached)
-  Vertex* map();  // texture data mapping to device pointer for rendering via CUDA kernel
-  void  unmap();  // texture data unmapping
+  Vertex* map();  // vertex data mapping to device pointer for rendering via CUDA kernel
+  void  unmap();  // vertex data unmapping
   void clear() { if(allocated() && map()) { cudaMemset(dData, 0, size*sizeof(Vertex)); unmap(); } }
 };
 
@@ -68,17 +67,17 @@ inline bool CudaVBO::create(unsigned long sz)
   initCudaDevice();
   if(gCudaInitialized)
     {
-      if(sz == this->size) { return true; } ///std::cout << "Buffer already allocated (" << size << ")\n"; return true; }
-      else { destroy(); }
-      std::cout << "Creating Cuda Texture ("  << sz << ")... --> data: " << sz << "*" << sizeof(Vertex) << " ==> " << sz*sizeof(Vertex) << "\n";
+      if(sz == this->size) { return true; } // already created
+      else { destroy(); }                   // re-create
+      std::cout << "Creating Cuda VBO ("  << sz << "v)... --> data: " << sz << "(v) * " << sizeof(Vertex) << "(b/v) ==> " << sz*sizeof(Vertex) << "b\n";
 
       // init device data
       int err = cudaMalloc((void**)&dData, sz*sizeof(Vertex));
-      if(err) { std::cout << "====> ERROR: Failed to allocated memory for field!\n"; return false; }
+      if(err) { std::cout << "====> ERROR: Failed to allocated memory for CudaVBO!\n"; return false; }
       err = cudaMemset(dData, 0, sz*sizeof(Vertex));
-      if(err) { std::cout << "====> ERROR: Failed to initialize memory for field!\n"; cudaFree(dData); dData = nullptr; return false; }
+      if(err) { std::cout << "====> ERROR: Failed to initialize memory for CudaVBO!\n"; cudaFree(dData); dData = nullptr; return false; }
       // init VBO
-      initGL(sz); getLastCudaError("CudaVBO::create(sz)");
+      initGL(sz); getLastCudaError(("CudaVBO::create(<"+std::to_string(sz)+">)").c_str());
       size = sz;
       return true;
     }
@@ -90,27 +89,37 @@ inline bool CudaVBO::create(unsigned long sz)
 
 inline void CudaVBO::initGL(unsigned long sz)
 {
-  // delete old buffers
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  if(glVbo > 0) { glDeleteBuffers(1, &glVbo); glVbo = 0; }
+  // OpenGL shader
+  glShader = new GlShader("vlines.vsh", "vlines.fsh");
   
   // OpenGL VBO
   glGenBuffers(1, &glVbo);
   glBindBuffer(GL_ARRAY_BUFFER, glVbo);
-  glBufferData(GL_ARRAY_BUFFER, sz*sizeof(Vertex), NULL, GL_DYNAMIC_COPY); glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBufferData(GL_ARRAY_BUFFER, sz*sizeof(Vertex), NULL, GL_DYNAMIC_DRAW);
+
+  // OpenGL VAO  
+  glGenVertexArrays(1, &glVao);
+  glBindVertexArray(glVao);
+  // glEnableVertexAttribArray(0);
+  // glVertexAttribPointer( ... );
 
   // Cuda VBO
   cudaGraphicsGLRegisterBuffer(&cuVbo, glVbo, cudaGraphicsMapFlagsWriteDiscard);
+  
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_VERTEX_ARRAY, 0);
 }
 
 inline void CudaVBO::destroy()
 {
   if(allocated())
     {
-      std::cout << "Destroying CudaVBO...\n";
-      if(bound)  { release(); } if(mapped) { unmap(); }
-      if(glVbo > 0) { glDeleteBuffers(1, &glVbo); glVbo = 0; }
+      if(bound) { release(); } if(mapped) { unmap(); }
+      std::cout << "Destroying CudaVBO (" << size << ")...\n";
+      if(glVbo > 0) { glDeleteBuffers(1, &glVbo);      glVbo = 0; }
+      if(glVao > 0) { glDeleteVertexArrays(1, &glVao); glVao = 0; }
       if(cuVbo)     { cudaGraphicsUnregisterResource(cuVbo); cuVbo = nullptr; }
+      if(glShader)  { delete glShader; glShader = nullptr; }
       getLastCudaError("CudaVBO::destroy()");
       std::cout << "  (DONE)\n";
     }
@@ -121,11 +130,9 @@ inline void CudaVBO::bind()
 {
   if(allocated() && !bound)
     {
-      // enable vertex/color arrays
+      glShader->bind();
+      glBindVertexArray(glVao);
       glBindBuffer(GL_ARRAY_BUFFER, glVbo);
-      glEnableClientState(GL_VERTEX_ARRAY); glEnableClientState(GL_COLOR_ARRAY);
-      glVertexPointer(4, GL_FLOAT, size*sizeof(Vertex), 0);
-      // glColorPointer (4, GL_UNSIGNED_BYTE, size*sizeof(Vertex), (const void*)sizeof(float3));
       bound = true;
     }
 }
@@ -134,19 +141,21 @@ inline void CudaVBO::release()
 {
   if(allocated() && bound)
     {
-      glDisableClientState(GL_VERTEX_ARRAY); //glDisableClientState(GL_COLOR_ARRAY);
       glBindBuffer(GL_ARRAY_BUFFER, 0);
+      glBindVertexArray(0);
       bound = false;
     }
 }
 
 inline void CudaVBO::draw()
 {
-  bind();
-  glDrawArrays(GL_LINES, 0, size);
-  release();
+  if(allocated())
+    {
+      bind();
+      glDrawArrays(GL_LINES, 0, size);
+      release();
+    }
 }
-
 
 inline Vertex* CudaVBO::map()
 {
@@ -213,6 +222,15 @@ inline void CudaVBO::unmap()
   if(!glVbo)            { std::cout << "====> WARNING(CudaVBO::unmap()): VBO resource not initialized!\n"; }
   dData = nullptr; mapped = false;
 }
+
+
+
+// forward declarations
+template<typename T> class FluidParams;
+template<typename T> class FluidField;
+
+// (in vlines.cu)
+template<typename T> void fillVLines(FluidField<T> &src, CudaVBO &dst, FluidParams<T> &cp);
 
 
 

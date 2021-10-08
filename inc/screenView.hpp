@@ -28,6 +28,9 @@ struct ScreenView
   
   MouseButton clickBtns(MouseButton mask=MOUSEBTN_ALL) const { return (clicked & mask); }
   int         clickMods(int mask=0)                    const { return (mods    & mask); }
+
+  bool operator==(const ScreenView &other) const { return  (r == other.r);   }
+  bool operator!=(const ScreenView &other) const { return !(*this == other); }
 };
 
 

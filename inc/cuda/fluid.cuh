@@ -16,9 +16,9 @@ enum EdgeType
 template<typename T>
 struct FluidParams : public FieldParams<T>
 {
-  EdgeType edgeNX = EDGE_WRAP;   EdgeType edgePX = EDGE_WRAP;
-  EdgeType edgeNY = EDGE_NOSLIP; EdgeType edgePY = EDGE_NOSLIP;
-  EdgeType edgeNZ = EDGE_VOID;   EdgeType edgePZ = EDGE_VOID;
+  EdgeType edgeNX = EDGE_WRAP; EdgeType edgePX = EDGE_WRAP;
+  EdgeType edgeNY = EDGE_WRAP; EdgeType edgePY = EDGE_WRAP;
+  EdgeType edgeNZ = EDGE_VOID; EdgeType edgePZ = EDGE_VOID;
 
   bool updateP1     = true;
   bool updateAdvect = true;

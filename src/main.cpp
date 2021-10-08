@@ -188,7 +188,7 @@ int main(int argc, char* argv[])
   
   ImGui::StyleColorsDark(); // dark style
   ImGui::PushStyleColor(ImGuiCol_NavHighlight, Vec4f(0,0,0,0)); // no keyboard nav highlighting
-  ImGui::GetStyle().TouchExtraPadding = Vec2f(2,2);             // padding for interaction
+  ImGui::GetStyle().TouchExtraPadding = Vec2f(1.5f,1.5f);             // padding for interaction
   // imgui context config
   io = &ImGui::GetIO();
   io->IniFilename = nullptr;                              // disable .ini file
@@ -218,7 +218,7 @@ int main(int argc, char* argv[])
       if(simWindow->closing()) { glfwSetWindowShouldClose(window, GLFW_TRUE); }
 
       // re-upload font texture to gpu if fonts have changed
-      if(simWindow->preNewFrame())
+      if(simWindow->preFrame())
         { std::cout << "====> UPDATING FONT ATLAS...\n"; ImGui_ImplOpenGL3_DestroyDeviceObjects(); }
       
       // imgui implementation frame (main context)
@@ -248,6 +248,9 @@ int main(int argc, char* argv[])
       glClear(GL_COLOR_BUFFER_BIT);
       glUseProgram(0);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+      // render 3d lines
+      simWindow->postRender();
 
       // render simulation to file if actively rendering (offline context)
       if(simWindow->fileRendering())

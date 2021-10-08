@@ -48,12 +48,12 @@ struct Vector
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
   
-   Vector<T, N>& operator=(T scalar)
+  Vector<T, N>& operator=(T scalar)
   {
     for(int i = 0; i < N; i++) { data[i] = scalar; }
     return *this;
   }
-   Vector<T, N>& operator=(const Vector<T, N> &other)
+  Vector<T, N>& operator=(const Vector<T, N> &other)
   {
     for(int i = 0; i < N; i++) { data[i] = other.data[i]; }
     return *this;
@@ -93,7 +93,7 @@ struct Vector
   T length() const                { return sqrt(length2()); }
   Vector<T, N> normalized() const { return Vector<T, N>(*this) / length(); }
   template<typename U>
-  T dot(const Vector<U, N> &other)
+  T dot(const Vector<U, N> &other) const
   {
     T total = 0;
     for(int i = 0; i < N; i++) { total += data[i] * other.data[i]; }
@@ -153,22 +153,22 @@ struct Vector<T, 2>
     std::array<T, N> data;
   };
 
-   Vector()                              : x((T)0), y((T)0)          { }
-   Vector(T x_, T y_)                    : x(x_), y(y_)              { }
-   Vector(const Vector<T, N> &other)     : x(other.x), y(other.y)    { }
-   Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1])  { }
-   Vector(T val)                         : x(val), y(val)            { }
-   Vector(const std::string &str)        { fromString(str); }
+  Vector()                              : x((T)0), y((T)0)          { }
+  Vector(T x_, T y_)                    : x(x_), y(y_)              { }
+  Vector(const Vector<T, N> &other)     : x(other.x), y(other.y)    { }
+  Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1])  { }
+  Vector(T val)                         : x(val), y(val)            { }
+  Vector(const std::string &str)        { fromString(str); }
   template<typename U> // convert from other type
-   Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
+  Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
   
-   Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
-   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
-    Vector(const int2    &cv) : x((T)cv.x), y((T)cv.y) { }
-    Vector(const float2  &cv) : x((T)cv.x), y((T)cv.y) { }
-    Vector(const double2 &cv) : x((T)cv.x), y((T)cv.y) { }
-    Vector<T, N>& operator=(const float2 &cv)  { x = (T)cv.x; y = (T)cv.y; return *this; }
-    Vector<T, N>& operator=(const double2 &cv) { x = (T)cv.x; y = (T)cv.y; return *this; }
+  Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
+  Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
+  Vector(const int2    &cv) : x((T)cv.x), y((T)cv.y) { }
+  Vector(const float2  &cv) : x((T)cv.x), y((T)cv.y) { }
+  Vector(const double2 &cv) : x((T)cv.x), y((T)cv.y) { }
+  Vector<T, N>& operator=(const float2 &cv)  { x = (T)cv.x; y = (T)cv.y; return *this; }
+  Vector<T, N>& operator=(const double2 &cv) { x = (T)cv.x; y = (T)cv.y; return *this; }
 
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
@@ -216,10 +216,8 @@ struct Vector<T, 2>
     for(int i = 0; i < N; i++) { result.data[i] -= other.data[i]; }
     return result;
   }
-  Vector<T, N>& operator*=(T scalar)
-  { for(int i = 0; i < N; i++) { data[i] *= scalar; } return *this; }
-  Vector<T, N>& operator/=(T scalar)
-  { for(int i = 0; i < N; i++) { data[i] /= scalar; } return *this; }
+  Vector<T, N>& operator*=(T scalar) { for(int i = 0; i < N; i++) { data[i] *= scalar; } return *this; }
+  Vector<T, N>& operator/=(T scalar) { for(int i = 0; i < N; i++) { data[i] /= scalar; } return *this; }
   Vector<T, N> operator*(T scalar) const
   {
     Vector<T, N> result(*this);
@@ -233,10 +231,8 @@ struct Vector<T, 2>
     return result;
   }
 
-  Vector<T, N>& operator*=(const Vector<T, N> &other)
-  { for(int i = 0; i < N; i++) { data[i] *= other.data[i]; } return *this; }
-  Vector<T, N>& operator/=(const Vector<T, N> &other)
-  { for(int i = 0; i < N; i++) { data[i] /= other.data[i]; } return *this; }
+  Vector<T, N>& operator*=(const Vector<T, N> &other) { for(int i = 0; i < N; i++) { data[i] *= other.data[i]; } return *this; }
+  Vector<T, N>& operator/=(const Vector<T, N> &other) { for(int i = 0; i < N; i++) { data[i] /= other.data[i]; } return *this; }
   Vector<T, N> operator*(const Vector<T, N> &other) const
   {
     Vector<T, N> result(data);
@@ -265,7 +261,7 @@ struct Vector<T, 2>
   void normalize()                { (*this) /= length(); }
   Vector<T, N> normalized() const { return Vector<T, N>(*this) / length(); }
   template<typename U>
-  T dot(const Vector<U, N> &other)
+  T dot(const Vector<U, N> &other) const
   {
     T total = 0;
     for(int i = 0; i < N; i++) { total += data[i] * other.data[i]; }
@@ -283,23 +279,23 @@ struct Vector<T, 3>
     std::array<T, N> data;
   };
 
-   Vector()                              : x((T)0), y((T)0), z((T)0)               { }
-   Vector(T x_, T y_, T z_)              : x(x_), y(y_), z(z_)                     { }
-   Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z)      { }
-   Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2])   { }
-   Vector(T val)                         : x(val), y(val), z(val)                  { }
+  Vector()                              : x((T)0), y((T)0), z((T)0)               { }
+  Vector(T x_, T y_, T z_)              : x(x_), y(y_), z(z_)                     { }
+  Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z)      { }
+  Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2])   { }
+  Vector(T val)                         : x(val), y(val), z(val)                  { }
   
-   Vector(const std::string &str)        { fromString(str); }
+  Vector(const std::string &str)        { fromString(str); }
   template<typename U> // convert from other type
-   Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
+  Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
   
-   Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
-   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; }    return *this; }
-    Vector(const int3    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
-    Vector(const float3  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
-    Vector(const double3 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
-    Vector<T, N>& operator=(const float3 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
-    Vector<T, N>& operator=(const double3 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
+  Vector<T, 2>& operator=(const Vector<T, 2> &other) { data = other.data; return *this; }
+  Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; }    return *this; }
+  Vector(const int3    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
+  Vector(const float3  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
+  Vector(const double3 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z) { }
+  Vector<T, N>& operator=(const float3 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
+  Vector<T, N>& operator=(const double3 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
   
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
@@ -392,7 +388,7 @@ struct Vector<T, 3>
   void normalize()                { (*this) /= length(); }
   Vector<T, N> normalized() const { return Vector<T, N>(*this) / length(); }
   template<typename U>
-  T dot(const Vector<U, N> &other)
+  T dot(const Vector<U, N> &other) const
   {
     T total = 0;
     for(int i = 0; i < N; i++) { total += data[i] * other.data[i]; }
@@ -410,22 +406,22 @@ struct Vector<T, 4>
     std::array<T, N> data;
   };
 
-   Vector()                              : x((T)0), y((T)0), z((T)0), w((T)1)                 { }
-   Vector(T x_, T y_, T z_, T w_)        : x(x_), y(y_), z(z_), w(w_)                         { }
-   Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z), w(other.w)     { }
-   Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2]), w(data_[3]) { }
-   Vector(T val)                         : x(val), y(val), z(val), w(val)                     { }
-   Vector(const std::string &str)        { fromString(str); }
+  Vector()                              : x((T)0), y((T)0), z((T)0), w((T)1)                 { }
+  Vector(T x_, T y_, T z_, T w_)        : x(x_), y(y_), z(z_), w(w_)                         { }
+  Vector(const Vector<T, N> &other)     : x(other.x), y(other.y), z(other.z), w(other.w)     { }
+  Vector(const std::array<T, N> &data_) : x(data_[0]), y(data_[1]), z(data_[2]), w(data_[3]) { }
+  Vector(T val)                         : x(val), y(val), z(val), w(val)                     { }
+  Vector(const std::string &str)        { fromString(str); }
   template<typename U> // convert from other type
-   Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
+  Vector(const Vector<U, N> &other)     { for(int i = 0; i < N; i++) { data[i] = (T)other.data[i]; } }
   
-   Vector<T, 4>& operator=(const Vector<T, 4> &other) { data = other.data; return *this; }
-   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
-   Vector(const int4    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
-   Vector(const float4  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
-   Vector(const double4 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
-    Vector<T, N>& operator=(const float4 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
-    Vector<T, N>& operator=(const double4 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
+  Vector<T, 4>& operator=(const Vector<T, 4> &other) { data = other.data; return *this; }
+  Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
+  Vector(const int4    &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
+  Vector(const float4  &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
+  Vector(const double4 &cv) : x((T)cv.x), y((T)cv.y), z((T)cv.z), w((T)cv.w) { }
+  Vector<T, N>& operator=(const float4 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
+  Vector<T, N>& operator=(const double4 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
   
   T& operator[](int dim)               { return data[dim]; }
   const T& operator[](int dim) const   { return data[dim]; }
@@ -518,7 +514,7 @@ struct Vector<T, 4>
   void normalize()                { (*this) /= length(); }
   Vector<T, N> normalized() const { return Vector<T, N>(*this) / length(); }
   template<typename U>
-  T dot(const Vector<U, N> &other)
+  T dot(const Vector<U, N> &other) const
   {
     T total = 0;
     for(int i = 0; i < N; i++) { total += data[i] * other.data[i]; }
@@ -571,6 +567,9 @@ inline T length(const Vector<T, N> &v) { return v.length(); }
 template<typename T, int N>
 inline T dot(const Vector<T, N> &v1, const Vector<T, N> &v2) { return v1.dot(v2); }
 
+template<typename T, int N> inline T isnan(const Vector<T, N> &v) { for(const auto &d : v.data) { if(std::isnan(d)) return true; } return false; }
+template<typename T, int N> inline T isinf(const Vector<T, N> &v) { for(const auto &d : v.data) { if(std::isinf(d)) return true; } return false; }
+
 // abs
 template<typename T, int N> inline Vector<T, N> abs(const Vector<T, N> &v)
 { Vector<T, N> av; for(int i = 0; i < N; i++) { av.data[i] = std::abs(v.data[i]); } return av; }
@@ -617,15 +616,15 @@ inline Vector<T, 3> rotate(const Vector<T, 3> &v, const Vector<T, 3> &ax, T thet
 }
 
 
- inline int2    to_cuda(const Vec2i &v) { return int2   {v.x, v.y}; }
- inline int3    to_cuda(const Vec3i &v) { return int3   {v.x, v.y, v.z}; }
- inline int4    to_cuda(const Vec4i &v) { return int4   {v.x, v.y, v.z, v.w}; }
- inline float2  to_cuda(const Vec2f &v) { return float2 {v.x, v.y}; }
- inline float3  to_cuda(const Vec3f &v) { return float3 {v.x, v.y, v.z}; }
- inline float4  to_cuda(const Vec4f &v) { return float4 {v.x, v.y, v.z, v.w}; }
- inline double2 to_cuda(const Vec2d &v) { return double2{v.x, v.y}; }
- inline double3 to_cuda(const Vec3d &v) { return double3{v.x, v.y, v.z}; }
- inline double4 to_cuda(const Vec4d &v) { return double4{v.x, v.y, v.z, v.w}; }
+inline int2    to_cuda(const Vec2i &v) { return int2   {v.x, v.y}; }
+inline int3    to_cuda(const Vec3i &v) { return int3   {v.x, v.y, v.z}; }
+inline int4    to_cuda(const Vec4i &v) { return int4   {v.x, v.y, v.z, v.w}; }
+inline float2  to_cuda(const Vec2f &v) { return float2 {v.x, v.y}; }
+inline float3  to_cuda(const Vec3f &v) { return float3 {v.x, v.y, v.z}; }
+inline float4  to_cuda(const Vec4f &v) { return float4 {v.x, v.y, v.z, v.w}; }
+inline double2 to_cuda(const Vec2d &v) { return double2{v.x, v.y}; }
+inline double3 to_cuda(const Vec3d &v) { return double3{v.x, v.y, v.z}; }
+inline double4 to_cuda(const Vec4d &v) { return double4{v.x, v.y, v.z, v.w}; }
 
 template<typename T, int N>  T*       arr(      Vector<T, N> &v) { return v.data.data(); }
 template<typename T, int N>  const T* arr(const Vector<T, N> &v) { return v.data.data(); }

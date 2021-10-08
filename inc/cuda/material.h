@@ -4,7 +4,12 @@
 #include <cuda.h>
 #include <iostream>
 
+#ifndef __NVCC__
+
+#endif // __NVCC__
+
 // #include "units.hpp"
+
 
 // ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω
 

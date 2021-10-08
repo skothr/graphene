@@ -9,9 +9,6 @@
 #include "units.hpp"
 #include "draw.cuh"
 
-// forward declarations
-typedef void* ImTextureID;
-
 //// FIELD PARAMS ////
 template<typename T>
 struct FieldParams
@@ -21,7 +18,7 @@ struct FieldParams
   T t = 0.0f; // current simulation time
   
   VT3  fp;                     // field position
-  int3 fs = int3{256, 256, 8}; // number of cells in charge field  
+  int3 fs = int3{256, 256, 8}; // number of cells in charge field
 
   T    decay   = 0.10f;    // source decay
   bool reflect = false;    // reflective boundaries
@@ -119,12 +116,12 @@ void Field<T>::destroy()
 {
   if(allocated())
     {
-      std::cout << "Destroying Field...\n";
+      std::cout << "Destroying Field (" << size << ")... ";
       if(dData) { cudaFree(dData); dData = nullptr; }
       if(hData) { free(hData);     hData = nullptr; }
       size = int3{0, 0, 0}; numCells = 0; dataSize = 0;
       getLastCudaError("Field::destroy()");
-      std::cout << "  (DONE)\n";
+      std::cout << "DONE\n";
     }
 }
 template<typename T>
@@ -155,10 +152,8 @@ void Field<T>::copyTo(Field<T> &other) const
 }
 
 
-
-
-
-template<typename T> class CudaExpression; // forward declaration
+// forward declarations
+template<typename T> class CudaExpression;
 
 // in field.cu
 template<typename T> void fillFieldMaterial(Field<Material<T>> &dst, CudaExpression<T> *dExprEp, CudaExpression<T> *dExprMu, CudaExpression<T> *dExprSig);

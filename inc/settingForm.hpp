@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <string>
-#include <nlohmann/json_fwd.hpp> // json forward declarations
+#include <nlohmann/json.hpp> // json forward declarations
 using json = nlohmann::json;
 #include "vector.hpp"
 

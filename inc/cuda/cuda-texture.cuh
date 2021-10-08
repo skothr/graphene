@@ -55,36 +55,13 @@ inline void CudaTexture::copyTo(CudaTexture &other)
 
 inline bool CudaTexture::create(int3 sz)
 {
-  sz.z = 1; // 2D only
+  sz.z = 1; // 2D(x,y) only
   if(Field<float4>::create(sz))
     {
       initGL(sz);
+      getLastCudaError(("CudaTexture::create(<"+std::to_string(sz.x)+", "+std::to_string(sz.y)+", "+std::to_string(sz.z)+">)").c_str());
       return true;
     }
-  // initCudaDevice();
-  // if(gCudaInitialized && min(sz) > 0)
-  //   {
-  //     sz.z = 1; // 2D only
-  //     if(sz == this->size) { std::cout << "Texture already allocated (" << size << ")\n"; return true; }
-  //     else { destroy(); }
-  //     unsigned long nCells = (unsigned long)sz.x*(unsigned long)sz.y;
-  //     unsigned long tSize  = (unsigned long)sizeof(float4);
-  //     unsigned long dSize  = tSize*nCells;
-  //     if(nCells <= 0) { std::cout << "====> ERROR: Could not create CudaTexture with size " << sz << "\n"; return false; }
-  //     else            { std::cout << "Creating Cuda Texture ("  << sz << ")... --> data: " << nCells << "*" << tSize << " ==> " << dSize << "\n"; }
-
-  //     // init device data
-  //     int err = cudaMalloc((void**)&dData, (unsigned long)dSize);
-  //     if(err) { std::cout << "====> ERROR: Failed to allocated memory for field!\n"; return false; }
-  //     err = cudaMemset(dData, 0, dSize);
-  //     if(err) { std::cout << "====> ERROR: Failed to initialize memory for field!\n"; cudaFree(dData); dData = nullptr; return false; }
-      
-  //     initGL(sz);
-      
-  //     getLastCudaError("CudaTexture::create(sz)");
-  //     size = sz; numCells = nCells; typeSize = tSize; dataSize = dSize;
-  //     return true;
-  //   }
   if(!gCudaInitialized) { std::cout << "====> WARNING(CudaTexture::create()): CUDA device not initialized!\n"; }
   if(min(sz) <= 0)      { std::cout << "====> WARNING(CudaTexture::create()): zero size! " << size << "\n"; }
   if(!mPboResource)     { std::cout << "====> WARNING(CudaTexture::create()): PBO resource not initialized!\n"; }
@@ -125,14 +102,14 @@ inline void CudaTexture::destroy()
 {
   if(allocated())
     {
-      std::cout << "Destroying Cuda Texture...\n";
+      std::cout << "Destroying Cuda Texture... ";
       glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
       if(hData)        { free(hData); hData = nullptr; }
       if(mPboResource) { cudaGraphicsUnregisterResource(mPboResource); mPboResource = nullptr; }
       if(glPbo > 0)    { glDeleteBuffers(1,  &glPbo); glPbo = 0; }
       if(glTex > 0)    { glDeleteTextures(1, &glTex); glTex = 0; }
       getLastCudaError("CudaTexture::destroy()");
-      std::cout << "  (DONE)\n";
+      std::cout << "DONE\n";
     }
   size = int3{0, 0, 0};  numCells = 0;  dataSize = 0;
 }

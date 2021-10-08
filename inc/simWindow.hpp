@@ -18,6 +18,7 @@
 #include "field.hpp"
 #include "fluid.cuh"
 #include "units.hpp"
+#include "camera.hpp"
 #include "physics.h"
 #include "raytrace.h"
 #include "render.cuh"
@@ -56,6 +57,8 @@
 #define SETTINGS_INPUT_COL_W 300.0
 #define SETTINGS_TOTAL_W (SETTINGS_LABEL_COL_W + SETTINGS_INPUT_COL_W + 10)
 
+#define KEYFRAME_WIDGET_H 222.0f
+
 #define SIM_VIEW_RESET_INTERNAL_PADDING 0.1f // ratio of field size in sim space view
 
 // colors
@@ -74,6 +77,7 @@ struct ImFont;
 struct ImFontConfig;
 struct ImDrawList;
 class  KeyManager;
+class  KeyFrameWidget;
 class  SettingForm;
 class  TabMenu;
 template<typename T> class DrawInterface;
@@ -154,18 +158,24 @@ private:
   bool mForcePause    = false; // pause all physics and prevent any user input (for open popup focus)
   bool mNewFrameVec   = false; // new updated sim frame (recalculate vector field)
   bool mNewFrameOut   = false; // new rendered frame available for output
+
+  CLOCK_T::time_point tLastUpdate;      // time last frame was updated
+  double              mFpsUpdate = 0.0; // physics update framerate
+  double              dtAcc      = 0.0; // accumulates time until next update (if limiting FPS)
   
   // simulation
-  SimParams  mParams;
-  SimInfo    mInfo;
-  Units<CFT> mUnits;
+  SimParams        mParams;
+  FluidParams<CFT> cpCopy;
+  SimInfo          mInfo;
+  Units<CFT>       mUnits;
 
   CFT mSingleStepMult = 0.0; // used to single step with up/down arrow keys while paused
   
   CudaTexture  mEMTex;
   CudaTexture  mMatTex;
   CudaTexture  m3DTex;
-  CudaVBO      mVecBuffer;
+  CudaVBO      mVBuffer2D; // TODO: load vector VBO via CUDA
+  CudaVBO      mVBuffer3D;
   std::deque<FieldBase*> mStates;   // N-buffered states (e.g. for Runge-Kutta integration (TODO?))
   
   Field<float3> *mInputV  = nullptr; // accumulate signals added by the user
@@ -185,11 +195,15 @@ private:
   DisplayInterface<CFT> *mDisplayUI = nullptr; // settings for rendering/displaying simulation
   SettingForm           *mFileOutUI = nullptr; // settings for outputting simulation frames to image files
   SettingForm           *mOtherUI   = nullptr; // other settings (misc)
-  TabMenu *mTabs = nullptr;
+  TabMenu *mSideTabs   = nullptr;
+  TabMenu *mBottomTabs = nullptr;
   
   ImDrawList *mFieldDrawList = nullptr;
   KeyManager *mKeyManager    = nullptr;
-
+  bool mCaptured = false;
+  
+  KeyFrameWidget *mKeyFrameUI = nullptr;
+  
   Camera<CFT> mCamera;
   Rect2f mSimView2D; // view in sim space
   ScreenView<CFT> mEMView;
@@ -214,16 +228,22 @@ private:
   void drawRect2D   (ScreenView<CFT> &view, const Vec2f &p0, const Vec2f &p1, const Vec4f &color);
   void drawEllipse2D(ScreenView<CFT> &view, const Vec2f &center, const Vec2f &radius, const Vec4f &color);
   
-  void resetViews();
   void cudaRender(FluidParams<CFT> &cp);
   
-  void handleInput2D(ScreenView<CFT> &view);
-  void handleInput3D(ScreenView<CFT> &view);
+  void handleInput2D(ScreenView<CFT> &view, const std::string &id="");
+  void handleInput3D(ScreenView<CFT> &view, const std::string &id="");
   void drawVectorField2D(ScreenView<CFT> &view);
+  void makeVectorField3D();
   
   void draw2DOverlay(ScreenView<CFT> &view);
   void draw3DOverlay(ScreenView<CFT> &view);
-      
+
+  bool mNeedResetViews     = false;
+  bool mNeedResetSignals   = false;
+  bool mNeedResetMaterials = false;
+  bool mNeedResetFluid     = false;
+  bool mNeedResetSim       = false;
+  
   double calcFps();
 
   void loadSettings(const std::string &path=SETTINGS_SAVE_FILE);
@@ -275,16 +295,28 @@ public:
   void quit()          { mClosing = true; }
   bool closing() const { return mClosing; }
 
+  bool isCaptured() const { return mCaptured; }
+  bool verbose() const    { return mParams.verbose; }
+
   bool resizeFields(const Vec3i &sz);
 
-  void resetSignals();
-  void resetMaterials();
-  void resetFluid();
-  void resetSim();
+  void resetViews(bool cudaThread=true); // NOTE: cudaThread --> if true, assumes this is the main thread, otherwise just sets flag
+  void resetSignals(bool cudaThread=true);
+  void resetMaterials(bool cudaThread=true);
+  void resetFluid(bool cudaThread=true);
+  void resetSim(bool cudaThread=true);
+  
   void togglePause();
+  void toggleDebug();
+  void toggleVerbose();
+  void toggleKeyBindings();
+  void singleStepField(CFT mult);
+  void toggleImGuiDemo();
+  void toggleFontDemo();
 
-  bool preNewFrame(); // call in main loop before ImGui::NewFrame()
+  bool preFrame(); // call in main loop before ImGui::NewFrame()
   void draw(const Vec2f &frameSize=Vec2f(0,0));
+  void postRender();
   void update();
 
   bool fileRendering() const { return mFileRendering; }

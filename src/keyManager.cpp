@@ -1,8 +1,14 @@
-#include "keyManager.hpp"
+ #include "keyManager.hpp"
 
 #include <bitset>
+#include <functional>
+
+#ifdef __linux__
+#include <unistd.h>
+#endif // __linux__
 
 #include <imgui.h>
+
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
@@ -50,6 +56,15 @@ KeyManager::KeyManager(SimWindow *parent, const std::vector<KeyBinding> &binding
       miscGroup.ids.push_back(miscIds[i]);
     }
   if(miscGroup.bindings.size() > 0) { mKeyBindingGroups.push_back(miscGroup); }
+
+  mUpdating = true;
+  mUpdateThread = std::thread(std::bind(&KeyManager::updateLoop, this));
+}
+
+KeyManager::~KeyManager()
+{
+  mUpdating = false;
+  mUpdateThread.join();
 }
 
 
@@ -66,7 +81,7 @@ bool KeyManager::fromJSON(const json &js)
     {
       if(js.contains(k.name))
         {
-          k.fromString(js[k.name]);
+          k.fromString(js[k.name].get<std::string>());
           // if(k.name == "Cancel") { mCancelKey = k.sequence.back().key; }
         }
       else
@@ -92,6 +107,7 @@ void KeyManager::keyPress(int mods, int key, int action)
 
       if(anyPress)     // key pressed -- add to sequence
         {
+          std::lock_guard<std::mutex> lock(mUpdateLock);
           if(repeat && mKeySequence.size() > 0) // don't keep growing list of repeats
             { mKeySequence.back() = KeyPress(mods, key, repeat); }
           else
@@ -99,6 +115,7 @@ void KeyManager::keyPress(int mods, int key, int action)
         }
       else if(release) // key released --> clear sequence
         {
+          std::lock_guard<std::mutex> lock(mUpdateLock);
           for(int i = 0; i < mKeySequence.size(); i++)
             {
               const KeyPress &k = mKeySequence[i];
@@ -112,11 +129,25 @@ void KeyManager::keyPress(int mods, int key, int action)
     }
 }
 
+void KeyManager::updateLoop()
+{
+  while(mUpdating)
+    {
+      update(mParent->isCaptured(), mParent->verbose());
+
+#ifdef __linux__
+      usleep(1000);
+#endif // __linux__
+    }
+}
+
 void KeyManager::update(bool captured, bool verbose)
 {
   if(mBindingEdit)
     { // user setting new key binding
+      mUpdateLock.lock();
       mBindingEdit->sequence = mKeySequence;
+      mUpdateLock.unlock();
       if((mBindingEdit->sequence.size() > 0 && mBindingEdit->sequence.back().key != GLFW_KEY_UNKNOWN))
         {
           if(!(mBindingEdit->sequence.back().key == GLFW_KEY_ESCAPE &&
@@ -135,13 +166,16 @@ void KeyManager::update(bool captured, bool verbose)
             }
           else
             { mBindingEdit->sequence = mOldBinding.sequence; }
+          
           // sequence complete -- reset
+          std::lock_guard<std::mutex> lock(mUpdateLock);
           mKeySequence.clear();
           mBindingEdit = nullptr;
         }
     }
   else
     {
+      std::lock_guard<std::mutex> lock(mUpdateLock);
       if(mKeySequence.size() > 0) // && mKeySequence.back().key != GLFW_KEY_UNKNOWN)
         {
           if(mPopupOpen && mKeyPopupBinding)
@@ -241,7 +275,11 @@ void KeyManager::draw(const Vec2f &frameSize)
 
       // cancel if clicked outside of window
       if(!mBindingEdit && (!hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
-        { mPopupOpen = false; mKeySequence.clear(); }
+        {
+          mPopupOpen = false; 
+          std::lock_guard<std::mutex> lock(mUpdateLock);
+          mKeySequence.clear();
+        }
       
       ImGui::EndPopup();
     }

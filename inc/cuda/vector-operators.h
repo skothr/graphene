@@ -192,6 +192,27 @@ __host__ inline std::istream& operator>>(std::istream &is, double4 &v)
 { char c; is.get(c); if(c=='<') { is >> v.x; is.ignore(1,','); is >> v.y; is.ignore(1,','); is >> v.z; is.ignore(1,','); is >> v.w;
     is.ignore('>'); } else { v = double4{0.0,0.0,0.0,0.0}; }    return is; }
 
+__host__ inline std::string to_string(const int2    &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const int3    &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const int4    &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const float2  &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const float3  &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const float4  &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const double2 &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const double3 &v) { std::stringstream ss; ss << v; return ss.str(); }
+__host__ inline std::string to_string(const double4 &v) { std::stringstream ss; ss << v; return ss.str(); }
+
+// template<typename T>
+// __host__ inline T from_string(const std::string &str) { T v; std::stringstream ss(str); ss >> v; return v; }
+// __host__ inline std::string from_string(const int3    &v) { std::stringstream ss; ss << v; return ss.str(); }
+// __host__ inline std::string from_string(const int4    &v) { std::stringstream ss; ss << v; return ss.str(); }
+// __host__ inline std::string from_string(const float2  &v) { std::stringstream ss; ss << v; return ss.str(); }
+// __host__ inline std::string from_string(const float3  &v) { std::stringstream ss; ss << v; return ss.str(); }
+// __host__ inline std::string from_string(const float4  &v) { std::stringstream ss; ss << v; return ss.str(); }
+// __host__ inline std::string from_string(const double2 &v) { std::stringstream ss; ss << v; return ss.str(); }
+// __host__ inline std::string from_string(const double3 &v) { std::stringstream ss; ss << v; return ss.str(); }
+// __host__ inline std::string from_string(const double4 &v) { std::stringstream ss; ss << v; return ss.str(); }
+
 // NEGATION
 __host__ __device__  inline int2    operator-(const int2    &u) { return int2   {-u.x, -u.y}; }
 __host__ __device__  inline int3    operator-(const int3    &u) { return int3   {-u.x, -u.y, -u.z}; }
