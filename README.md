@@ -53,7 +53,7 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 &nbsp;
 &nbsp;
 
-| <a href="https://drive.google.com/uc?export=view&id=1wgZSPbGA96rzVjen5N08tknNm0ihUT6E"> <img src="https://drive.google.com/uc?export=view&id=1wgZSPbGA96rzVjen5N08tknNm0ihUT6E" style="width: 720px; max-width: 120%; height: auto" title="try: sin(len(r)^2/222)" /> </a> |
+| <a href="https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-test1.png"> <img src="https://raw.githubusercontent.com/skothr/graphene/main/images/maxwells-equations-test1.png" style="width: 720px; max-width: 120%; height: auto" title="images/maxwells-equations-test1.png" /> </a> |
 |:--:|
 | *Parametric initial conditions* |
 
