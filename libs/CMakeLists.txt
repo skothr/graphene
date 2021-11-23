@@ -41,9 +41,3 @@ set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(glfw)
 
-#### GLEW
-set(GLEW_STATIC     OFF CACHE BOOL "" FORCE)
-add_subdirectory(glew/build/cmake)
-# target_compile_definitions(glew PRIVATE GLEW_STATIC)
-
-# link_directories(/res)
