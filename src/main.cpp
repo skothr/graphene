@@ -40,7 +40,7 @@ void cleanup()
 {
   if(initialized)
     {
-      std::cout << "Cleaning...\n";
+      std::cout << "Cleanup (main.cpp)...\n";
       if(simWindow) { delete simWindow; simWindow = nullptr; }
     
       // imgui cleanup
@@ -49,12 +49,10 @@ void cleanup()
       ImGui::DestroyContext(mainContext);
       ImGui::DestroyContext(offlineContext);
 
-      if(window)
-        {
-          glfwDestroyWindow(window);
-          glfwTerminate();
-        }
+      if(window)  { glfwDestroyWindow(window); glfwTerminate(); }
       if(appIcon) { delete appIcon; }
+      
+      std::cout << "(done)\n";
       initialized = false;
     }
 }
@@ -90,12 +88,12 @@ void signal_callback(int signum)
           simWindow->quit();
           g_sigintTrying = true;
           g_sigintTries++;
-          std::cout << " ==> (attempt " << g_sigintTries << " / " << MAX_SIGINT_TRIES << ")  ";
-          if(g_sigintTries >= MAX_SIGINT_TRIES) { std::cout << " ==> () --> FORCE QUIT\n"; exit(1); }
+          std::cout << " ======> (attempt " << g_sigintTries << " / " << MAX_SIGINT_TRIES << ")  ";
+          if(g_sigintTries >= MAX_SIGINT_TRIES) { std::cout << " ======> () --> FORCE QUIT\n"; exit(1); }
           else                                  { std::cout << "\n"; }
         }
       else
-        { std::cout << "ERROR: simWindow is null!\n"; exit(signum); }
+        { std::cout << "======> ERROR(main.cpp:signal_callback): simWindow is null!\n"; exit(signum); }
       break;
     case SIGSEGV: break;
     case SIGTERM: break;
@@ -108,7 +106,7 @@ void glfw_error_callback(int error, const char* description)
 
 int main(int argc, char* argv[])
 {
-  std::cout << "\n" << "graphene Version: v" << GRPH_VERSION_MAJOR << "." << GRPH_VERSION_MINOR << "\n\n";
+  std::cout << "\n" << "graphene v" << GRPH_VERSION_MAJOR << "." << GRPH_VERSION_MINOR << "\n";
   signal(SIGINT, signal_callback);
   
   // set up window
@@ -129,9 +127,8 @@ int main(int argc, char* argv[])
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GL_MAJOR);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GL_MINOR);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-  //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
-
 
 #if START_MAXIMIZED // start window maximized
   glfwWindowHint(GLFW_MAXIMIZED, GL_TRUE);
@@ -146,7 +143,6 @@ int main(int argc, char* argv[])
   // get screen size
   GLFWmonitor       *monitor = glfwGetPrimaryMonitor();
   const GLFWvidmode *mode    = glfwGetVideoMode(monitor);
-  std::cout << "Screen Size: " << mode->width <<  "x" << mode->height << "\n\n";
   
 #if !START_MAXIMIZED // center window on screen
   glfwSetWindowPos(window, (mode->width - WINDOW_W)/2, (mode->height - WINDOW_H)/2);
@@ -159,41 +155,37 @@ int main(int argc, char* argv[])
   // initialize gl context  
   glfwMakeContextCurrent(window);
   glfwSwapInterval(0); // Enable vsync
-  if(glewInit() != GLEW_OK) { std::cout << "Failed to initialize OpenGL loader!\n"; return 1; }
+  if(glewInit() != GLEW_OK) { std::cout << "====> ERROR(main.cpp): Failed to initialize OpenGL loader!\n"; return 1; }
 
   // create astro window before imgui setup to preserve GLFW callbacks
   simWindow = new SimWindow(window);
   
-  // set up imgui context
+  //// set up imgui context
   IMGUI_CHECKVERSION();
-
-  
-  //////// set up offline context (offline context for rendering to separate framebuffer and saving to image files)
+  // set up offline context (offline context for rendering to separate framebuffer and saving to image files)
   offlineContext = ImGui::CreateContext();
   ImGui::SetCurrentContext(offlineContext);
-  
-  ImGui::StyleColorsDark(); // dark style
+  ImGui::StyleColorsDark();      // dark style
   // imgui context config
   ImGuiIO *io = &ImGui::GetIO();
-  io->IniFilename = nullptr;                                     // disable .ini file
-  
+  io->IniFilename = nullptr;     // disable .ini file
   // start offline context backend
   ImGui_ImplOpenGL3_Init(glsl_version);
   /////////////////////////////////////////////
-
   
-  //////// set up main context (main ImGui context  for live window/interaction)
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //// set up main context (main ImGui context  for live window/interaction)
+  //////////////////////////////////////////////////////////////////////////////////////////
   mainContext = ImGui::CreateContext();
   ImGui::SetCurrentContext(mainContext);
   
   ImGui::StyleColorsDark(); // dark style
   ImGui::PushStyleColor(ImGuiCol_NavHighlight, Vec4f(0,0,0,0)); // no keyboard nav highlighting
-  ImGui::GetStyle().TouchExtraPadding = Vec2f(1.5f,1.5f);             // padding for interaction
+  ImGui::GetStyle().TouchExtraPadding = Vec2f(1.5f,1.5f);       // padding for interaction
   // imgui context config
-  io = &ImGui::GetIO();
-  io->IniFilename = nullptr;                              // disable .ini file
+  io = &ImGui::GetIO(); io->IniFilename = nullptr;        // disable .ini file
 #if ENABLE_IMGUI_VIEWPORTS
-  io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+  io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;    // enable viewports (?)
   io->ConfigViewportsNoTaskBarIcon = true;
 #endif // ENABLE_IMGUI_VIEWPORTS
 #if ENABLE_IMGUI_DOCKING
@@ -201,13 +193,17 @@ int main(int argc, char* argv[])
   io->ConfigDockingWithShift = true;                      // docking when shift is held
 #endif // ENABLE_IMGUI_DOCKING
   
+  /////////////////////////////////////////////
   // start main context backend
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init(glsl_version);
   /////////////////////////////////////////////
-  
-  simWindow->init();
-  initialized = true;
+  const GLubyte *glv = glGetString(GL_VERSION);
+  std::cout << "Using OpenGL version:   " << glv << "\n";
+
+  // initialize simulation
+  std::cout << "\n";
+  simWindow->init(); initialized = true;
   
   // main loop
   Vec2i frameSize(WINDOW_W, WINDOW_H); // size of current frame
@@ -216,7 +212,7 @@ int main(int argc, char* argv[])
       // handle window events
       glfwPollEvents();
       if(simWindow->closing()) { glfwSetWindowShouldClose(window, GLFW_TRUE); }
-
+      
       // re-upload font texture to gpu if fonts have changed
       if(simWindow->preFrame())
         { std::cout << "====> UPDATING FONT ATLAS...\n"; ImGui_ImplOpenGL3_DestroyDeviceObjects(); }
@@ -229,6 +225,8 @@ int main(int argc, char* argv[])
       {
         glfwGetFramebufferSize(window, &frameSize.x, &frameSize.y); // get frame size
         simWindow->draw(frameSize); // draw UI
+        simWindow->update(); // step simulation
+
       }
       ImGui::EndFrame();
 
@@ -259,13 +257,11 @@ int main(int argc, char* argv[])
           simWindow->renderToFile();
           ImGui::SetCurrentContext(mainContext);
         }
-      // step simulation
-      simWindow->update();
       glfwSwapBuffers(window);
     }
-
+  std::cout << "\n\n\n";
+  
   cleanup();
-  std::cout << "Done\n";  
   return 0;
 }
 

@@ -9,7 +9,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-#include "glMatrix.hpp"
+#include "matrix.hpp"
 
 class GlShader
 {

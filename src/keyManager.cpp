@@ -2,13 +2,9 @@
 
 #include <bitset>
 #include <functional>
-
-#ifdef __linux__
-#include <unistd.h>
-#endif // __linux__
+#include <chrono>
 
 #include <imgui.h>
-
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
@@ -43,7 +39,6 @@ KeyManager::KeyManager(SimWindow *parent, const std::vector<KeyBinding> &binding
         }
       if(!found)
         { // add to misc group
-          std::cout << "====> NOTE: Node type " << mKeyBindings[i].name << " was not found in defined Keybindings (adding to Misc group)\n";
           miscNames.push_back(mKeyBindings[i].name);
           miscIds.push_back(i);
         }
@@ -79,13 +74,8 @@ bool KeyManager::fromJSON(const json &js)
 {
   for(auto &k : mKeyBindings)
     {
-      if(js.contains(k.name))
-        {
-          k.fromString(js[k.name].get<std::string>());
-          // if(k.name == "Cancel") { mCancelKey = k.sequence.back().key; }
-        }
-      else
-        { std::cout << "====> WARNING: Settings file missing key binding '" << k.toString() << "' (skipping)\n"; }
+      if(js.contains(k.name)) { k.fromString(js[k.name].get<std::string>()); }
+      else { std::cout << "====> WARNING: Settings file missing key binding '" << k.toString() << "' (skipping)\n"; }
     }
   return true;
 }
@@ -108,10 +98,11 @@ void KeyManager::keyPress(int mods, int key, int action)
       if(anyPress)     // key pressed -- add to sequence
         {
           std::lock_guard<std::mutex> lock(mUpdateLock);
-          if(repeat && mKeySequence.size() > 0) // don't keep growing list of repeats
+          if(repeat && mKeySequence.size() > 0) // replace last to avoid repeated repeats
             { mKeySequence.back() = KeyPress(mods, key, repeat); }
           else
             { mKeySequence.emplace_back(mods, key, repeat); }
+          mTriggered.push(mKeySequence);
         }
       else if(release) // key released --> clear sequence
         {
@@ -133,11 +124,8 @@ void KeyManager::updateLoop()
 {
   while(mUpdating)
     {
-      update(mParent->isCaptured(), mParent->verbose());
-
-#ifdef __linux__
-      usleep(1000);
-#endif // __linux__
+      update(mParent->isCaptured(), (mParent->verbose() || mParent->debug()));
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
 
@@ -158,7 +146,7 @@ void KeyManager::update(bool captured, bool verbose)
                 {
                   if(&s != mBindingEdit && s == *mBindingEdit)
                     {
-                      std::cout << "Key binding is already in use! (" << s.name << ")\n";
+                      std::cout << "====> ERROR: Key binding(" << s.name << " / " << s.toString() << ") is already in use\n";
                       mBindingEdit->sequence = mOldBinding.sequence;
                       break;
                     }
@@ -176,33 +164,37 @@ void KeyManager::update(bool captured, bool verbose)
   else
     {
       std::lock_guard<std::mutex> lock(mUpdateLock);
-      if(mKeySequence.size() > 0) // && mKeySequence.back().key != GLFW_KEY_UNKNOWN)
+      while(!mTriggered.empty())
         {
-          if(mPopupOpen && mKeyPopupBinding)
-            { // popup open -- just handle popup binding (to close)
-              if(mKeyPopupBinding->check(mKeySequence, verbose)) { mKeySequence.clear(); }
-              mKeyPopupBinding->update(mKeySequence, verbose);
-              // close popup on escape
-              if(mKeySequence.size() > 0 && mKeySequence.back().key == GLFW_KEY_ESCAPE)
-                { mPopupOpen = false; mKeySequence.clear(); }
-            }
-          else
-            { // handle all bindings
-              for(auto &k : mKeyBindings)
-                {
-                  if(((k.flags & KEYBINDING_GLOBAL) || !captured) && k.check(mKeySequence, verbose))
+          std::vector<KeyPress> seq = mTriggered.front(); mTriggered.pop();
+          if(seq.size() > 0)
+            {
+              if(mPopupOpen && mKeyPopupBinding)
+                { // popup open -- just handle popup binding (to close)
+                  if(mKeyPopupBinding->check(seq, verbose))
+                    { mKeyPopupBinding->update(seq, verbose); }
+                  // close popup on escape
+                  if(seq.size() > 0 && seq.back().key == GLFW_KEY_ESCAPE)
+                    { mPopupOpen = false; }
+                }
+              else
+                { // handle all bindings
+                  for(auto &k : mKeyBindings)
                     {
-                      k.update(mKeySequence, verbose);
-                      if(k.flags & KEYBINDING_REPEAT) { mKeySequence.pop_back(); }
-                      else                            { mKeySequence.clear();    }
-                      break;
+                      if(((k.flags & KEYBINDING_GLOBAL) || !captured) && k.check(seq, verbose))
+                        {
+                          k.update(seq, verbose);
+                          // if(k.flags & KEYBINDING_REPEAT) { seq.pop_back(); }
+                          // else                            { seq.clear();    }
+                          break;
+                        }
                     }
                 }
-              // for(auto &k : mKeyBindings) { k.update(mKeySequence, verbose); }
             }
         }
     }
 }
+
 
 void KeyManager::togglePopup()
 {
@@ -215,8 +207,8 @@ void KeyManager::draw(const Vec2f &frameSize)
 
   Vec2f       padding = KEY_POPUP_PADDING;
   std::string pName   = "Key Bindings";
-  Vec2f wPos;     // popup window position
-  Vec2f wSize;    // popup window size
+  Vec2f wPos;  // popup window position
+  Vec2f wSize; // popup window size
   
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, padding);
   ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, Vec4f(0.1, 0.1, 0.1, 0.6));

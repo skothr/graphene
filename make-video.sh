@@ -40,6 +40,9 @@ echo " ====> ${IMAGE_DIR}/${PREFIX}/${PREFIX}-%05d.png"
 echo ""
 
 F_PREFIX="${IMAGE_DIR}/${PREFIX}/${PREFIX}"
+RESOLUTION=`identify -format '%wx%h' ${F_PREFIX}-$(printf %05d 0)${EXTENSION}` # size of frame 0
+echo " Frame 0 Size: ${RESOLUTION}"
+
 
 # convert hdr files to png (TODO: ffmpeg HDR support?)
 if [[ "${EXTENSION}" == *".hdr" ]]; then
@@ -47,7 +50,7 @@ if [[ "${EXTENSION}" == *".hdr" ]]; then
     echo ""
 
     # get last file in sequence
-    i=0000
+    i=`printf %05d 0`
     while true; do
         if test -f "${F_PREFIX}-${i}${EXTENSION}"; then
             i=$((10#$i+1))
@@ -86,13 +89,12 @@ if [[ "${EXTENSION}" == *".hdr" ]]; then
     EXTENSION=".png"
 fi
 
-
 CODEC="libx265"
 
 # lossy
-#CMD="ffmpeg -i ${F_PREFIX}-%05d${EXTENSION}.png -c:v libx264 -vf fps=${FPS} -pix_fmt yuv420p ${IMAGE_DIR}/${OUTPUT}"
+#CMD="ffmpeg -i ${F_PREFIX}-%05d${EXTENSION}.png -c:v libx264 -vf fps=${FPS} -pix_fmt yuv420p -s 1920x1080 ${IMAGE_DIR}/${OUTPUT}"
 # lossless
-CMD="ffmpeg -i ${F_PREFIX}-%05d${EXTENSION} -c:v $CODEC -vf fps=$FPS -s 1920x1080 -pix_fmt yuv420p10le -preset veryslow $IMAGE_DIR/$OUTPUT"
+CMD="ffmpeg -i ${F_PREFIX}-%05d${EXTENSION} -c:v $CODEC -vf fps=$FPS -s ${RESOLUTION} -pix_fmt yuv420p10le -preset veryslow $IMAGE_DIR/$OUTPUT"
 
 echo ""
 echo "Making video..."

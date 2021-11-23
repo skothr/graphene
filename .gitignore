@@ -1,13 +1,12 @@
 graphene
 /build/
 inc/version/version.hpp
+gmon.out
 
 /.settings.conf
-/images0/
 /videos/
 /rendered/
+
+/images0/
 /res/icons/src/
 /res/icons/alt/
-
-/libs/glfw/
-/libs/glew-2.1.0/

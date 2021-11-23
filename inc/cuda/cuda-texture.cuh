@@ -4,14 +4,19 @@
 #include <GL/glew.h>
 #include <cuda.h>
 #include <cuda_gl_interop.h>
-
 #include "field.cuh"
 
+typedef void* ImTextureID;
 
 //// CUDA TEXTURE ////
 // --> contains texture data (special case of 2D field)
 struct CudaTexture : public Field<float4>
 {
+protected:
+  virtual void pullData(unsigned long i0, unsigned long i1) { }
+  
+public:
+  
   cudaGraphicsResource *mPboResource = nullptr;
   GLuint glTex  = 0;
   GLuint glPbo  = 0;
@@ -48,9 +53,9 @@ inline void CudaTexture::copyTo(CudaTexture &other)
         {
           Field<float4>::copyTo(other);
           unmap(); other.unmap();
-          getLastCudaError("CudaTexture::copyTo()\n"); }
+          getLastCudaError("CudaTexture::copyTo\n"); }
     }
-  else { std::cout << "====> WARNING(CudaTexture::copyTo()): Field not allocated!\n"; }
+  else { std::cout << "====> WARNING(CudaTexture::copyTo): Field not allocated!\n"; }
 }
 
 inline bool CudaTexture::create(int3 sz)
@@ -62,9 +67,9 @@ inline bool CudaTexture::create(int3 sz)
       getLastCudaError(("CudaTexture::create(<"+std::to_string(sz.x)+", "+std::to_string(sz.y)+", "+std::to_string(sz.z)+">)").c_str());
       return true;
     }
-  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaTexture::create()): CUDA device not initialized!\n"; }
-  if(min(sz) <= 0)      { std::cout << "====> WARNING(CudaTexture::create()): zero size! " << size << "\n"; }
-  if(!mPboResource)     { std::cout << "====> WARNING(CudaTexture::create()): PBO resource not initialized!\n"; }
+  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaTexture::create): CUDA device not initialized!\n"; }
+  if(min(sz) <= 0)      { std::cout << "====> WARNING(CudaTexture::create): zero size! " << size << "\n"; }
+  if(!mPboResource)     { std::cout << "====> WARNING(CudaTexture::create): PBO resource not initialized!\n"; }
   return false;
 }
 
@@ -91,7 +96,7 @@ inline void CudaTexture::initGL(int3 sz)
   // CUDA resource for interop
   cudaGraphicsGLRegisterBuffer(&mPboResource, glPbo, cudaGraphicsMapFlagsWriteDiscard);
   getLastCudaError("CudaTexture-->cudaGraphicsRegisterResource()\n");
-  if(!mPboResource) { std::cout << "====> ERROR(CudaTexture::initGL()): mPboResource NULL --> failed to register!\n"; }
+  if(!mPboResource) { std::cout << "====> ERROR(CudaTexture::initGL): mPboResource NULL --> failed to register!\n"; }
   
   glBindTexture(GL_TEXTURE_2D, 0);
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
@@ -102,14 +107,14 @@ inline void CudaTexture::destroy()
 {
   if(allocated())
     {
-      std::cout << "Destroying Cuda Texture... ";
+      std::cout << "==== Destroying Cuda Texture... ";
       glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
       if(hData)        { free(hData); hData = nullptr; }
       if(mPboResource) { cudaGraphicsUnregisterResource(mPboResource); mPboResource = nullptr; }
       if(glPbo > 0)    { glDeleteBuffers(1,  &glPbo); glPbo = 0; }
       if(glTex > 0)    { glDeleteTextures(1, &glTex); glTex = 0; }
       getLastCudaError("CudaTexture::destroy()");
-      std::cout << "DONE\n";
+      std::cout << " (done)\n";
     }
   size = int3{0, 0, 0};  numCells = 0;  dataSize = 0;
 }
@@ -125,9 +130,9 @@ inline void CudaTexture::bind()
       glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, size.x, size.y, GL_RGBA, GL_FLOAT, 0);
       bound = true;
     }
-  if(!gCudaInitialized)          { std::cout << "====> WARNING(CudaTexture::bind()): CUDA device not initialized!\n"; }
-  if(size.x == 0 || size.y == 0) { std::cout << "====> WARNING(CudaTexture::bind()): zero size! " << size << "\n";    }
-  if(!mPboResource)              { std::cout << "====> WARNING(CudaTexture::bind()): PBO resource not initialized!\n";   }
+  if(!gCudaInitialized)          { std::cout << "====> WARNING(CudaTexture::bind): CUDA device not initialized!\n"; }
+  if(size.x == 0 || size.y == 0) { std::cout << "====> WARNING(CudaTexture::bind): zero size! " << size << "\n";    }
+  if(!mPboResource)              { std::cout << "====> WARNING(CudaTexture::bind): PBO resource not initialized!\n";   }
 }
 
 inline void CudaTexture::release()
@@ -138,16 +143,16 @@ inline void CudaTexture::release()
       glBindTexture(GL_TEXTURE_2D, 0);
       bound = false;
     }
-  if(!gCudaInitialized)          { std::cout << "====> WARNING(CudaTexture::release()): CUDA device not initialized!\n";  }
-  if(size.x == 0 || size.y == 0) { std::cout << "====> WARNING(CudaTexture::release()): zero size! " << size << "\n";     }
-  if(!mPboResource)              { std::cout << "====> WARNING(CudaTexture::release()): PBO resource not initialized!\n"; }
+  if(!gCudaInitialized)          { std::cout << "====> WARNING(CudaTexture::release): CUDA device not initialized!\n";  }
+  if(size.x == 0 || size.y == 0) { std::cout << "====> WARNING(CudaTexture::release): zero size! " << size << "\n";     }
+  if(!mPboResource)              { std::cout << "====> WARNING(CudaTexture::release): PBO resource not initialized!\n"; }
 }
 
 inline float4* CudaTexture::map()
 {
   if(!mPboResource)
     {
-      std::cout << "====> WARNING(CudaTexture::map()): PBO resource not initialized!\n";
+      std::cout << "====> WARNING(CudaTexture::map): PBO resource not initialized!\n";
       return nullptr;
     }  
   if(allocated())
@@ -186,9 +191,9 @@ inline float4* CudaTexture::map()
       else { std::cout << "====> WARNING: CudaTexture::map() called on mapped texture!\n"; }      
       return dData;
     }
-  if(!gCudaInitialized)          { std::cout << "====> WARNING(CudaTexture::map()): CUDA device not initialized!\n";  }
-  if(size.x == 0 || size.y == 0) { std::cout << "====> WARNING(CudaTexture::map()): zero size! " << size << "\n";     }
-  if(!mPboResource)              { std::cout << "====> WARNING(CudaTexture::map()): PBO resource not initialized!\n"; }
+  if(!gCudaInitialized)          { std::cout << "====> WARNING(CudaTexture::map): CUDA device not initialized!\n";  }
+  if(size.x == 0 || size.y == 0) { std::cout << "====> WARNING(CudaTexture::map): zero size! " << size << "\n";     }
+  if(!mPboResource)              { std::cout << "====> WARNING(CudaTexture::map): PBO resource not initialized!\n"; }
   return nullptr;
 }
 
@@ -209,9 +214,9 @@ inline void CudaTexture::unmap()
         }
       else { std::cout << "====> WARNING: CudaTexture::unmap() called on unmapped texture!\n"; }
     }
-  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaTexture::unmap()): CUDA device not initialized!\n";  }
-  if(min(size) <= 0)    { std::cout << "====> WARNING(CudaTexture::unmap()): zero size! " << size << "\n";     }
-  if(!mPboResource)     { std::cout << "====> WARNING(CudaTexture::unmap()): PBO resource not initialized!\n"; }
+  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaTexture::unmap): CUDA device not initialized!\n";  }
+  if(min(size) <= 0)    { std::cout << "====> WARNING(CudaTexture::unmap): zero size! " << size << "\n";     }
+  if(!mPboResource)     { std::cout << "====> WARNING(CudaTexture::unmap): PBO resource not initialized!\n"; }
   dData = nullptr; mapped = false;
 }
 

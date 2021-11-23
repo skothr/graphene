@@ -155,8 +155,7 @@ __host__ inline std::ostream& operator<<(std::ostream &os, MathConstant c) { os 
 
 __host__ inline std::ostream& printVerbose(int level)
 {
-  for(int i = 0; i < level; i++)
-    { std::cout << "====| "; }
+  for(int i = 0; i < level; i++) { std::cout << "====| "; }
   return std::cout;
 }
 
@@ -305,7 +304,7 @@ public:
 
     if(badOp)
       {
-        std::cout << "====> WARNING: ExpNode::calculate() -->  Unknown operator: '"
+        std::cout << "====> WARNING(ExpNode::calculate): Unknown operator --> '"
                   << std::string(mOp, 1) << (((int)mOp <= 20) ? " ("+std::to_string((int)mOp)+")" : "") << "\n";
       }
     

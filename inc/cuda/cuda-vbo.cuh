@@ -49,7 +49,7 @@ struct CudaVBO
             unmap(); other.unmap();
             getLastCudaError("CudaVBO::copyTo()\n"); }
           }
-    else { std::cout << "====> WARNING(CudaVBO::copyTo()): Buffer not allocated!\n"; }
+    else { std::cout << "====> WARNING(CudaVBO::copyTo): Buffer not allocated!\n"; }
   }
   
   // GL interop
@@ -69,7 +69,8 @@ inline bool CudaVBO::create(unsigned long sz)
     {
       if(sz == this->size) { return true; } // already created
       else { destroy(); }                   // re-create
-      std::cout << "Creating Cuda VBO ("  << sz << "v)... --> data: " << sz << "(v) * " << sizeof(Vertex) << "(b/v) ==> " << sz*sizeof(Vertex) << "b\n";
+      
+      std::cout << "==== Creating Cuda VBO ("  << sz << "v)... --> data: " << sz << "(v) * " << sizeof(Vertex) << "(b/v) ==> " << sz*sizeof(Vertex) << "b... ";
 
       // init device data
       int err = cudaMalloc((void**)&dData, sz*sizeof(Vertex));
@@ -79,11 +80,12 @@ inline bool CudaVBO::create(unsigned long sz)
       // init VBO
       initGL(sz); getLastCudaError(("CudaVBO::create(<"+std::to_string(sz)+">)").c_str());
       size = sz;
+      std::cout << " (done)\n";
       return true;
     }
-  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaVBO::create()): CUDA device not initialized!\n"; }
-  if(sz == 0)           { std::cout << "====> WARNING(CudaVBO::create()): zero size! " << sz << "\n"; }
-  if(!glVbo)            { std::cout << "====> WARNING(CudaVBO::create()): VBO resource not initialized!\n"; }
+  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaVBO::create): CUDA device not initialized!\n"; }
+  if(sz == 0)           { std::cout << "====> WARNING(CudaVBO::create): zero size! " << sz << "\n"; }
+  if(!glVbo)            { std::cout << "====> WARNING(CudaVBO::create): VBO resource not initialized!\n"; }
   return false;
 }
 
@@ -115,13 +117,14 @@ inline void CudaVBO::destroy()
   if(allocated())
     {
       if(bound) { release(); } if(mapped) { unmap(); }
-      std::cout << "Destroying CudaVBO (" << size << ")...\n";
+      
+      std::cout << "==== Destroying CudaVBO (" << size << ")... ";
       if(glVbo > 0) { glDeleteBuffers(1, &glVbo);      glVbo = 0; }
       if(glVao > 0) { glDeleteVertexArrays(1, &glVao); glVao = 0; }
       if(cuVbo)     { cudaGraphicsUnregisterResource(cuVbo); cuVbo = nullptr; }
       if(glShader)  { delete glShader; glShader = nullptr; }
       getLastCudaError("CudaVBO::destroy()");
-      std::cout << "  (DONE)\n";
+      std::cout << " (done)\n";
     }
   size = 0;
 }
@@ -159,7 +162,7 @@ inline void CudaVBO::draw()
 
 inline Vertex* CudaVBO::map()
 {
-  if(!glVbo) { std::cout << "====> WARNING(CudaVBO::map()): Buffer not initialized!\n"; return nullptr; }
+  if(!glVbo) { std::cout << "====> WARNING(CudaVBO::map): Buffer not initialized!\n"; return nullptr; }
   if(allocated())
     {
       if(!mapped)
@@ -168,13 +171,13 @@ inline Vertex* CudaVBO::map()
           if(err == CUDA_ERROR_ALREADY_MAPPED)
             {
               std::cout << "====> WARNING: CudaVBO already mapped! (" << err << ") --> cudaGraphicsMapResources\n";
-              getLastCudaError(("CudaVBO::map() --> " + std::to_string(err) + "\n").c_str());
+              getLastCudaError(("CudaVBO::map --> " + std::to_string(err) + "\n").c_str());
               return nullptr;
             }
           else if(err)
             {
               std::cout << "====> WARNING: CudaVBO failed to map! (" << err << ") --> cudaGraphicsMapResources\n";
-              getLastCudaError(("CudaVBO::map() --> " + std::to_string(err) + "\n").c_str());
+              getLastCudaError(("CudaVBO::map --> " + std::to_string(err) + "\n").c_str());
               mapped = false; dData = nullptr; return nullptr;
             }
           else
@@ -184,7 +187,7 @@ inline Vertex* CudaVBO::map()
                 {
                   std::cout << "====> WARNING: CudaVBO failed to map! (" << err << ") --> cudaGraphicsResourceGetMappedPointer\n";
                   cudaGraphicsUnmapResources(1, &cuVbo, 0);
-                  getLastCudaError(("CudaVBO::map() --> " + std::to_string(err) + "\n").c_str());
+                  getLastCudaError(("CudaVBO::map --> " + std::to_string(err) + "\n").c_str());
                   mapped = false; dData = nullptr; return nullptr;
                 }
             }
@@ -194,9 +197,9 @@ inline Vertex* CudaVBO::map()
       else { std::cout << "====> WARNING: CudaVBO::map() called on mapped buffer!\n"; }
       return dData;
     }
-  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaVBO::map()): CUDA device not initialized!\n";  }
-  if(size == 0)         { std::cout << "====> WARNING(CudaVBO::map()): zero size! " << size << "\n";     }
-  if(!glVbo)            { std::cout << "====> WARNING(CudaVBO::map()): VBO resource not initialized!\n"; }
+  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaVBO::map): CUDA device not initialized!\n";  }
+  if(size == 0)         { std::cout << "====> WARNING(CudaVBO::map): zero size! " << size << "\n";     }
+  if(!glVbo)            { std::cout << "====> WARNING(CudaVBO::map): VBO resource not initialized!\n"; }
   return nullptr;
 }
 
@@ -217,9 +220,9 @@ inline void CudaVBO::unmap()
         }
       else { std::cout << "====> WARNING: CudaVBO::unmap() called on unmapped VBO!\n"; }
     }
-  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaVBO::unmap()): CUDA device not initialized!\n";  }
-  if(size == 0)         { std::cout << "====> WARNING(CudaVBO::unmap()): zero size! " << size << "\n";     }
-  if(!glVbo)            { std::cout << "====> WARNING(CudaVBO::unmap()): VBO resource not initialized!\n"; }
+  if(!gCudaInitialized) { std::cout << "====> WARNING(CudaVBO::unmap): CUDA device not initialized!\n";  }
+  if(size == 0)         { std::cout << "====> WARNING(CudaVBO::unmap): zero size! " << size << "\n";     }
+  if(!glVbo)            { std::cout << "====> WARNING(CudaVBO::unmap): VBO resource not initialized!\n"; }
   dData = nullptr; mapped = false;
 }
 

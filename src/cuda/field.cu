@@ -5,7 +5,7 @@
 #include <helper_cuda.h>
 
 #include "physics.h"
-#include "raytrace.cuh"
+//#include "raytrace.cuh"
 #include "vector-operators.h"
 #include "cuda-tools.cuh"
 #include "mathParser.hpp"
@@ -169,7 +169,7 @@ void fillFieldValue(Field<T> &dst, const T &val)
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       fillFieldValue_k<<<grid, threads>>>(dst, val);
     }
-  else { std::cout << "Skipped Field<float> fill --> " << dst.size << " --> " << val << "\n"; }
+  else { std::cout << "====> WARNING: skipped fillFieldValue --> " << dst.size << " --> " << val << "\n"; }
 }
 
 // wrapppers
@@ -183,10 +183,9 @@ void fillField(Field<T> &dst, CudaExpression<T> *dExpr)
                 (int)ceil(dst.size.y/(float)BLOCKDIM_Y),
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       if(dExpr) { fillField_k<<<grid, threads>>>(dst, dExpr); }
-      else { std::cout << "====> WARNING: fillField skipped -- null expression pointer ("
-                       << "dExpr: "<< (long)((void*)dExpr) << ")\n"; }
+      else { std::cout << "====> WARNING: fillField_k skipped -- null expression pointer (dExpr: "<< (long)((void*)dExpr) << ")\n"; }
     }
-  else { std::cout << "Skipped Field<float> fill --> " << dst.size << " --> " << (long)((void*)dExpr) << "\n"; }
+  else { std::cout << "====> WARNING: skipped fillField --> " << dst.size << " --> " << (long)((void*)dExpr) << "\n"; }
 }
 
 template<typename T>
@@ -201,11 +200,11 @@ void fillFieldMaterial<T>(Field<Material<T>> &dst, CudaExpression<T> *dExprEp, C
       if(dExprEp && dExprMu && dExprSig) { fillFieldMaterial_k<<<grid, threads>>>(dst, dExprEp, dExprMu, dExprSig); }
       else
         {
-          std::cout << "====> WARNING: fillFieldMateral skipped -- null expression pointer ("
+          std::cout << "====> WARNING: fillFieldMateral_k skipped -- null expression pointer ("
                     << "ε: "<< (long)((void*)dExprEp) << "|μ: " << (long)((void*)dExprMu) << "|σ: " << (long)((void*)dExprSig) << ")\n";
         }
     }
-  else { std::cout << "Skipped Field<float> Material fill --> " << dst.size << " \n"; }
+  else { std::cout << "====> WARNING: skipped fillFieldMaterial --> " << dst.size << " \n"; }
 }
 template<typename T>
 void fillFieldChannel(Field<T> &dst, CudaExpression<typename Dim<T>::BASE_T> *dExpr, int channel)
@@ -217,8 +216,10 @@ void fillFieldChannel(Field<T> &dst, CudaExpression<typename Dim<T>::BASE_T> *dE
                 (int)ceil(dst.size.y/(float)BLOCKDIM_Y),
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       if(dExpr) { fillFieldChannel_k<<<grid, threads>>>(dst, dExpr, channel); }
+      else
+        { std::cout << "====> WARNING: fillFieldMateral_k skipped -- null expression pointer (" << (long)((void*)dExpr) << ")\n"; }
     }
-  else { std::cout << "Skipped Field<float> fill --> " << dst.size << " \n"; }
+  else  { std::cout << "====> WARNING: skipped fillFieldChannel --> " << dst.size << " \n"; }
 }
 
 // template instantiation

@@ -46,7 +46,10 @@ bool GlShader::loadVertex(const std::string &path)
     {
       glGetShaderInfoLog(mVShaderId, 512, NULL, infoLog);
       mVertLog = infoLog;
-      std::cout << "== - Vertex Shader Log:\n"   << "---  | " << mVertLog << "\n";
+      std::cout << "================================================================\n"
+                << "== Vertex Shader Log:\n"
+                << "======| " << mVertLog << "\n"
+                << "================================================================\n\n";
       mVShaderId = 0;
       return false;
     }
@@ -70,7 +73,10 @@ bool GlShader::loadFragment(const std::string &path)
     {
       glGetShaderInfoLog(mFShaderId, 512, NULL, infoLog);
       mFragLog = infoLog;
-      std::cout << "== - Fragment Shader Log:\n"   << "---  | " << mFragLog << "\n";
+      std::cout << "================================================================\n"
+                << "== Fragment Shader Log:\n"
+                << "======| " << mFragLog << "\n"
+                << "================================================================\n\n";
       mFShaderId = 0;
       return false;
     }
@@ -84,21 +90,28 @@ bool GlShader::link()
   if(mFShaderId > 0) { glAttachShader(mProgramId, mFShaderId); }
   glLinkProgram(mProgramId);
   
+  std::cout << "== Linking shader program...\n";
   int success; char infoLog[512];
   glGetProgramiv(mProgramId, GL_LINK_STATUS, &success);
   if(!success)
     {
       glGetProgramInfoLog(mProgramId, 512, NULL, infoLog);
       mLinkLog = infoLog;
-      std::cout << "== - Link Log:\n" << "---  | " << mLinkLog << "\n";
+      
+      std::cout << "================================================================\n"
+                << "== Link Log:\n"
+                << "======| " << mLinkLog << "\n"
+                << "================================================================\n\n";
       glDeleteProgram(mProgramId);
       mProgramId = 0;
       return false;
     }
+
   // print attributes
   GLint count = -1;
   glGetProgramiv(mProgramId, GL_ACTIVE_ATTRIBUTES, &count);
-  std::cout << "== -- Shader Attributes (" << count << "):\n";
+  std::cout << "================================================================\n"
+            << "== -- Shader Attributes (" << count << "):\n";
   mAttributes.clear();
   for(int i = 0; i < count; i++)
     {
@@ -107,9 +120,12 @@ bool GlShader::link()
       mAttributes.emplace(std::string(name), i);
       std::cout << "---  | " << name << " (length: " << length << ", size: " << size << ", type: " << type << "\n";
     }
+  std::cout << "================================================================\n\n";
+  
   // print uniforms
   glGetProgramiv(mProgramId, GL_ACTIVE_UNIFORMS, &count);
-  std::cout << "== -- Shader Uniforms (" << count << "):\n";
+  std::cout << "================================================================\n"
+            << "== -- Shader Uniforms (" << count << "):\n";
   mUniforms.clear();
   for(int i = 0; i < count; i++)
     {
@@ -118,6 +134,8 @@ bool GlShader::link()
       mUniforms.emplace(std::string(name), i);
       std::cout << "== ---  | " << std::setw(bufSize) << std::left << name << "\n";
     }
+  std::cout << "================================================================\n\n";
+  
   return true;
 }
 

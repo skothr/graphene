@@ -6,26 +6,30 @@
 #include <iostream>
 #include <iomanip>
 #include <imgui.h>
-
-#include "vector.hpp"
-#include "imtools.hpp"
-#include "glfwKeys.hpp"
-
-// full json headers (NOTE: don't include settings.hpp in header files unnecessarily)
-#include <nlohmann/json.hpp>
+#include <imgui_internal.h>
+#include <nlohmann/json.hpp> // full json headers
 using json = nlohmann::json;
 
+#include "vector.hpp"
+#include "matrix.hpp"
+#include "imtools.hpp"
+#include "glfwKeys.hpp"
+#include "settings-new.hpp"
+
+#define DEFAULT_STEP       1
+#define DEFAULT_STEP_FAST 10
 #define DEFAULT_FORMAT "%.6f"
+
 #define HELP_ICON      "?"
 #define JSON_SPACES    4
 
+
+// callback types
 typedef std::function<void(void)> SettingUpdateCB;
 typedef std::function<bool(void)> SettingEnabledCB;
-// e.g. ==> [](bool busy, bool changed) -> bool { changed |= InputInt([...]); return busy; }}
-typedef std::function<bool(bool busy, bool &changed)> SettingCustomDraw;
+typedef std::function<bool(void)> SettingDrawCB;
 
-inline float getElementWidth(float totalW,   float labelW, float spacing, int N) { return ceil((totalW + labelW + spacing)/N - spacing); }
-inline float getWidgetWidth (float elementW, float labelW, float spacing, int N) { return ceil(elementW - labelW - spacing*(N-1)/N); }
+class SettingGroup;
 
 ////////////////////////////////
 //// SETTING  -- BASE CLASS ////
@@ -33,172 +37,167 @@ inline float getWidgetWidth (float elementW, float labelW, float spacing, int N)
 class SettingBase
 {
 protected:
+  SettingGroup *mParent = nullptr;
   std::string mName;
   std::string mId;
   std::string mHelpText;
-  float mLabelColW = 200; // width of column with setting name labels    
-  float mInputColW = 150; // width of column with setting input widget(s)
+  bool  mHorizontal = true; // if true, contents are organized horizontally
+  bool *mToggle  = nullptr; // if not null, adds an extra checkbox to enable/disable setting
+  bool  mToggled = false;   // set to true if setting was toggled (since drawToggle() is called by parent group)
   
-  Vec2f mLabelSize = Vec2f(0,0); // measured after drawing
-  Vec2f mInputSize = Vec2f(0,0);
+  float mBodyWidth = -1.0f; // width of setting body (-1.0f ==> remaining space in area)
+  float mMinLabelW = 0.0f;  // minimum width of label column
+  Vec2f mSize = Vec2f(0,0); // measured screen size
 
-  bool *mToggle = nullptr;
-  
+  // callbacks
+  SettingUpdateCB  updateCallback  = nullptr; // called when value is updated
+  SettingEnabledCB enabledCallback = nullptr; // custom draw callback (instead of using template overload below) 
+  SettingEnabledCB visibleCallback = nullptr; // custom draw callback (instead of using template overload below)
   
 public:
-  SettingUpdateCB   updateCallback  = nullptr; // called when value is updated
-  SettingCustomDraw drawCustom      = nullptr; // custom draw callback (instead of using template overload below) 
-  SettingEnabledCB  enabledCallback = nullptr; // custom draw callback (instead of using template overload below) 
-  SettingEnabledCB  visibleCallback = nullptr; // custom draw callback (instead of using template overload below) 
-  SettingBase(const std::string &name, const std::string &id, const SettingUpdateCB &updateCb=nullptr,
-              const SettingCustomDraw &drawFunc=nullptr, const SettingEnabledCB &enableFunc=nullptr)
-    : mName(name), mId(id), updateCallback(updateCb), drawCustom(drawFunc), enabledCallback(enableFunc) { }
-  virtual ~SettingBase() { }
+  SettingBase(const std::string &name_, const std::string &id_) : mName(name_), mId(id_) { }
+  virtual ~SettingBase() = default;
 
-  virtual bool isGroup() const { return false; }
-  std::string getName() const  { return mName; }
-  std::string getId() const    { return mId; }
+  void setParent(SettingGroup *parent) { mParent = parent; }
+  virtual bool isGroup() const { return false; }  // (overloaded by SettingGroup)
   
-  // JSON
+  // JSON (for file saving/loading)
   virtual json toJSON() const           { return json::object(); }
   virtual bool fromJSON(const json &js) { return true; }
+
+  virtual std::string toString() const { std::stringstream ss; ss << name() << ": <?>"; return ss.str(); }
     
-  virtual void setLabelColWidth(float width) { mLabelColW = width; }
-  virtual void setInputColWidth(float width) { mInputColW = width; }
-  
+  virtual bool onDraw()    { return false; }
+  virtual void updateAll() { if(updateCallback) { updateCallback(); } }
+
+  void setUpdateCallback (const SettingUpdateCB  &cb) { updateCallback  = cb; }
+  void setEnabledCallback(const SettingEnabledCB &cb) { enabledCallback = cb; }
+  void setVisibleCallback(const SettingEnabledCB &cb) { visibleCallback = cb; }
+  void setHelp(const std::string &text) { mHelpText = text; }  
   void setToggle(bool *toggle) { mToggle = toggle; } // adds an additional checkbox to enable/disable setting
 
+  std::string& name()                 { return mName; }
+  std::string& id()                   { return mId; }
+  std::string& helpText()             { return mHelpText; }
+  const std::string& name() const     { return mName; }
+  const std::string& id() const       { return mId; }
+  const std::string& helpText() const { return mHelpText; }
   
-  virtual bool hasChanged() const { return false; } // TODO
-  virtual bool getDelete()  const { return false; }
+  bool horizontal() const    { return mHorizontal; }
+  void setHorizontal(bool h) { mHorizontal = h; }
+  float labelW() const       { return mMinLabelW; }
+  void setLabelW(float w)    { mMinLabelW = w; }
+  void setBodyW(float w)     { mBodyWidth = w; }
 
-  virtual bool onDraw(float scale, bool busy, bool &changed, bool visible) { return busy; }
-  virtual void updateAll() { if(updateCallback) { updateCallback(); } }
+  Vec2f size() const { return mSize; }
   
-  // TODO: improve flexibility
-  bool draw(float scale, bool busy, bool &changed, bool visible)
-  {
-    bool sVisible = (!visibleCallback || visibleCallback());
-    bool sEnabled = (!enabledCallback || enabledCallback());
-    if(sVisible)
-      {
-        if(!isGroup())
-          {
-            drawHelp();
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(mName.c_str()); mLabelSize = Vec2f(ImGui::GetItemRectMax()) - ImGui::GetItemRectMin();
-            ImGui::SameLine(mLabelColW*scale);
-            ImGui::SetNextItemWidth(mInputColW*scale);
-          }
+  bool visible() const { return (!visibleCallback || visibleCallback()); }
+  bool enabled() const { return (!enabledCallback || enabledCallback()) && (!mToggle || *mToggle); }
+  
+  bool draw();
+  void drawHelp();
+  bool drawToggle();
+  std::ostream& print(std::ostream &os) const;
 
-        ImGui::BeginGroup();
-        {
-          if(mToggle)
-            {
-              bool t = *mToggle;
-              changed |= ImGui::Checkbox(("##"+mId+"-toggle").c_str(), &t);
-              *mToggle = t;
-              sEnabled &= *mToggle;
-              ImGui::SameLine();
-            }
-
-          if(!sEnabled)  { ImGui::PushDisabled(true); }
-          if(drawCustom) { busy = drawCustom(busy, changed); }
-          else           { busy = onDraw(scale, busy, changed, visible); }
-          if(!sEnabled)  { ImGui::PopDisabled(); }
-        }
-        ImGui::EndGroup();
-      }
-    return busy;
-  }
-
-  void setHelp(const std::string &text) { mHelpText = text; }
-  void drawHelp()
-  {
-    if(!mHelpText.empty())
-      {
-        Vec2f tSize = ImGui::CalcTextSize(HELP_ICON);
-        Vec2f p0 = ImGui::GetCursorPos();
-        ImGui::SetCursorPos(p0 - Vec2f(tSize.x + ImGui::GetStyle().ItemSpacing.x, 0));
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(Vec4f(1, 1, 1, 0.5f), HELP_ICON);
-        if(ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", mHelpText.c_str()); }
-        ImGui::SetCursorPos(p0);
-      }
-  }
-    
-  std::ostream& print(std::ostream &os) const
-  {
-    //os << getId() << " -->  " << std::setw(JSON_SPACES) << toJSON();
-    os << getId() << " = " << toJSON();
-    return os;
-  }
+  friend std::ostream& operator<<(std::ostream &os, const SettingBase &s);
 };
+
+inline bool SettingBase::draw()
+{
+  bool changed = false;
+  bool sVisible = visible();
+  if(sVisible)
+    {
+      ImGui::SetNextItemWidth(mBodyWidth);
+      
+      if(!isGroup()) { ImGui::BeginDisabled(!enabled()); }
+      changed |= onDraw();
+      mSize = Vec2f(ImGui::GetItemRectMax()) - ImGui::GetItemRectMin();
+      if(!isGroup()) { ImGui::EndDisabled(); }
+    }
+  if((changed || mToggled) && updateCallback) { updateCallback(); mToggled = false; }
+  return changed;
+}
+
+inline void SettingBase::drawHelp()
+{
+  ImGuiStyle &style = ImGui::GetStyle();
+  ImGui::AlignTextToFramePadding();
+  if(!mHelpText.empty() || !name().empty())
+    {
+      Vec2f tSize = ImGui::CalcTextSize(HELP_ICON);
+      ImGui::TextColored(Vec4f(1, 1, 1, 0.5f), HELP_ICON);
+      if(ImGui::IsItemHovered())
+        {
+          ImGui::BeginTooltip();
+          {
+            std::stringstream ss; ss << name() << " (" << id() << ")";
+            TextPhysics(ss.str()); //"%s (%s)", name().c_str(), id().c_str());
+            if(!mHelpText.empty()) { ImGui::Separator(); TextPhysics(mHelpText.c_str()); }
+          }
+          ImGui::EndTooltip();
+        }
+      ImGui::SameLine();
+    }
+}
+
+inline bool SettingBase::drawToggle()
+{
+  bool changed = false;
+  if(mToggle)
+    {
+      bool t = *mToggle;
+      changed |= ImGui::Checkbox(("##"+mId+"-toggle").c_str(), &t); ImGui::SameLine();
+      mToggled = (*mToggle != t);
+      *mToggle = t;
+    }
+  return changed;
+}
+
+inline std::ostream& operator<<(std::ostream &os, const SettingBase &s) { os << s.id() << " = " << s.toJSON(); return os; }
+
+
 
 ////////////////////////////////////
 //// SETTING --  TEMPLATE CLASS ////
 ////////////////////////////////////
-
 template<typename T>
 class Setting : public SettingBase
 {
-private:
-  bool mDelete = false; // whether to delete data on destruction
-    
 protected:
   T *mData   = nullptr;
   T  mDefault;
-  T  mStep    = T(); T mBigStep = T();
-  T  mMinVal  = T(); T mMaxVal  = T();
-  bool mMinSet = false; bool mMaxSet = false;
-  std::string mFormat = "";
-  bool mEditUpdate = true;
+  T  mStep    = T(); T mFastStep = T(); std::string mFormat = "";
+  T  mMinVal  = T(); T mMaxVal   = T(); bool mMinSet = false; bool mMaxSet = false;
+  bool mLiveEdit = true; // if false, waits until editing is complete to apply changes
   
 public:
-  typedef Setting<T> type;
-
-  bool stack = false; // if true, stacks vector elements vertically spanning full width
-  std::vector<std::string>   labels = {"X", "Y", "Z", "W"}; // e.g. for int2-int4
-  std::map<int, std::string> vLabels;    // for setting array
-  std::map<int, std::string> vRowLabels; // for setting array
-  std::map<int, std::string> vColLabels; // for setting array
-  int  vColumns = 1;
-  bool drawColLabels = false;
-  
-  // construction
-  Setting(const std::string &name, const std::string &id, T *ptr, const T &defaultVal=T(),
-          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
-          const SettingEnabledCB &enableFunc=nullptr)
-    : SettingBase(name, id, updateCb, drawFunc, enableFunc), mData(ptr), mDefault(*mData)
+  typedef T type;
+  Setting(const std::string &name, const std::string &id, T *pData, const T &defaultVal)
+    : SettingBase(name, id), mData(pData), mDefault(defaultVal) { fixFormat(); }
+  Setting(const std::string &name, const std::string &id, T *pData)
+    : Setting(name, id, pData, (pData ? (*pData) : T())) // SettingBase(name, id), mData(pData), mDefault(pData ? (*pData) : T())
   { }
-  Setting(const std::string &name, const std::string &id, const T &val, const T &defaultVal=T(),
-          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
-          const SettingEnabledCB &enableFunc=nullptr)
-    : Setting(name, id, new T(val), defaultVal, updateCb, drawFunc, enableFunc)
-  { mDelete = true; }
-  Setting(const std::string &name, const std::string &id,
-          const SettingUpdateCB &updateCb=nullptr, const SettingCustomDraw &drawFunc=nullptr,
-          const SettingEnabledCB &enableFunc=nullptr)
-    : Setting(name, id, T(), T(), updateCb, drawFunc, enableFunc)
-  { }
-  // destruction
-  virtual ~Setting() { if(mDelete && mData) { delete mData; } }
+  ~Setting() = default;
 
-  void setFormat(const T &step=T(), const T &bigStep=T(), const std::string &format="") { mStep = step; mBigStep = bigStep; mFormat = format; }
-  void setMin   (const T &minVal) { mMinVal = minVal; mMinSet = true; }
-  void setMax   (const T &maxVal) { mMaxVal = maxVal; mMaxSet = true; }
-  void setEditUpdate(bool update) { mEditUpdate = update; } // ?
+  virtual std::string toString() const override { std::stringstream ss; ss << value(); return ss.str(); }
   
   const T& value() const { return *mData; }
   T& value()             { return *mData; }
+  const T* data() const  { return *mData; }
+  T* data()              { return *mData; }
+  
+  void setFormat(const T &step, const T &step_fast=T(), const std::string &format="");
+  void setMin   (const T &minVal) { mMinVal = minVal; mMinSet = true; }
+  void setMax   (const T &maxVal) { mMaxVal = maxVal; mMaxSet = true; }
+  void setLiveEdit(bool live)     { mLiveEdit = live; }
+  void fixFormat();
   
   // JSON
   virtual json toJSON() const override;
   virtual bool fromJSON(const json &js) override;
-    
-  virtual bool getDelete() const override { return mDelete; }
   
-  virtual bool onDraw(float scale, bool busy, bool &changed, bool visible) { return busy; } // (NOTE: should be protected)
+  virtual bool onDraw() { return false; } // (NOTE: should be protected)
 };
 
 ///////////////////
@@ -224,807 +223,482 @@ inline bool Setting<T>::fromJSON(const json &js)
       ss.str(js["value"].get<std::string>());
       ss >> (*mData);
     }
-  else { success = false; }
-  if(mToggle && js.contains("active")) { *mToggle = (js["active"].get<bool>()); }
-  return success;
-}
-
-// overloads for string (needs quotes?)
-template<>
-inline json Setting<std::string>::toJSON() const
-{
-  std::stringstream ss;
-  if(mData)  { ss << std::quoted(*mData); }
-  json js = json::object(); js["value"] = ss.str();
-  if(mToggle) { js["active"] = *mToggle; }
-  return js;
-}
-template<>
-inline bool Setting<std::string>::fromJSON(const json &js)
-{
-  bool success = true;
-  std::stringstream ss;
-  if(js.contains("value"))
+  else { success = false; std::cout << "======> WARNING(Setting<T>::fromJSON): Couldn't find setting '" << name() << "' (" << id() << ") -- using default\n"; }
+  if(mToggle)
     {
-      ss.str(js["value"].get<std::string>());
-      ss >> std::quoted(*mData);
-    }
-  else { success = false; }
-  if(mToggle && js.contains("active")) { *mToggle = (js["active"].get<bool>()); }
-  return success;
-}
-
-
-// overloads for arrays
-template<>
-inline json Setting<std::vector<bool>>::toJSON() const
-{
-  std::stringstream ss;
-  if(mData)
-    {
-      ss << mData->size() << " ";
-      for(int i = 0; i < mData->size(); i++)
-        { ss << ((*mData)[i] ? "1" : "0") << " "; }
-    }
-  json js = json::object();
-  js["value"] = ss.str();
-  if(mToggle) { js["active"] = *mToggle; }
-  return js;
-}
-template<>
-inline bool Setting<std::vector<bool>>::fromJSON(const json &js)
-{
-  bool success = true;
-  std::stringstream ss;
-  if(js.contains("value"))
-    {
-      ss.str(js["value"].get<std::string>());
-      int N; ss >> N; mData->resize(N);
-      for(int i = 0; i < N; i++)
+      if(js.contains("active"))
         {
-          int b; ss >> b;
-          (*mData)[i] = (bool)b;
+          try { *mToggle = (js["active"].get<bool>()); }
+          catch(const json::type_error &e)
+            {
+              std::cout << "======> WARNING(Setting<T>::fromJSON): Invalid type found for setting '" << name() << "' (" << id() << ") -- using default\n";
+              std::cout << "========> " << e.what() << "\n";
+              success = false;
+            }
+          catch(...)
+            {
+              std::cout << "======> WARNING(Setting<T>::fromJSON): Unhandled exception loading setting '" << name() << "' (" << id() << ") -- using default\n";
+              success = false;
+            }
+        }
+      else
+        { success = false; std::cout << "======> WARNING(Setting<T>::fromJSON): Setting (togglable) couldn't find 'active'\n"; }
+    }
+  return success;
+}
+
+
+template<typename T>
+inline void Setting<T>::setFormat(const T &step, const T &step_fast, const std::string &format)
+{
+  if constexpr(std::is_arithmetic_v<typename Dim<T>::BASE_T>)
+    { mStep = step; mFastStep = step_fast; mFormat = format; }
+  fixFormat();
+}
+template<typename T>
+inline void Setting<T>::fixFormat()
+{
+  // step sizes only needed for intN/floatN/doubleN
+  if constexpr(std::is_arithmetic_v<T>)
+    { // scalar types
+      if(mStep == T(0)) { mStep = T(1); } if(mFastStep == T(0)) { mFastStep = T(10); }
+    }
+  else if constexpr(std::is_arithmetic_v<typename Dim<T>::BASE_T>)
+    { // vector types
+      for(int i = 0; i < Dim<T>::N; i++)
+        {
+          if(VElement<T>::get(mStep,     i) == 0) { VElement<T>::get(mStep,     i) = DEFAULT_STEP;      }
+          if(VElement<T>::get(mFastStep, i) == 0) { VElement<T>::get(mFastStep, i) = DEFAULT_STEP_FAST; }
         }
     }
-  else { success = false; }
-  if(mToggle && js.contains("active")) { *mToggle = (js["active"].get<bool>()); }
-  return success;
-}
-
-template<>
-inline json Setting<std::array<bool, 5>>::toJSON() const
-{
-  std::stringstream ss;
-  if(mData)
+  else
     {
-      ss << mData->size() << " ";
-      for(int i = 0; i < mData->size(); i++)
-        { ss << ((*mData)[i] ? "1" : "0") << " "; }
-    }
-  json js = json::object();
-  js["value"] = ss.str();
-  if(mToggle) { js["active"] = *mToggle; }
-  return js;
-}
-template<>
-inline bool Setting<std::array<bool, 5>>::fromJSON(const json &js)
-{
-  bool success = true;
-  std::stringstream ss;
-  if(js.contains("value"))
-    {
-      ss.str(js["value"].get<std::string>());
-      int N; ss >> N;
-      for(int i = 0; i < N; i++)
+      for(int i = 0; i < Dim<T>::N; i++)
         {
-          int b; ss >> b;
-          (*mData)[i] = (bool)b;
+          if(mStep[i]     == 0) { mStep[i]     = DEFAULT_STEP;      }
+          if(mFastStep[i] == 0) { mFastStep[i] = DEFAULT_STEP_FAST; }
         }
     }
-  else { success = false; }
-  if(mToggle && js.contains("active")) { *mToggle = (js["active"].get<bool>()); }
-  return success;
+  // printf format only needed for floatN/doubleN
+  if constexpr(std::is_floating_point_v<typename Dim<T>::BASE_T>)
+    { if(mFormat.empty()) { mFormat = DEFAULT_FORMAT; } }
 }
+
+
+
+
+
+
 
   
 //// SETTING DRAW SPECIALIZATIONS (BY TYPE) ////
 
 //// BOOLEAN -- Checkbox ////
-template<> inline bool Setting<bool>::onDraw(float scale, bool busy, bool &changed, bool visible)
+template<> inline bool Setting<bool>::onDraw() { return ImGui::Checkbox(("##"+mId).c_str(), mData); }
+
+//// basic single types ////
+template<> inline bool Setting<int>::onDraw()         // INT
 {
-  // ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, Vec2f(0,0));
-  changed |= ImGui::Checkbox(("##"+mId).c_str(), mData);
-  // ImGui::PopStyleVar();
-  return busy;
+  int v = *mData; bool changed = false;
+  if(ImGui::InputInt(("##"+mId).c_str(), &v, mStep, mFastStep))
+    { if(mMaxSet) { v = std::min(mMaxVal, v); } if(mMinSet) { v = std::max(mMinVal, v); } *mData = v; changed = true; }
+  return changed;
 }
-
-//// BOOLEAN VECTOR -- Checkboxes ////
-template<> inline bool Setting<std::vector<bool>>::onDraw(float scale, bool busy, bool &changed, bool visible)
+template<> inline bool Setting<float>::onDraw()       // FLOAT
 {
-  Vec2f p0 = ImGui::GetCursorPos();
-  
-  Vec2f minSize = ImGui::CalcTextSize("XX");
-  float spacing = ImGui::GetStyle().ItemSpacing.x;
-  float xOffset = 0.0f;
-  float colW    = minSize.x;
-  for(auto iter : vColLabels) { colW    = std::max(ImGui::CalcTextSize(iter.second.c_str()).x, colW); }
-  for(auto iter : vRowLabels) { xOffset = std::max(ImGui::CalcTextSize(iter.second.c_str()).x, xOffset); }
-  colW += ImGui::GetStyle().ItemSpacing.x;
-  if(xOffset > 0.0f) { xOffset += spacing; }
-  float widgetOffset = (colW - spacing - minSize.y)/2.0f;
-  
-  // column labels
-  if(drawColLabels)
-    {
-      ImGui::SetCursorPos(Vec2f(p0.x+xOffset, ImGui::GetCursorPos().y));
-      for(int i = 0; i < mData->size(); i++)
-        {
-          auto iter = vColLabels.find(i);
-          if(iter != vColLabels.end())
-            {
-              ImGui::SetCursorPos(Vec2f(p0.x+xOffset + (i%vColumns)*colW, ImGui::GetCursorPos().y));
-              ImGui::TextUnformatted(iter->second.c_str()); if(i != mData->size()-1) { ImGui::SameLine(); }
-            }
-        }
-    }
-  
-  for(int i = 0; i < mData->size(); i++)
-    {
-      if((i % vColumns) == 0)
-        { // row label / offset
-          auto iter = vRowLabels.find(i/vColumns);
-          if(iter != vRowLabels.end())
-            {
-              ImGui::AlignTextToFramePadding();
-              ImGui::TextUnformatted(iter->second.c_str());
-              ImGui::SameLine();
-            }
-        }
-      ImGui::SetCursorPos(Vec2f(p0.x+xOffset + (i%vColumns)*colW + widgetOffset, ImGui::GetCursorPos().y));
-      
-      // item label
-      auto iter = vLabels.find(i);
-      if(iter != vLabels.end())
-        {
-          ImGui::AlignTextToFramePadding();
-          ImGui::TextUnformatted(iter->second.c_str());
-          ImGui::SameLine();
-        }
-      // item checkbox
-      bool b = (*mData)[i];
-      //if(ImGui::Checkbox(("##"+mId+std::to_string(i)).c_str(), &b)) { (*mData)[i] = b; changed = true; }
-      if(Checkbox(("##"+mId+std::to_string(i)).c_str(), &b)) { (*mData)[i] = b; changed = true; }
-      if(i != mData->size()-1 && (i+1 % vColumns) != 0) { ImGui::SameLine(); } // next column
-    }
-  return busy;
+  float v = *mData; bool changed = false;
+  if(ImGui::InputFloat(("##"+mId).c_str(), &v, mStep, mFastStep, mFormat.c_str()))
+    { if(mMaxSet) { v = std::min(mMaxVal, v); } if(mMinSet) { v = std::max(mMinVal, v); } *mData = v; changed = true; }
+  return changed;
 }
-
-
-//// BOOLEAN ARRAY -- Checkboxes ////
-template<> inline bool Setting<std::array<bool, 5>>::onDraw(float scale, bool busy, bool &changed, bool visible)
+template<> inline bool Setting<double>::onDraw()      // DOUBLE
 {
-  Vec2f p0 = ImGui::GetCursorPos();
-  
-  Vec2f minSize = ImGui::CalcTextSize("XX");
-  float spacing = ImGui::GetStyle().ItemSpacing.x;
-  float xOffset = 0.0f;
-  float colW    = minSize.x;
-  for(auto iter : vColLabels) { colW    = std::max(ImGui::CalcTextSize(iter.second.c_str()).x, colW); }
-  for(auto iter : vRowLabels) { xOffset = std::max(ImGui::CalcTextSize(iter.second.c_str()).x, xOffset); }
-  colW += ImGui::GetStyle().ItemSpacing.x;
-  if(xOffset > 0.0f) { xOffset += spacing; }
-  float widgetOffset = (colW - spacing - minSize.y)/2.0f;
-  
-  // column labels
-  if(drawColLabels)
-    {
-      ImGui::SetCursorPos(Vec2f(p0.x+xOffset, ImGui::GetCursorPos().y));
-      for(int i = 0; i < mData->size(); i++)
-        {
-          auto iter = vColLabels.find(i);
-          if(iter != vColLabels.end())
-            {
-              ImGui::SetCursorPos(Vec2f(p0.x+xOffset + (i%vColumns)*colW, ImGui::GetCursorPos().y));
-              ImGui::TextUnformatted(iter->second.c_str()); if(i != mData->size()-1) { ImGui::SameLine(); }
-            }
-        }
-    }
-  
-  for(int i = 0; i < mData->size(); i++)
-    {
-      if((i % vColumns) == 0)
-        { // row label / offset
-          auto iter = vRowLabels.find(i/vColumns);
-          if(iter != vRowLabels.end())
-            {
-              ImGui::AlignTextToFramePadding();
-              ImGui::TextUnformatted(iter->second.c_str());
-              ImGui::SameLine();
-            }
-        }
-      ImGui::SetCursorPos(Vec2f(p0.x+xOffset + (i%vColumns)*colW + widgetOffset, ImGui::GetCursorPos().y));
-      
-      // item label
-      auto iter = vLabels.find(i);
-      if(iter != vLabels.end())
-        {
-          ImGui::AlignTextToFramePadding();
-          ImGui::TextUnformatted(iter->second.c_str());
-          ImGui::SameLine();
-        }
-      // item checkbox
-      bool b = (*mData)[i];
-      if(Checkbox(("##"+mId+std::to_string(i)).c_str(), &b)) { (*mData)[i] = b; changed = true; } // smaller custom checkboxes
-      if(i != mData->size()-1 && (i+1 % vColumns) != 0) { ImGui::SameLine(); } // next column
-    }
-  return busy;
-}
-
-
-
-// (basic single types)
-template<> inline bool Setting<int>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// INT
-  if(mStep == 0)      { mStep = 1.0f; }
-  if(mBigStep == 0)   { mBigStep = 10.0f; }
-  int v = *mData;
-  if(ImGui::InputInt(("##"+mId).c_str(), &v, mStep, mBigStep))
-    { if(mMaxSet) { v = std::min(mMaxVal, v); } if(mMinSet) { v = std::max(mMinVal, v); } changed = true; *mData = v; }
-  return busy;
-}
-template<> inline bool Setting<float>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// FLOAT
-  if(mStep == 0.0f) { mStep = 1.0f; } if(mBigStep == 0.0f) { mBigStep = 10.0f; } if(mFormat.empty()) { mFormat = DEFAULT_FORMAT; }
-  float v = *mData;
-  if(ImGui::InputFloat(("##"+mId).c_str(), &v, mStep, mBigStep, mFormat.c_str()))
-    { if(mMaxSet) { v = std::min(mMaxVal, v); } if(mMinSet) { v = std::max(mMinVal, v); } changed = true; *mData = v; }
-    
-  return busy;
-}
-template<> inline bool Setting<double>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// DOUBLE
-  if(mStep == 0.0)    { mStep = 1.0f; }
-  if(mBigStep == 0.0) { mBigStep = 10.0f; }
-  if(mFormat.empty()) { mFormat = DEFAULT_FORMAT; }
-  double v = *mData;
+  double v = *mData; bool changed = false;
   if(ImGui::InputDouble(("##"+mId).c_str(), &v, 1.0f, 10.0f))
-    { if(mMaxSet) { v = std::min(mMaxVal, v); } if(mMinSet) { v = std::max(mMinVal, v); } changed = true; *mData = v; }
-  return busy;
+    { if(mMaxSet) { v = std::min(mMaxVal, v); } if(mMinSet) { v = std::max(mMinVal, v); } *mData = v; changed = true; }
+  return changed;
 }
-template<> inline bool Setting<std::string>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// STRING
-  ImGuiStyle &style = ImGui::GetStyle();
-  char data[1024] = {0};
-  std::copy(mData->begin(), mData->end(), data);
-  ImGui::SetNextItemWidth(mInputColW*scale - 2.0f*style.WindowPadding.x);//mInputColW*scale);
-  if(ImGui::InputText(("##"+mId).c_str(), data, 1024))
-    { changed = true; *mData = data; }
-  return busy;
-}
-
-
-template<> inline bool Setting<Vec2i>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// VEC2I
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0)    { mStep.x = 1; }       if(mStep.y == 0)     { mStep.y = 1; }
-  if(mBigStep.x == 0) { mBigStep.x = 10; }   if(mBigStep.y == 0)  { mBigStep.y = 10; }
-  if(mFormat.empty()) { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    bool edited = mEditUpdate || (ImGui::IsKeyPressed(GLFW_KEY_ENTER) || ImGui::IsKeyPressed(GLFW_KEY_TAB) ||
-                                  ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseReleased(ImGuiMouseButton_Left));
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 2);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 2);
-    
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    int v = mData->x;
-    if(ImGui::InputInt(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x) && edited)
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-
-    tSize = ImGui::CalcTextSize(labels[1].c_str());
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->y;
-    if(ImGui::InputInt(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y) && edited)
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-template<> inline bool Setting<Vec2f>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// VEC2F
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0.0f)    { mStep.x = 1.0f; }     if(mStep.y == 0.0f)    { mStep.y = 1.0f; }
-  if(mBigStep.x == 0.0f) { mBigStep.x = 10.0f; } if(mBigStep.y == 0.0f) { mBigStep.y = 10.0f; }
-  if(mFormat.empty())    { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 2);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 2);
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    float v = mData->x;
-    if(ImGui::InputFloat(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-      
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->y;
-    if(ImGui::InputFloat(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-template<> inline bool Setting<Vec3f>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// VEC2F
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0.0f)    { mStep.x = 1.0f; }     if(mStep.y == 0.0f)    { mStep.y = 1.0f; }     if(mStep.z == 0.0f)    { mStep.z = 1.0f; }
-  if(mBigStep.x == 0.0f) { mBigStep.x = 10.0f; } if(mBigStep.y == 0.0f) { mBigStep.y = 10.0f; } if(mBigStep.z == 0.0f) { mBigStep.z = 10.0f; }
-  if(mFormat.empty())    { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    Vec2f tSize    = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 3);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 3);
-    Vec2f p0 = Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f);
-    ImGui::SetCursorPos(p0);
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    float v = mData->x;
-    if(ImGui::InputFloat(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x, mFormat.c_str(), ImGuiInputTextFlags_CharsScientific))
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-    
-    ImGui::SetCursorPos(Vec2f(p0.x, ImGui::GetCursorPos().y)); if(!stack) { ImGui::SameLine(); }
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->y;
-    if(ImGui::InputFloat(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y, mFormat.c_str(), ImGuiInputTextFlags_CharsScientific))
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-    
-    ImGui::SetCursorPos(Vec2f(p0.x, ImGui::GetCursorPos().y)); if(!stack) { ImGui::SameLine(); }
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[2].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->z;
-    if(ImGui::InputFloat(("##"+mId+labels[2]).c_str(), &v, mStep.z, mBigStep.z, mFormat.c_str(), ImGuiInputTextFlags_CharsScientific))
-      { if(mMaxSet) { v = std::min(mMaxVal.z, v); } if(mMinSet) { v = std::max(mMinVal.z, v); } changed = true; mData->z = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-template<> inline bool Setting<Vec4f>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// COLOR (VEC4F)
-  ImGuiStyle& style = ImGui::GetStyle();
-  static Vec4f       lastColor; // save previous color in case user cancels
-  static std::string editId = "";
-  std::string buttonName = "##" + mId + "btn";
-  std::string popupName  = "##" + mId + "pop";
-  std::string pickerName = "##" + mId + "pick";
-  // choose graph background color
-  ImGuiColorEditFlags cFlags = (ImGuiColorEditFlags_DisplayRGB |
-                                ImGuiColorEditFlags_HDR        |
-                                ImGuiColorEditFlags_Float      |
-                                ImGuiColorEditFlags_AlphaBar);
-  if(ImGui::ColorButton(buttonName.c_str(), *mData, cFlags, ImVec2(20, 20)) && !busy)
-    {
-      lastColor = *mData;
-      ImGui::OpenPopup(popupName.c_str());
-    }
-  ImGuiWindowFlags wFlags = (ImGuiWindowFlags_AlwaysAutoResize |
-                             ImGuiWindowFlags_NoMove           |
-                             ImGuiWindowFlags_NoTitleBar       |
-                             ImGuiWindowFlags_NoResize );
-  if(ImGui::BeginPopup(popupName.c_str(), wFlags))
-    {
-      busy = true; // busy picking color;
-      bool hover = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-      changed |= ImGui::ColorPicker4(pickerName.c_str(), mData->data.data(), cFlags, lastColor.data.data());
-      hover |= ImGui::IsItemHovered();
-        
-      if(ImGui::Button("Select") || ImGui::IsKeyPressed(GLFW_KEY_ENTER) || (!hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left))) // selects color
-        { ImGui::CloseCurrentPopup(); }
-      ImGui::SameLine();
-      if(ImGui::Button("Cancel") || ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) // cancels current selection
-        {
-          *mData = lastColor;
-          ImGui::CloseCurrentPopup();
-        }
-      ImGui::SameLine();
-      if(ImGui::Button("Reset")) // resets to default value
-        { *mData = mDefault; changed = true; }
-      ImGui::EndPopup();
-    }
-  return busy;
-}
-template<> inline bool Setting<Vec2d>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ //// VEC2D
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0.0)    { mStep.x = 1.0; }     if(mStep.y == 0.0)    { mStep.y = 1.0; }
-  if(mBigStep.x == 0.0) { mBigStep.x = 10.0; } if(mBigStep.y == 0.0) { mBigStep.y = 10.0; }
-  if(mFormat.empty())   { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 2);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 2);
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    double v = mData->x;
-    if(ImGui::InputDouble(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-
-    tSize = ImGui::CalcTextSize(labels[1].c_str());
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[1].c_str()); ImGui::SameLine();
-    ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->x;
-    if(ImGui::InputDouble(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-
-//// CUDA VECTORS (NOTE: same as VecXX, copy/pasted) ///////////////////////////////////////////////
-template<> inline bool Setting<int2>::onDraw(float scale, bool busy, bool &changed, bool visible)
+template<> inline bool Setting<std::string>::onDraw() // STRING
 {
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0)    { mStep.x = 1; }       if(mStep.y == 0)     { mStep.y = 1; }
-  if(mBigStep.x == 0) { mBigStep.x = 10; }   if(mBigStep.y == 0)  { mBigStep.y = 10; }
-  if(mFormat.empty()) { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    bool edited = mEditUpdate || (ImGui::IsKeyPressed(GLFW_KEY_ENTER) || ImGui::IsKeyPressed(GLFW_KEY_TAB) ||
-                                  ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseReleased(ImGuiMouseButton_Left));
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 2);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 2);
-    
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    int v = mData->x;
-    if(ImGui::InputInt(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x) && edited)
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-
-    tSize = ImGui::CalcTextSize(labels[1].c_str());
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->y;
-    if(ImGui::InputInt(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y) && edited)
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-template<> inline bool Setting<int3>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0)    { mStep.x = 1; }       if(mStep.y == 0)     { mStep.y = 1; }     if(mStep.z == 0)     { mStep.z = 1; }    
-  if(mBigStep.x == 0) { mBigStep.x = 10; }   if(mBigStep.y == 0)  { mBigStep.y = 10; } if(mBigStep.z == 0)  { mBigStep.z = 10; }
-  if(mFormat.empty()) { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    bool edited = mEditUpdate || (ImGui::IsKeyPressed(GLFW_KEY_ENTER) || ImGui::IsKeyPressed(GLFW_KEY_TAB) ||
-                                  ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseReleased(ImGuiMouseButton_Left));
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 3);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 3);
-    
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    int v = mData->x;
-    if(ImGui::InputInt(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x) && edited)
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-
-    tSize = ImGui::CalcTextSize(labels[1].c_str());
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->y;
-    if(ImGui::InputInt(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y) && edited)
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-
-    tSize = ImGui::CalcTextSize(labels[2].c_str());
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[2].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->z;
-    if(ImGui::InputInt(("##"+mId+labels[2]).c_str(), &v, mStep.z, mBigStep.z) && edited)
-      { if(mMaxSet) { v = std::min(mMaxVal.z, v); } if(mMinSet) { v = std::max(mMinVal.z, v); } changed = true; mData->z = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-template<> inline bool Setting <float2>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0.0f)    { mStep.x = 1.0f; }     if(mStep.y == 0.0f)    { mStep.y = 1.0f; }
-  if(mBigStep.x == 0.0f) { mBigStep.x = 10.0f; } if(mBigStep.y == 0.0f) { mBigStep.y = 10.0f; }
-  if(mFormat.empty())    { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 2);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 2);
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    float v = mData->x;
-    if(ImGui::InputFloat(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-      
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->y;
-    if(ImGui::InputFloat(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-template<> inline bool Setting<float3>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0.0f)    { mStep.x = 1.0f; }     if(mStep.y == 0.0f)    { mStep.y = 1.0f; }     if(mStep.z == 0.0f)    { mStep.z = 1.0f; }
-  if(mBigStep.x == 0.0f) { mBigStep.x = 10.0f; } if(mBigStep.y == 0.0f) { mBigStep.y = 10.0f; } if(mBigStep.z == 0.0f) { mBigStep.z = 10.0f; }
-  if(mFormat.empty())    { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 3);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 3);
-    Vec2f p0 = Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f);
-    ImGui::SetCursorPos(p0);
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    float v = mData->x;
-    if(ImGui::InputFloat(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x, mFormat.c_str(), ImGuiInputTextFlags_CharsScientific))
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
-    
-    ImGui::SetCursorPos(Vec2f(p0.x, ImGui::GetCursorPos().y)); if(!stack) { ImGui::SameLine(); }
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->y;
-    if(ImGui::InputFloat(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y, mFormat.c_str(), ImGuiInputTextFlags_CharsScientific))
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-    
-    ImGui::SetCursorPos(Vec2f(p0.x, ImGui::GetCursorPos().y)); if(!stack) { ImGui::SameLine(); }
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[2].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->z;
-    if(ImGui::InputFloat(("##"+mId+labels[2]).c_str(), &v, mStep.z, mBigStep.z, mFormat.c_str(), ImGuiInputTextFlags_CharsScientific))
-      { if(mMaxSet) { v = std::min(mMaxVal.z, v); } if(mMinSet) { v = std::max(mMinVal.z, v); } changed = true; mData->z = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
-
-  
-template<> inline bool Setting<float4>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{
-  ImGuiStyle& style = ImGui::GetStyle();
-  static float4 lastColor; // save previous color in case user cancels
-  static std::string editId = "";
-  std::string buttonName = "##" + mId + "btn";
-  std::string popupName  = "##" + mId + "pop";
-  std::string pickerName = "##" + mId + "pick";
-  // choose graph background color
-  ImGuiColorEditFlags cFlags = (ImGuiColorEditFlags_DisplayRGB |
-                                ImGuiColorEditFlags_HDR        |
-                                ImGuiColorEditFlags_Float      |
-                                ImGuiColorEditFlags_AlphaBar);
-  if(ImGui::ColorButton(buttonName.c_str(), Vec4f(*mData), cFlags, ImVec2(20, 20)) && !busy)
-    {
-      lastColor = *mData;
-      ImGui::OpenPopup(popupName.c_str());
-    }
-  ImGuiWindowFlags wFlags = (ImGuiWindowFlags_AlwaysAutoResize |
-                             ImGuiWindowFlags_NoMove           |
-                             ImGuiWindowFlags_NoTitleBar       |
-                             ImGuiWindowFlags_NoResize );
-  if(ImGui::BeginPopup(popupName.c_str(), wFlags))
-    {
-      busy = true; // busy picking color;
-      bool hover = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-      Vec4f d = *mData;
-      Vec4f last = lastColor;
-      if(ImGui::ColorPicker4(pickerName.c_str(), d.data.data(), cFlags, last.data.data()))
-        {
-          mData->x = d.x; mData->y = d.y; mData->z = d.z; mData->w = d.w;
-          changed = true;
-        }
-      hover |= ImGui::IsItemHovered();
-        
-      if(ImGui::Button("Select") || ImGui::IsKeyPressed(GLFW_KEY_ENTER) || (!hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left))) // selects color
-        { ImGui::CloseCurrentPopup(); }
-      ImGui::SameLine();
-      if(ImGui::Button("Cancel") || ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) // cancels current selection
-        {
-          *mData = lastColor;
-          ImGui::CloseCurrentPopup();
-        }
-      ImGui::SameLine();
-      if(ImGui::Button("Reset")) // resets to default value
-        { *mData = mDefault; changed = true; }
-      ImGui::EndPopup();
-    }
-  return busy;
+  char str[1024] = {0}; std::copy(mData->begin(), mData->end(), str); bool changed = false;
+  if(ImGui::InputText(("##"+mId).c_str(), str, 1024)) { *mData = str; changed = true; }
+  return changed;
 }
 
 
-template<> inline bool Setting<double2>::onDraw(float scale, bool busy, bool &changed, bool visible)
-{
-  ImGuiStyle &style = ImGui::GetStyle();
-  if(mStep.x == 0.0)    { mStep.x = 1.0; }     if(mStep.y == 0.0)    { mStep.y = 1.0; }
-  if(mBigStep.x == 0.0) { mBigStep.x = 10.0; } if(mBigStep.y == 0.0) { mBigStep.y = 10.0; }
-  if(mFormat.empty())   { mFormat = DEFAULT_FORMAT; }
-  ImGui::BeginGroup();
-  {
-    Vec2f tSize = ImGui::CalcTextSize(labels[0].c_str());
-    float elementW = getElementWidth(mInputColW, tSize.x, style.ItemSpacing.x, 2);
-    float widgetW  = getWidgetWidth (elementW,   tSize.x, style.ItemSpacing.x, 2);
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos())-Vec2f(tSize.x+style.ItemSpacing.x, 0.0f));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(labels[0].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    double v = mData->x;
-    if(ImGui::InputDouble(("##"+mId+labels[0]).c_str(), &v, mStep.x, mBigStep.x, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.x, v); } if(mMinSet) { v = std::max(mMinVal.x, v); } changed = true; mData->x = v; }
 
-    tSize = ImGui::CalcTextSize(labels[1].c_str());
-    ImGui::SameLine(); ImGui::TextUnformatted(labels[1].c_str());
-    ImGui::SameLine(); ImGui::SetNextItemWidth(stack ? mInputColW*scale : widgetW);
-    v = mData->x;
-    if(ImGui::InputDouble(("##"+mId+labels[1]).c_str(), &v, mStep.y, mBigStep.y, mFormat.c_str()))
-      { if(mMaxSet) { v = std::min(mMaxVal.y, v); } if(mMinSet) { v = std::max(mMinVal.y, v); } changed = true; mData->y = v; }
-  }
-  ImGui::EndGroup();
-  return busy;
-}
+////////////////////////////////////////
+//// onDraw() vector specialization ////
+////////////////////////////////////////
+// (helper macros)
+#define DATA_STEP_SET  mId, mData, mStep, mFastStep
+#define MAX_MIN_SET    (mMinSet ? &mMinVal : nullptr), (mMaxSet ? &mMaxVal : nullptr)
+#define HORIZ_LIVE_EXTEND_SET horizontal(), mLiveEdit, (mToggle == nullptr)
+// INT vectors
+template<> inline bool Setting<int2 >::onDraw()   { return InputIntV    (DATA_STEP_SET, MAX_MIN_SET,          HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<int3 >::onDraw()   { return InputIntV    (DATA_STEP_SET, MAX_MIN_SET,          HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<int4 >::onDraw()   { return InputIntV    (DATA_STEP_SET, MAX_MIN_SET,          HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec2i>::onDraw()   { return InputIntV    (DATA_STEP_SET, MAX_MIN_SET,          HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec3i>::onDraw()   { return InputIntV    (DATA_STEP_SET, MAX_MIN_SET,          HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec4i>::onDraw()   { return InputIntV    (DATA_STEP_SET, MAX_MIN_SET,          HORIZ_LIVE_EXTEND_SET); }
+// FLOAT vectors
+template<> inline bool Setting<float2>::onDraw()  { return InputFloatV  (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<float3>::onDraw()  { return InputFloatV  (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<float4>::onDraw()  { return InputFloatV  (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec2f >::onDraw()  { return InputFloatV  (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec3f >::onDraw()  { return InputFloatV  (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec4f >::onDraw()  { return InputFloatV  (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+// DOUBLE vectors
+template<> inline bool Setting<double2>::onDraw() { return InputDoubleV (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<double3>::onDraw() { return InputDoubleV (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<double4>::onDraw() { return InputDoubleV (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec2d  >::onDraw() { return InputDoubleV (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec3d  >::onDraw() { return InputDoubleV (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
+template<> inline bool Setting<Vec4d  >::onDraw() { return InputDoubleV (DATA_STEP_SET, MAX_MIN_SET, mFormat, HORIZ_LIVE_EXTEND_SET); }
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  
-//////////////////////////
-//// COMBOBOX SETTING ////
-//////////////////////////
-  
+
+
+
+// just displays text
+class TextSetting : public Setting<std::string>
+{
+protected:
+  virtual bool onDraw() override;
+
+public:
+  TextSetting(const std::string &name, const std::string &id, std::string *text)
+    : Setting<std::string>(name, id, text) { }
+  ~TextSetting() = default;
+
+  // JSON (don't store)
+  virtual json toJSON() const override { return nullptr; }
+  virtual bool fromJSON(const json &js) override { return true; }
+};
+
+inline bool TextSetting::onDraw()
+{ // STATIC TEXT
+
+  TextPhysics(mData->c_str());
+  return false;
+}
+
+
+
+
+////////////////////////////////
+//// COMBOBOX SETTING (int) ////
+////////////////////////////////
 class ComboSetting : public Setting<int>
 {
 protected:
   std::vector<std::string> mChoices;
-  virtual bool onDraw(float scale, bool busy, bool &changed, bool visible) override;
+  virtual bool onDraw() override;
 
 public:
-  ComboSetting(const std::string &name, const std::string &id, const SettingUpdateCB &cb=nullptr)
-    : Setting<int>(name, id, 0, 0, cb) { }
-  ComboSetting(const std::string &name, const std::string &id, int *selection, const std::vector<std::string> &choices,
-               const SettingUpdateCB &cb=nullptr)
-    : Setting<int>(name, id, selection, 0, cb), mChoices(choices) { }
-  ComboSetting(const std::string &name, const std::string &id, int *selection, const std::vector<std::string> &choices,
-               int defaultVal, const SettingUpdateCB &cb=nullptr)
-    : Setting<int>(name, id, selection, defaultVal, cb), mChoices(choices) { }
-  ~ComboSetting() { }
+  ComboSetting(const std::string &name, const std::string &id)
+    : Setting<int>(name, id, nullptr, 0) { }
+  ComboSetting(const std::string &name, const std::string &id, int *selection, const std::vector<std::string> &choices)
+    : Setting<int>(name, id, selection), mChoices(choices) { }
+  ComboSetting(const std::string &name, const std::string &id, int *selection, const std::vector<std::string> &choices, int defaultVal)
+    : Setting<int>(name, id, selection, defaultVal), mChoices(choices) { }
+  ~ComboSetting() = default;
     
   // JSON
   virtual json toJSON() const override;
   virtual bool fromJSON(const json &js) override;
 };
 
-//// COMBO SETTING SAVE/LOAD ////
 inline json ComboSetting::toJSON() const
 {
   std::stringstream ss;
   json combo = json::object();
-  if(mData)  { ss << std::quoted(mChoices[*mData]); }
+  if(mData)  { ss << mChoices[*mData]; }
   combo["selection"] = ss.str();
   return combo;
 }
 inline bool ComboSetting::fromJSON(const json &js)
 {
+  bool success = true;
   if(js.contains("selection"))
     {
-      std::stringstream ss;
-      ss << std::quoted(js["selection"].get<std::string>());
-      std::string selection = ss.str();
-      auto iter = std::find(mChoices.begin(), mChoices.end(), selection);
+      std::stringstream ss; ss << js["selection"].get<std::string>();
+      const auto &iter = std::find(mChoices.begin(), mChoices.end(), ss.str());
       if(iter != mChoices.end())
         { *mData = (iter - mChoices.begin()); }
       else
-        { std::cout << "WARNING: Could not find combo setting: '" << selection << "' in choices! (" << getId() << ")\n"; }
+        {
+          success = false;
+          std::cout << "======> WARNING(ComboSetting::fromJSON): Couldn't find '" << ss.str() << "' (" << (*mData) << ") in choices! (" << id() << ")\n";
+        }
     }
-  return true;
+  else { success = false; std::cout << "======> WARNING(ComboSetting::fromJSON): Couldn't find setting 'selection'\n"; }
+  return success;
 }
-
-//// COMBO SETTING ////
-inline bool ComboSetting::onDraw(float scale, bool busy, bool &changed, bool visible)
+inline bool ComboSetting::onDraw()
 { // COMBOBOX
+  bool changed = false;
   if(ImGui::BeginCombo(("##"+mId).c_str(), mChoices[*mData].c_str()))
     {
-      busy = true;
-      ImGui::SetWindowFontScale(scale);
       for(int i = 0; i < mChoices.size(); i++)
         {
           std::string &s = mChoices[i];
-          if(ImGui::Selectable(((i == *mData ? "* " : "") + mChoices[i]).c_str()))
-            { changed = true; *mData = i; }
+          if(ImGui::Selectable(((i == *mData ? "* " : "") + mChoices[i]).c_str())) { changed = true; *mData = i; }
         }
       ImGui::EndCombo();
     }
-  return busy;
+  return changed;
 }
 
-/////////////////////////////
-//// SETTING GROUP CLASS ////
-/////////////////////////////
+
+////////////////////////////////
+//// COLOR SETTING (float4) ////
+////////////////////////////////
+class ColorSetting : public Setting<float4>
+{
+public:
+  ColorSetting(const std::string &name, const std::string &id, float4 *val)
+    : Setting<float4>(name, id, val) { }
+  ColorSetting(const std::string &name, const std::string &id, float4 *val, float4 defaultVal)
+    : Setting<float4>(name, id, val, defaultVal) { }
   
+  virtual bool onDraw() override;
+};
+
+inline bool ColorSetting::onDraw()
+{
+  static float4 lastColor; // save previous color in case user cancels
+  static std::string editId = "";
+  std::string buttonName = "##" + mId + "btn";
+  std::string popupName  = "##" + mId + "pop";
+  std::string pickerName = "##" + mId + "pick";
+
+  bool changed = false;
+  // choose graph background color
+  ImGuiColorEditFlags cFlags = (ImGuiColorEditFlags_DisplayRGB |
+                                ImGuiColorEditFlags_HDR        |
+                                ImGuiColorEditFlags_Float      |
+                                ImGuiColorEditFlags_AlphaBar);
+  if(ImGui::ColorButton(buttonName.c_str(), Vec4f(*mData), cFlags, ImVec2(20, 20)))
+    {
+      lastColor = *mData;
+      ImGui::OpenPopup(popupName.c_str());
+    }
+  ImGuiWindowFlags wFlags = (ImGuiWindowFlags_AlwaysAutoResize |
+                             ImGuiWindowFlags_NoMove           |
+                             ImGuiWindowFlags_NoTitleBar       |
+                             ImGuiWindowFlags_NoResize );
+  if(ImGui::BeginPopup(popupName.c_str(), wFlags))
+    {
+      bool hover = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+      float4 d = *mData; float4 last = lastColor;
+      if(ImGui::ColorPicker4(pickerName.c_str(), arr(d), cFlags, arr(last))) { *mData = d; changed = true; }
+      
+      hover |= ImGui::IsItemHovered();   
+      if(ImGui::Button("Select") || ImGui::IsKeyPressed(GLFW_KEY_ENTER) || (!hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
+        { ImGui::CloseCurrentPopup(); }                                     // select color
+      
+      ImGui::SameLine();
+      if(ImGui::Button("Cancel") || ImGui::IsKeyPressed(GLFW_KEY_ESCAPE))
+        { *mData = lastColor; changed = true; ImGui::CloseCurrentPopup(); } // cancel current selection
+      
+      ImGui::SameLine();
+      if(ImGui::Button("Reset")) { *mData = mDefault; changed = true; }     // reset to default
+      
+      ImGui::EndPopup();
+    }
+  return changed;
+}
+
+
+
+
+
+/////////////////////////////////////////////
+//// SLIDER SETTING (int/float/double-2) ////
+/////////////////////////////////////////////
+// TODO: rename RangeSetting
+// TODO: SliderSetting --> single slider position (OR: combine? multi-sliders)?
+template<typename T, typename VT2=typename DimType<T,2>::VEC_T>
+class SliderSetting : public Setting<VT2>
+{
+// public:
+//   typedef Setting<VT2> s;
+private:
+  using Setting<VT2>::mData;
+  using Setting<VT2>::id;
+  T *mRangeMin = nullptr;
+  T *mRangeMax = nullptr;
+public:
+  SliderSetting(const std::string &name, const std::string &id, VT2 *range, T *rMin=nullptr, T *rMax=nullptr)
+    : Setting<VT2>(name, id, range),               mRangeMin(rMin), mRangeMax(rMax) { }
+  SliderSetting(const std::string &name, const std::string &id, VT2 *range, const VT2 &defaultRange, T *rMin=nullptr, T *rMax=nullptr)
+    : Setting<VT2>(name, id, range, defaultRange), mRangeMin(rMin), mRangeMax(rMax) { }
+  virtual bool onDraw() override;
+};
+
+template<typename T, typename VT2>
+inline bool SliderSetting<T, VT2>::onDraw()
+{
+  return RangeSlider(("##slider-"+id()).c_str(), &mData->x, &mData->y, (mRangeMin ? *mRangeMin : 0), (mRangeMax ? *mRangeMax-1 : 0));
+}
+
+
+
+
+
+//// MATRIX SETTING ////
+template<typename T, int N, int M=N>
+class MatrixSetting : public Setting<Matrix<T, N, M>>
+{
+private:
+  using Setting<Matrix<T,N,M>>::mData;
+  using Setting<Matrix<T,N,M>>::mToggle;
+  using Setting<Matrix<T,N,M>>::name;
+  using Setting<Matrix<T,N,M>>::id;
+  
+protected:
+  virtual bool onDraw() override;
+  
+public:
+  typedef Matrix<T, N, M> Mat;
+  
+  MatrixSetting(const std::string &name_, const std::string &id_, Mat *mat)
+    : Setting<Matrix<T, N, M>>(name_, id_, mat) { }
+  ~MatrixSetting() = default;
+  
+  // JSON
+  virtual json toJSON() const override;
+  virtual bool fromJSON(const json &js) override;
+};
+
+template<typename T, int N, int M>
+inline json MatrixSetting<T,N,M>::toJSON() const
+{
+  json jr = json::array();
+  if(mData)
+    {
+      for(int r = 0; r < 4; r++)
+        {
+          json row = json::array();
+          for(int c = 0; c < 4; c++) { row.push_back((*mData)[r][c]); }
+          jr.push_back(row);
+        }
+    }
+  json js = json::object();
+  js["data"] = jr;
+  if(mToggle) { js["active"] = *mToggle; }
+  return js;
+}
+
+template<typename T, int N, int M>
+inline bool MatrixSetting<T,N,M>::fromJSON(const json &js)
+{
+  bool success = true;
+  if(mData && js.contains("data"))
+    {
+      json jr = js["data"];
+      for(int r = 0; r < 4; r++)
+        for(int c = 0; c < 4; c++)
+          { (*mData)[r][c] = jr[r][c]; }
+    }
+  else { success = false; }
+  if(mToggle)
+    {
+      if(js.contains("active")) { *mToggle = (js["active"].get<bool>()); }
+      else { success = false; }
+    }
+  return success;
+}
+
+template<typename T, int N, int M>
+inline bool MatrixSetting<T,N,M>::onDraw()
+{
+  bool changed = false;
+  ImGuiTableFlags tableFlags     = (ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PreciseWidths |
+                                    ImGuiTableFlags_NoPadOuterX | ImGuiTableFlags_Borders | ImGuiTableFlags_NoClip);
+  ImGuiTableColumnFlags colFlags = ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoClip;
+  float hSpace = ImGui::GetContentRegionMax().y - ImGui::GetCursorPos().y;
+  float colW  = hSpace/4.0f;
+  if(ImGui::BeginTable(id().c_str(), M, tableFlags))
+    {
+      for(int i = 0; i < M; i++) { ImGui::TableSetupColumn(std::to_string(i).c_str(), colFlags, colW); }
+      for(int r = 0; r < N; r++)
+        {
+          for(int c = 0; c < M; c++)
+            { // display matrix contents
+              std::stringstream ss; ss << std::right << std::setw(10) << std::fixed << std::setprecision(4) << (*mData)[r][c];
+              ImGui::TableNextColumn(); ImGui::SetNextItemWidth(-1);
+              TextPhysics(ss.str());
+              if(c <= M-1) { ImGui::SameLine(colW*(c+1), 0); }
+            }
+        }
+      ImGui::EndTable();
+    }
+  return changed;
+}
+
+
+
+
+
+
+
+
+
+////////////////////////
+//// SETTING GROUP  ////
+////////////////////////
 class SettingGroup : public SettingBase
 {
 protected:
   std::vector<SettingBase*> mContents;
-  bool mCollapse   = false; // true if group is collapsible (collapsing header vs. text title)
-  bool mDelete     = false; // true if settings should be deleted
-  bool mCOpen      = false; // true if group is not collapsed
-  int  mNumColumns = 1;     // number of setting columns (if 0, calculate best fit)
-  bool mHorizontal = false; // if true, orders settings horizontally in columns (column-major)
-  virtual bool onDraw(float scale, bool busy, bool &changed, bool visible) override;
-  bool drawContents(  float scale, bool busy, bool &changed, bool visible); // draws settings arranged in columns
+  bool mCollapsible = false; // if true, group is collapsible (collapsing header vs. text title)
+  bool mTree        = false; // if true, group is collapsible as an ImGui TreeNode
+  bool mIndent      = true;  // if true, group contents are indented
+  bool mDrawLabels  = true;  // if true, child labels are drawn
+  bool mCenter      = false; // if true, children are centered within columns
+  bool mOpen        = false; // false if group is collapsed
+  
+  int  mNumColumns  = 1;     // number of setting columns for contents
+  
+  bool drawContents(); // draws settings arranged in columns
+  virtual bool onDraw() override;
+  
 public:
-  //bool horizontal = false;
-  SettingGroup(const std::string &name_, const std::string &id_, const std::vector<SettingBase*> &contents,
-               bool collapse=false, bool deleteContents=true, const SettingUpdateCB &cb=nullptr)
-    : SettingBase(name_, id_, cb), mContents(contents), mCollapse(collapse), mDelete(deleteContents)
-  { }
-  ~SettingGroup()
-  {
-    if(mDelete)
-      {
-        for(auto s : mContents) { delete s; }
-        mContents.clear();
-      }
-  }
-    
+  std::vector<std::string> mRowLabels; // for setting array
+  std::vector<std::string> mColLabels; // for setting array
+  
+  SettingGroup(const std::string &name_, const std::string &id_, const std::vector<SettingBase*> &contents)
+    : SettingBase(name_, id_), mContents(contents)
+  { setHorizontal(false); for(auto s : mContents) { s->setParent(this); } }
+  ~SettingGroup() { clear(); }
+  
+  virtual bool isGroup() const override { return true; }
+  
   // JSON
   virtual json toJSON() const override;
   virtual bool fromJSON(const json &js) override;
-  virtual bool isGroup() const override { return true; }
 
-  std::vector<SettingBase*>& contents() { return mContents; }
+  std::vector<SettingBase*>&       contents()       { return mContents; }
   const std::vector<SettingBase*>& contents() const { return mContents; }
+
+  void setCollapsible(bool collapsible) { mCollapsible = collapsible; }
+  void setTree(bool tree)     { mTree       = tree; }
+  void setColumns(int nCols)  { mNumColumns = nCols; }
+  void setCenter(int center)  { mCenter     = center; }
+  void setIndent(bool indent) { mIndent     = indent; }
+  void setDrawLabels(bool dl) { mDrawLabels = dl; }
+  
+  void setColumnLabels(const std::vector<std::string> &cols) { mColLabels = cols; }
+  void setRowLabels   (const std::vector<std::string> &rows) { mRowLabels = rows; }
+
+  void add(SettingBase *setting) { setting->setParent(this); mContents.push_back(setting); }
+  void clear() { for(auto &s : mContents) { if(s) { delete s; s = nullptr; } } mContents.clear(); }
     
-  void add(SettingBase *setting) { mContents.push_back(setting); }
-  const bool& open() const  { return mCOpen; }
-  bool& open() { return mCOpen; }
-  void setOpen(bool copen) { mCOpen = copen; }
-
-  // pass to contents (TODO: replace with column organization)
-  virtual void setLabelColWidth(float w) override { SettingBase::setLabelColWidth(w); for(auto s : mContents) { s->setLabelColWidth(w); } }
-  virtual void setInputColWidth(float w) override { SettingBase::setInputColWidth(w); for(auto s : mContents) { s->setInputColWidth(w); } }
-
-  // virtual bool getDelete() const override { return mDelete; }
+  const bool& open() const { return mOpen; }
+  bool& open()             { return mOpen; }
+  void setOpen(bool gopen) { mOpen = gopen; }
 
   virtual void updateAll() override
   {
@@ -1032,16 +706,268 @@ public:
     if(updateCallback) { updateCallback(); }
   }
   
-  void setColumns(int numColumns, bool horizontal=false)
-  {
-    mNumColumns = numColumns;
-    mHorizontal = horizontal;
-  }
 };
   
-// makes a group of settings referencing a vector of values
+//// SETTING GROUP SAVE/LOAD ////
+inline json SettingGroup::toJSON() const
+{
+  json js = json::object();
+  if(mCollapsible) { js["open"]   =  mOpen; }
+  if(mToggle)      { js["active"] = *mToggle; }
+  json contents = json::object();
+  for(auto s : mContents) { contents[s->id()] = s->toJSON(); }
+  js["contents"] = contents;
+  return js;
+}
+inline bool SettingGroup::fromJSON(const json &js)
+{
+  bool success = true;
+  if(mCollapsible)
+    {
+      if(js.contains("open"))   { mOpen = js["open"].get<bool>(); }
+      else                      { success = false; std::cout << "======> WARNING(SettingGroup::fromJSON): SettingGroup (collapsible) couldn't find 'open'\n"; }
+    }
+  if(mToggle)
+    {
+      if(js.contains("active")) { *mToggle = js["active"].get<bool>(); }
+      else                      { success = false; std::cout << "======> WARNING(SettingGroup::fromJSON): SettingGroup (togglable)Couldn't find 'active'\n"; }
+    }
+  if(js.contains("contents"))
+    {
+      json contents = js["contents"];
+      if(js["contents"].size() == mContents.size())
+        {
+          for(int i = 0; i < mContents.size(); i++)
+            {
+              if(js["contents"].contains(mContents[i]->id()))
+                { success &= mContents[i]->fromJSON(js["contents"][mContents[i]->id()]); }
+              else
+                { success = false; std::cout << "======> WARNING(SettingGroup::fromJSON): Couldn't find '" << mContents[i]->id() << "'\n"; }
+            }
+        }
+    }
+  else { success = false; std::cout << "======> WARNING(SettingGroup::fromJSON): Couldn't find 'contents'\n"; success = false; }
+  return success;
+}
+
+//// SETTING GROUP DRAW //// 
+inline bool SettingGroup::drawContents()
+{
+  ImGuiStyle &style = ImGui::GetStyle();
+  bool changed = false;
+
+  Vec2f p0 = ImGui::GetCursorPos();
+  
+  bool rlabel = false;
+  float maxLabelW = mMinLabelW; // width  of row labels
+  for(int i = 0; i < (int)std::ceil(mContents.size()/(float)mNumColumns); i++)
+    {
+      const char *label = (i < mRowLabels.size() ? mRowLabels[i] : mContents[i*mNumColumns]->name()).c_str();
+      if(!std::string(label).empty()) { rlabel = true; }
+      maxLabelW = std::max(maxLabelW, ImGui::CalcTextSize(label).x);
+    }
+  float paddedLabelW = maxLabelW;
+  if(mHorizontal) { paddedLabelW += ImGui::CalcTextSize("XX").x; }
+  else            { paddedLabelW += ImGui::CalcTextSize(HELP_ICON "XXXX").x; }
+  
+  int rCol = (mDrawLabels && rlabel ? 1 : 0);
+  int nCols = mNumColumns + rCol;
+
+  int tableNum = 0; // used if multiple sub-tables needed
+  ImGuiTableFlags tFlags = (ImGuiTableFlags_SizingStretchProp |
+                            ImGuiTableFlags_PreciseWidths |
+                            ImGuiTableFlags_NoPadOuterX |
+                            ImGuiTableFlags_NoClip);
+  ImGuiTableColumnFlags lColFlags = ImGuiTableColumnFlags_WidthFixed   | ImGuiTableColumnFlags_NoClip;
+  ImGuiTableColumnFlags sColFlags = ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoClip;
+
+  bool inTable = false; // keeps track of whether table needs to be ended
+  ImGui::SetNextItemWidth(mBodyWidth);
+  if(ImGui::BeginTable(mId.c_str(), nCols, tFlags))
+    {
+      inTable = true;
+      for(int i = 0; i < nCols; i++)
+        {
+          if(rCol && i == 0) { ImGui::TableSetupColumn("rowLabels", lColFlags, paddedLabelW); }
+          else
+            {
+              if(i-rCol < mColLabels.size()) { ImGui::TableSetupColumn(mColLabels[i-rCol].c_str(), sColFlags, maxLabelW); }
+              else                           { ImGui::TableSetupColumn("",                         sColFlags); }
+            }
+        }
+      ImGui::TableNextColumn();
+
+      // column labels
+      for(int i = 0; i < mNumColumns; i++)
+        {
+          ImGui::TableSetColumnIndex(i + rCol);
+          if(i < mColLabels.size())
+            {
+              Vec2f tSize = ImGui::CalcTextSize(mColLabels[i].c_str());
+              const ImGuiTableColumn &column = ImGui::GetCurrentTable()->Columns[ImGui::GetCurrentTable()->CurrentColumn];
+              float columnW = column.WorkMaxX - column.WorkMinX; // ~hack
+              float textW = ImGui::CalcTextSize(mColLabels[i].c_str()).x;
+              ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(std::floor((columnW - textW)/2.0f), 0));
+              TextPhysics(mColLabels[i].c_str());
+            }
+        }
+      if(mColLabels.size() > 0) { ImGui::TableNextRow(); }
+      ImGui::TableSetColumnIndex(rCol);
+
+      // draw row labels and children
+      bool gEnabled = enabled();
+      ImGui::BeginDisabled(!gEnabled);
+      for(int i = 0; i < mContents.size(); i++)
+        {
+          bool newTable      = false; // set to true if child is a non-horizontal group (so expand to full group width)
+          int  col = (i % mNumColumns); int row = (i / mNumColumns);
+          if(col == 0)
+            { // skip row if nothing visible
+              bool rowVisible = false;
+              for(int j = 0; j < mNumColumns && (i+j) < mContents.size(); j++)
+                { rowVisible |= mContents[i+j]->visible(); }
+              if(!rowVisible) { i += mNumColumns; i--; continue; }
+
+              float colH  = 0.0f; // (height of child column labels)
+              if(mContents[i]->isGroup())
+                {
+                  SettingGroup *g = static_cast<SettingGroup*>(mContents[i]);
+                  newTable = !g->horizontal();                  
+                  // offset toggle/help by height of columns
+                  for(int j = 0; j < g->mNumColumns; j++)
+                    { if(j < g->mColLabels.size()) { colH = std::max(colH, ImGui::CalcTextSize(g->mColLabels[j].c_str()).y); } }
+                  if(colH > 0.0f) { colH += style.CellPadding.y*2.0f; } // padding around label text
+                  colH += style.CellPadding.y;                          // table padding offset for alignment
+                }
+
+              // start of row
+              if(i != 0) { ImGui::TableNextRow(); }
+              ImGui::TableSetColumnIndex(0);
+
+              if(rCol && (!mContents[i]->isGroup() || reinterpret_cast<SettingGroup*>(mContents[i])->horizontal()))
+                { // draw row label column
+                  ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0, colH));
+                  if(mContents[i]->visible()) { mContents[i]->drawHelp(); }
+                  
+                  if(mRowLabels.size() > row && !mRowLabels[row].empty()) { TextPhysics(mRowLabels[row].c_str());      ImGui::SameLine(); }
+                  else if(!mContents[i]->name().empty())                  { TextPhysics(mContents[i]->name().c_str()); ImGui::SameLine(); }
+                  
+                  ImGui::TableNextColumn();
+                  ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0, colH));
+                  if(mContents[i]->visible()) { changed |= mContents[i]->drawToggle(); }
+                  ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) - Vec2f(0, colH));
+                }
+            }
+          else if(mContents[i]->visible())
+            { // still draw help and toggle
+              ImGui::TableNextColumn();
+              mContents[i]->drawHelp();
+              changed |= mContents[i]->drawToggle();
+              if(!mContents[i]->name().empty()) { TextPhysics(mContents[i]->name().c_str()); ImGui::SameLine(); }
+            }
+          ImGui::TableSetColumnIndex(col + rCol);
+          float offset = ImGui::GetCursorPos().x - p0.x;
+
+          // split main table if necessary
+          if(newTable && inTable)
+            {
+              ImGui::EndTable(); inTable = false;
+              ImGui::SetCursorPos(Vec2f(p0.x, ImGui::GetCursorPos().y));
+              reinterpret_cast<SettingGroup*>(mContents[i])->setLabelW(offset - 3*style.IndentSpacing - style.CellPadding.x/2.0f);
+            }
+
+          // draw
+          if(mCenter)
+            {
+              // center contents in column (~hack)
+              const ImGuiTableColumn &column = ImGui::GetCurrentTable()->Columns[ImGui::GetCurrentTable()->CurrentColumn];
+              float columnW = column.WorkMaxX - column.WorkMinX; // ~hack
+              ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f((columnW - mContents[i]->size().x)/2.0f, 0));
+            }
+          changed |= mContents[i]->draw();
+          
+          if(newTable && !inTable)
+            {
+              if(i < mContents.size()-1)
+                { // begin new table for remaining contents
+                  if(ImGui::BeginTable((mId+"-"+std::to_string(tableNum)).c_str(), nCols, tFlags))
+                    {
+                      tableNum++; inTable = true;
+                      for(int j = 0; j < nCols; j++)
+                        {
+                          if(rCol && j == 0) { ImGui::TableSetupColumn("rowLabels", lColFlags, paddedLabelW); }
+                          else
+                            {
+                              if(j-rCol < mColLabels.size()) { ImGui::TableSetupColumn(mColLabels[j-rCol].c_str(), sColFlags); }
+                              else                           { ImGui::TableSetupColumn("",                         sColFlags); }
+                            }
+                        }
+                      ImGui::TableNextColumn();
+                    }
+                }
+            }
+        }
+      ImGui::EndDisabled();
+      if(inTable) { ImGui::EndTable(); }
+    }
+  mMinLabelW = maxLabelW;
+  // propagate label column width
+  for(auto s : mContents) { if(s->isGroup() && !s->horizontal()) { mMinLabelW = std::max(mMinLabelW, s->labelW()); } }
+  for(auto s : mContents) { if(s->isGroup() && !s->horizontal()) { s->setLabelW(mMinLabelW); } }
+  return changed;
+}
+
+inline bool SettingGroup::onDraw()
+{ // SETTING GROUP
+  bool changed = false;
+  if(mCollapsible || mTree)
+    {
+      ImGuiTreeNodeFlags treeFlags = (ImGuiTreeNodeFlags_FramePadding |
+                                      ImGuiTreeNodeFlags_SpanAvailWidth);
+      ImGui::SetNextTreeNodeOpen(mOpen); ImGui::SetNextItemWidth(mBodyWidth);
+      if((mCollapsible && ImGui::CollapsingHeader(mName.c_str(), nullptr, treeFlags)) ||
+         (mTree && ImGui::TreeNodeEx(mName.c_str(), treeFlags)))
+        {
+          mOpen = true;
+          if(mIndent && !mHorizontal) { ImGui::Indent(); }
+          changed |= drawContents();
+          if(mIndent && !mHorizontal) { ImGui::Unindent(); }
+          if(mTree) { ImGui::TreePop(); }
+        }
+      else { mOpen = false; }
+    }
+  else
+    {
+      mOpen = true; // no collapse -- always open
+      if(!mHorizontal && !mName.empty())
+        {
+          drawHelp();
+          TextPhysics(mName.c_str()); ImGui::SameLine(); // draw title
+          changed |= drawToggle();
+          TextPhysics(""); ImGui::Separator();
+        }
+
+      if(mIndent && !mHorizontal && !mName.empty()) { ImGui::Indent(); }
+      changed |= drawContents();
+      if(mIndent && !mHorizontal && !mName.empty()) { ImGui::Unindent(); }
+    }
+  if(changed && updateCallback) { updateCallback(); }
+
+  return changed;
+}
+
+
+
+
+
+
+
+
+
+
+// helper -- makes a group of settings referencing a vector of values
 template<typename T>
-inline SettingGroup* makeSettingGroup(const std::string &name, const std::string &id, std::vector<T> *contentData, bool collapse=false)
+inline SettingGroup* makeSettingGroup(const std::string &name, const std::string &id, std::vector<T> *contentData)
 {
   if(!contentData) { return nullptr; }
   std::vector<SettingBase*> contents;
@@ -1050,158 +976,47 @@ inline SettingGroup* makeSettingGroup(const std::string &name, const std::string
       std::string index = std::to_string(i);
       contents.push_back(new Setting<T>(name+index, id+index, &contentData->at(i)));
     }
-  return new SettingGroup(name, id, contents, collapse);
+  SettingGroup *g = new SettingGroup(name, id, contents);
+  return g;
 }
-// makes a group of settings from an array of values  
+// helper -- makes a group of settings from an array of values  
 template<typename T, int N>
-inline SettingGroup* makeSettingGroup(const std::string &name, const std::string &id, std::array<T, N> *contentData, bool collapse=false)
+inline SettingGroup* makeSettingGroup(const std::string &name, const std::string &id, std::array<T, N> *contentData)
 {
   if(!contentData) { return nullptr; }
   std::vector<SettingBase*> contents;
   for(int i = 0; i < N; i++)
     {
       std::string index = std::to_string(i);
-      contents.push_back(new Setting<T>(name+index, id+index, &contentData->at(i)));
+      contents.push_back(new Setting<T>(/*name+" "+index*/ "", id+index, &contentData->at(i)));
     }
-  return new SettingGroup(name, id, contents, collapse);
+  SettingGroup *g = new SettingGroup(name, id, contents);
+  return g;
 }
-  
-//// SETTING GROUP SAVE/LOAD ////
-inline json SettingGroup::toJSON() const
+
+// helper -- makes a group of settings from an array of values
+template<typename T, int COLS>
+inline SettingGroup* makeSettingGrid(const std::string &name, const std::string &id, const std::vector<std::array<T, COLS>*> &contentData,
+                                     const std::vector<std::string> &rowLabels={})
 {
-  json js = json::object();
-  if(mCollapse) { js["open"]   =  mCOpen; }
-  if(mToggle)    { js["active"] = *mToggle; }
-  json contents = json::object();
-  for(auto s : mContents) { contents[s->getId()] = s->toJSON(); }
-    
-  js["contents"] = contents;
-  return js;
-}
-inline bool SettingGroup::fromJSON(const json &js)
-{
-  bool success = true;
-  if(mCollapse)
+  std::vector<SettingBase*> contents;
+  for(int r = 0; r < contentData.size(); r++)
     {
-      if(js.contains("open")) { mCOpen = js["open"].get<bool>(); }
-      else                    { success = false; }
-    }
-  if(mToggle)
-    {
-      if(js.contains("active")) { *mToggle = js["active"].get<bool>(); }
-      else                      { success = false; }
-    }
-  if(js.contains("contents"))
-    {
-      json contents = js["contents"];
-      if(js["contents"].size() == mContents.size())
+      std::string ri = std::to_string(r);
+      if(contentData[r])
         {
-          for(int i = 0; i < mContents.size(); i++)
-            { mContents[i]->fromJSON(js["contents"][mContents[i]->getId()]); }
+          for(int c = 0; c < COLS; c++)
+            {
+              std::string ci = std::to_string(c);
+              contents.push_back(new Setting<T>("", id+"("+ri+","+ci+")", &contentData[r]->at(c)));
+            }
         }
-      else { success = false; }
     }
-  else { std::cout << "====> WARNING: SettingGroup couldn't find 'contents'\n"; success = false; }
-  return success;
+  SettingGroup *g = new SettingGroup(name, id, contents);
+  g->setRowLabels(rowLabels);
+  g->setColumns(COLS);
+  g->setHorizontal(true);
+  return g;
 }
-  
-//// SETTING GROUP DRAW //// 
-// TODO?: Add flag (or something) to prevent interaction during node placement (debounce)
-inline bool SettingGroup::drawContents(float scale, bool busy, bool &changed, bool visible)
-{
-  // if(horizontal)
-  //   {
-  //     ImGui::BeginGroup();
-  //     {
-
-        
-  //     }
-  //     ImGui::EndGroup();
-
-  //   }
-  // else
-  //   {
-      ImGui::Indent();
-      ImGui::BeginGroup();
-      {
-        if(mHorizontal)
-          { // draw each row horizontally (grouped by column for alignment)
-            int numPerCol = (int)std::ceil(mContents.size() / mNumColumns);
-            //int row = 0;
-            for(int i = 0; i < mContents.size(); i++)
-              {
-                SettingBase *s = mContents[numPerCol - (i % numPerCol)];
-                changed = false;
-                busy |= s->draw(scale, false, changed, visible);
-            
-                if(changed && s->updateCallback) { s->updateCallback(); }
-                if((i % numPerCol) == numPerCol || i == mContents.size()-1)
-                  { // last element in column
-                    ImGui::EndGroup();
-                    if(i < (mContents.size()-1)) // next column
-                      { ImGui::SameLine(); }
-                  }
-              }
-          }
-        else
-          { // draw each column as group
-            int numPerCol = (int)std::ceil(mContents.size() / mNumColumns);
-            for(int i = 0; i < mContents.size(); i++)
-              {
-                SettingBase *s = mContents[i];
-                if(i % numPerCol == 0) { ImGui::BeginGroup(); } // start column group
-              
-                changed = false;
-                busy |= s->draw(scale, false, changed, visible);
-                if(changed && s->updateCallback) { s->updateCallback(); }
-                if((i % numPerCol) == numPerCol-1 || i == mContents.size()-1)
-                  { // last element in column
-                    ImGui::EndGroup();
-                    if(i < (mContents.size()-1)) { ImGui::SameLine(); } // next column
-                  }
-              }
-          }
-
-      }
-      ImGui::EndGroup();
-      ImGui::Unindent();
-    // }
-  return busy;
-}
-  
-inline bool SettingGroup::onDraw(float scale, bool busy, bool &changed, bool visible)
-{ // SETTING GROUP
-  ImGuiTreeNodeFlags flags = (ImGuiTreeNodeFlags_FramePadding | ImGuiTreeNodeFlags_SpanAvailWidth);
-  if(mToggle)
-    {
-      bool t = *mToggle;
-      changed |= ImGui::Checkbox("##toggle", &t);
-      *mToggle = t;
-      ImGui::SameLine();
-    }
-  if(mCollapse)
-    {
-      ImGui::SetNextTreeNodeOpen(mCOpen);
-      if(ImGui::CollapsingHeader(mName.c_str(), nullptr, flags))
-        {
-          if(!busy) { mCOpen = true; }
-          busy |= drawContents(scale, busy, changed, visible);
-        }
-      else if(visible) { mCOpen = false; }
-    }
-  else
-    {
-      mCOpen = true; // no collapse -- always open
-      drawHelp();
-      ImGui::AlignTextToFramePadding();
-      ImGui::TextUnformatted(mName.c_str()); // draw title
-      if(!mHorizontal)
-        { ImGui::Separator(); }
-      busy |= drawContents(scale, busy, changed, visible);
-    }
-  return busy;
-}
-
-
 
 #endif // SETTING_HPP

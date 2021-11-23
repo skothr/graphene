@@ -6,7 +6,7 @@
 #include "vector-operators.h"
 #include "raytrace.h"
 #include "material.h"
-#include "units.hpp"
+#include "units.cuh"
 #include "drawPens.hpp"
 
 //// CUDA ////
@@ -19,12 +19,9 @@ template<typename T> class  FluidField;
 
 
 // overlap helpers
-template<typename T>
-__device__ inline bool penOverlaps(typename DimType<T, 3>::VEC_T &pCell, typename DimType<T, 3>::VEC_T &mpos,
-                                   typename DimType<T, 3>::VEC_T &diff,  typename DimType<T, 3>::VEC_T &dist_2, const Pen<T> *pen,
-                                   const FieldParams<T> &cp, T radOffset)
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+__device__ inline bool penOverlaps(VT3 &pCell, VT3 &mpos, VT3 &diff,  VT3 &dist_2, const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
   const VT3 rMult = pen->sizeMult*pen->xyzMult;
   
   if(pen->cellAlign) { pCell = floor(pCell); mpos = floor(mpos); }
@@ -43,13 +40,11 @@ __device__ inline bool penOverlaps(typename DimType<T, 3>::VEC_T &pCell, typenam
           ( pen->square &&                         (abs(diff0.x) <= r0.x+0.5f && abs(diff0.y) <= r0.y+0.5f && abs(diff0.z) <= r0.z+0.5f) &&
            (r1.x <= 0 || r1.y <= 0 || r1.z <= 0 || (abs(diff1.x) <= r1.x+0.5f && abs(diff1.y) <= r1.y+0.5f && abs(diff1.z) <= r1.z+0.5f))));
 }
-template<typename T>
-__device__ inline bool penOverlaps2(typename DimType<T, 3>::VEC_T &pCell,  typename DimType<T, 3>::VEC_T &mpos,
-                                    typename DimType<T, 3>::VEC_T &diff,   typename DimType<T, 3>::VEC_T &diff0,   typename DimType<T, 3>::VEC_T &diff1,
-                                    typename DimType<T, 3>::VEC_T &dist_2, typename DimType<T, 3>::VEC_T &dist0_2, typename DimType<T, 3>::VEC_T &dist1_2,
+
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+__device__ inline bool penOverlaps2(VT3 &pCell,  VT3 &mpos, VT3 &diff,   VT3 &diff0,   VT3 &diff1, VT3 &dist_2, VT3 &dist0_2, VT3 &dist1_2,
                                     const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
   const VT3 rMult = pen->sizeMult*pen->xyzMult;
   
   if(pen->cellAlign) { pCell = floor(pCell); mpos = floor(mpos); }
@@ -70,16 +65,14 @@ __device__ inline bool penOverlaps2(typename DimType<T, 3>::VEC_T &pCell,  typen
 }
 
 // returns true if point with given distances are at the edge of the pen (hollow shell)
-template<typename T>
-__device__ inline bool penBorder(typename DimType<T, 3>::VEC_T &diff0, typename DimType<T, 3>::VEC_T &dist1, const Pen<T> *pen, T width)
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+__device__ inline bool penBorder(VT3 &diff0, VT3 &dist1, const Pen<T> *pen, T width)
 { return (abs(pen->radius0 - diff0) <= width) || (pen->radius1 > 0.0 && abs(pen->radius1 - dist1) <= width); }
 
 // returns true if point with given offsets are at the edge of each axis plane cross-section
-template<typename T>
-__device__ inline bool penAxisBorder(const typename DimType<T, 3>::VEC_T &mpos, const typename DimType<T, 3>::VEC_T &diff0,
-                                     const typename DimType<T, 3>::VEC_T &diff1, const Pen<T> *pen, T width)
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+__device__ inline bool penAxisBorder(const VT3 &mpos, const VT3 &diff0, const VT3 &diff1, const Pen<T> *pen, T width)
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
   VT3 dist0XY = VT3{diff0.x, diff0.y, 0.0f};
   VT3 dist0YZ = VT3{diff0.x, 0.0f, diff0.z};
   VT3 dist0ZX = VT3{0.0f, diff0.y, diff0.z};
@@ -92,20 +85,16 @@ __device__ inline bool penAxisBorder(const typename DimType<T, 3>::VEC_T &mpos, 
 }
 
 
-
-
 // overlap detection (add overlapping components of sphere)
 // inline __device__ float3 pointInSphere(const float3 &p, const float3 &cp, float cr)
 // { float3 d = p - cp; return dot(d, d) <= cr*cr;  }
 
 // returns intersections
-template<typename T>
-inline __device__ bool lineIntersectSphere(const typename DimType<T, 3>::VEC_T p1, const typename DimType<T, 3>::VEC_T p2,
-                                           const typename DimType<T, 3>::VEC_T &cp, T cr, 
-                                           typename DimType<T, 3>::VEC_T &i1, typename DimType<T, 3>::VEC_T &i2, // (OUT) cube-sphere intersection points
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+inline __device__ bool lineIntersectSphere(const VT3 &p1, const VT3 &p2, const VT3 &cp, T cr, 
+                                           VT3 &i1, VT3 &i2, // (OUT) cube-sphere intersection points
                                            int &np) // (OUT) number of cube points contained in sphere
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
   VT3 ldiff = p2 - p1;
   T ldist_2 = dot(ldiff, ldiff);
   T lD      = p1.x*p2.y - p2.x*p1.y;
@@ -114,12 +103,9 @@ inline __device__ bool lineIntersectSphere(const typename DimType<T, 3>::VEC_T p
 }
 
 
-template<typename T>
-__device__ inline T penOverlap3(typename DimType<T, 3>::VEC_T &pCell, typename DimType<T, 3>::VEC_T &mpos,
-                                typename DimType<T, 3>::VEC_T &diff,  typename DimType<T, 3>::VEC_T &dist_2, const Pen<T> *pen,
-                                const FieldParams<T> &cp, T radOffset)
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+__device__ inline T penOverlap3(VT3 &pCell, VT3 &mpos, VT3 &diff, VT3 &dist_2, const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
   const VT3 rMult = pen->sizeMult*pen->xyzMult;
   const T   cellDiag = cp.u.dL * (T)(sqrt(3.0)/2.0);
   
@@ -178,13 +164,10 @@ __device__ inline T penOverlap3(typename DimType<T, 3>::VEC_T &pCell, typename D
   else { return 0.0; }
 }
 
-template<typename T>
-__device__ inline T penOverlap3(typename DimType<T, 3>::VEC_T &pCell,  typename DimType<T, 3>::VEC_T &mpos,
-                                typename DimType<T, 3>::VEC_T &diff,   typename DimType<T, 3>::VEC_T &diff0,   typename DimType<T, 3>::VEC_T &diff1,
-                                typename DimType<T, 3>::VEC_T &dist_2, typename DimType<T, 3>::VEC_T &dist0_2, typename DimType<T, 3>::VEC_T &dist1_2,
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+__device__ inline T penOverlap3(VT3 &pCell,  VT3 &mpos, VT3 &diff, VT3 &diff0, VT3 &diff1, VT3 &dist_2, VT3 &dist0_2, VT3 &dist1_2,
                                 const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
   const VT3 rMult = pen->sizeMult*pen->xyzMult;
   const T   cellDiag = cp.u.dL * (T)(sqrt(3.0)/2.0);
 
@@ -243,29 +226,36 @@ __device__ inline T penOverlap3(typename DimType<T, 3>::VEC_T &pCell,  typename 
 }
 
 // add signal from source field
-template<typename T> void addSignal  (Field<T> &signal, Field<T> &dst, const FieldParams<T> &cp, T mult=1.0);
-template<typename T> void addSignal  (Field<T> &signal, Field<T> &dst, const FluidParams<T> &cp, T mult=1.0);
-template<typename T> void addSignal  (Field<typename DimType<T, 3>::VEC_T> &signal, Field<typename DimType<T, 3>::VEC_T> &dst, const FieldParams<T> &cp, T mult=1.0);
-template<typename T> void addSignal  (Field<typename DimType<T, 3>::VEC_T> &signal, Field<typename DimType<T, 3>::VEC_T> &dst, const FluidParams<T> &cp, T mult=1.0);
-template<typename T> void addSignal  (EMField<T> &signal, EMField<T> &dst, const FieldParams<T> &cp, T mult=1.0);
-template<typename T> void addSignal  (FluidField<T> &signal, FluidField<T> &dst, const FluidParams<T> &cp, T mult=1.0);
-// add signal from mouse position/pen
-template<typename T> void addSignal  (const typename DimType<T, 3>::VEC_T &mpos,
-                                      Field<typename DimType<T, 3>::VEC_T> &dstV, Field<T> &dstP,
-                                      Field<T> &dstQn, Field<T> &dstQp, Field<typename DimType<T, 3>::VEC_T> &dstQv,
-                                      Field<typename DimType<T, 3>::VEC_T> &dstE, Field<typename DimType<T, 3>::VEC_T> &dstB,
-                                      const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0);
+template<typename T> void addSignal(Field<T> &signal, Field<T> &dst, const FieldParams<T> &cp, T mult=1.0);
+template<typename T> void addSignal(Field<T> &signal, Field<T> &dst, const FluidParams<T> &cp, T mult=1.0);
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+void addSignal(Field<VT3> &signal, Field<VT3> &dst, const FieldParams<T> &cp, T mult=1.0);
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+void addSignal(Field<VT3> &signal, Field<VT3> &dst, const FluidParams<T> &cp, T mult=1.0);
+template<typename T>
+void addSignal(EMField<T> &signal, EMField<T> &dst, const FieldParams<T> &cp, T mult=1.0);
+template<typename T>
+void addSignal(FluidField<T> &signal, FluidField<T> &dst, const FluidParams<T> &cp, T mult=1.0);
 
-template<typename T> void addSignal  (const typename DimType<T, 3>::VEC_T &mpos, EMField<T> &dst,
-                                      const SignalPen<T> &pen, const FieldParams<T> &cp, T mult=1.0); // EMField
-template<typename T> void addSignal  (const typename DimType<T, 3>::VEC_T &mpos, FluidField<T> &dst,
-                                      const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0); // FluidField
+// add signal from mouse position/pen
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+void addSignal(const VT3 &mpos, Field<VT3> &dstV, Field<T> &dstP, Field<T> &dstQn, Field<T> &dstQp,
+               Field<VT3> &dstQnv, Field<VT3> &dstQpv, Field<VT3> &dstE, Field<VT3> &dstB,
+               const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0);
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+void addSignal(const VT3 &mpos, EMField<T> &dst, const SignalPen<T> &pen, const FieldParams<T> &cp, T mult=1.0); // EMField
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+void addSignal(const VT3 &mpos, FluidField<T> &dst, const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0); // FluidField
+
 // signal decay
-template<typename T> void decaySignal(Field<T> &src, FieldParams<T> &cp);
-template<typename T> void decaySignal(Field<typename DimType<T, 3>::VEC_T> &src, FieldParams<T> &cp);
+template<typename T>
+void decaySignal(Field<T> &src, FieldParams<T> &cp);
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+void decaySignal(Field<VT3> &src, FieldParams<T> &cp);
 
 // add material from mouse position/pen
-template<typename T> void addMaterial(const typename DimType<T, 3>::VEC_T &mpos, EMField<T> &dst, const MaterialPen<T> &pen, const FieldParams<T> &cp);
+template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+void addMaterial(const VT3 &mpos, EMField<T> &dst, const MaterialPen<T> &pen, const FieldParams<T> &cp);
 
 
 

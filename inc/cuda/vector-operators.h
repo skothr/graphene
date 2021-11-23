@@ -5,16 +5,30 @@
 #include <vector_types.h>
 #include <ostream>
 #include <cmath>
+#include <functional>
 #include <float.h>
 
 #include "vector.hpp"
+
+// constexpr check if CUDA type  (for enable_if<>)
+template<typename T> struct is_cuda : std::false_type { };
+template<> struct is_cuda<int2>     : std::true_type  { };
+template<> struct is_cuda<int3>     : std::true_type  { };
+template<> struct is_cuda<int4>     : std::true_type  { };
+template<> struct is_cuda<float2>   : std::true_type  { };
+template<> struct is_cuda<float3>   : std::true_type  { };
+template<> struct is_cuda<float4>   : std::true_type  { };
+template<> struct is_cuda<double2>  : std::true_type  { };
+template<> struct is_cuda<double3>  : std::true_type  { };
+template<> struct is_cuda<double4>  : std::true_type  { };
+template<typename T> constexpr bool is_cuda_v = is_cuda<T>::value; // (helper)
 
 //// COMPILE-TIME TEMPLATES FOR GENERALIZED DIMENSIONALITY ////
 template<typename T> struct Dim { static constexpr int N = 1; typedef T   BASE_T;    typedef T       LOWER; typedef int  SIZE_T; };
 template<> struct Dim<int2>     { static constexpr int N = 2; typedef int BASE_T;    typedef int     LOWER; typedef int2 SIZE_T; };
 template<> struct Dim<int3>     { static constexpr int N = 3; typedef int BASE_T;    typedef int2    LOWER; typedef int3 SIZE_T; };
 template<> struct Dim<int4>     { static constexpr int N = 4; typedef int BASE_T;    typedef int3    LOWER; typedef int4 SIZE_T; };
-                                                                                                                      
+
 template<> struct Dim<float2>   { static constexpr int N = 2; typedef float BASE_T;  typedef float   LOWER; typedef int2 SIZE_T; };
 template<> struct Dim<float3>   { static constexpr int N = 3; typedef float BASE_T;  typedef float2  LOWER; typedef int3 SIZE_T; };
 template<> struct Dim<float4>   { static constexpr int N = 4; typedef float BASE_T;  typedef float3  LOWER; typedef int4 SIZE_T; };
@@ -23,17 +37,17 @@ template<> struct Dim<double2>  { static constexpr int N = 2; typedef double BAS
 template<> struct Dim<double3>  { static constexpr int N = 3; typedef double BASE_T; typedef double2 LOWER; typedef int3 SIZE_T; };
 template<> struct Dim<double4>  { static constexpr int N = 4; typedef double BASE_T; typedef double3 LOWER; typedef int4 SIZE_T; };
 
-// NOTE: S --> scalar base type (int/float/double)
-template<typename S, int D> struct Dim<Vector<S, D>>
+// NOTE: T --> scalar base type (int/float/double)
+template<typename T, int N_> struct Dim<Vector<T, N_>>
 {
-  static constexpr int N = D;
-  typedef typename std::conditional<D==1, S, Vector<S, D-1>>::type LOWER;
-  typedef S BASE_T;
+  static constexpr int N = N_;
+  typedef typename std::conditional<N_==1, T, Vector<T, N_-1>>::type LOWER;
+  typedef T   BASE_T;
   typedef int SIZE_T;
 };
-template<typename S> struct Dim<Vector<S, 2>>{ static constexpr int N = 2; typedef Vector<S, 1> LOWER;   typedef S BASE_T; typedef int2 SIZE_T; };
-template<typename S> struct Dim<Vector<S, 3>>{ static constexpr int N = 3; typedef Vector<S, 2> LOWER;   typedef S BASE_T; typedef int3 SIZE_T; };
-template<typename S> struct Dim<Vector<S, 4>>{ static constexpr int N = 4; typedef Vector<S, 3> LOWER;   typedef S BASE_T; typedef int4 SIZE_T; };
+template<typename T> struct Dim<Vector<T, 2>>{ static constexpr int N = 2; typedef Vector<T, 1> LOWER; typedef T BASE_T; typedef int2 SIZE_T; };
+template<typename T> struct Dim<Vector<T, 3>>{ static constexpr int N = 3; typedef Vector<T, 2> LOWER; typedef T BASE_T; typedef int3 SIZE_T; };
+template<typename T> struct Dim<Vector<T, 4>>{ static constexpr int N = 4; typedef Vector<T, 3> LOWER; typedef T BASE_T; typedef int4 SIZE_T; };
 
 // CONVERT SCALAR TYPE AND INT TO CUDA VECTOR STRUCT
 template<typename T, int N> struct DimType { typedef T VEC_T; typedef int  SIZE_T; };
@@ -93,52 +107,6 @@ template<> __host__ __device__ inline double2 makeV<double2, float2> (float2  v)
 template<> __host__ __device__ inline double3 makeV<double3, float3> (float3  v) { return double3{(double)v.x, (double)v.y, (double)v.z}; }
 template<> __host__ __device__ inline double4 makeV<double4, float4> (float4  v) { return double4{(double)v.x, (double)v.y, (double)v.z, (double)v.w}; }
 
-// alternative templating test(s)...
-//
-// template<typename T, typename U=typename Dim<T>::BASE_T, std::enable_if<Dim<T>::N==1, bool> = true> // N = 1
-// __host__ __device__  inline T makeV(U s) { return T((Dim<T>::BASE_T)s); }
-// template<typename T, typename U=typename Dim<T>::BASE_T, std::enable_if<Dim<T>::N==1, bool> = true> // N = 1
-// __host__ __device__  inline T makeV(U s) { return T((Dim<T>::BASE_T)s); }
-// template<typename T, typename U=typename Dim<T>::BASE_T, std::enable_if<Dim<T>::N==2, bool> = true> // N = 2
-// __host__ __device__  inline T makeV(U s) { return T{(Dim<T>::BASE_T)s, (Dim<T>::BASE_T)s}; }
-// template<typename T, typename U=typename Dim<T>::BASE_T, std::enable_if<Dim<T>::N==3, bool> = true> // N = 3
-// __host__ __device__  inline T makeV(U s) { return T{(Dim<T>::BASE_T)s, (Dim<T>::BASE_T)s, (Dim<T>::BASE_T)s}; }
-// template<typename T, typename U=typename Dim<T>::BASE_T, std::enable_if<Dim<T>::N==4, bool> = true> // N = 4
-// __host__ __device__  inline T makeV(U s) { return T{(Dim<T>::BASE_T)s, (Dim<T>::BASE_T)s, (Dim<T>::BASE_T)s, (Dim<T>::BASE_T)s}; }
-//
-//// ? should (maybe) work with C++17/C++20...?
-// template<typename T, typename U=typename Dim<T>::BASE_T>
-// __host__ __device__ inline T makeV(U s)
-// {
-//   typedef typename Dim<T>::BASE_T TB;
-//   typedef typename DimType<TB, 2>::VEC_T TV2;
-//   typedef typename DimType<TB, 3>::VEC_T TV3;
-//   typedef typename DimType<TB, 4>::VEC_T TV4;
-//   typedef typename Dim<U>::BASE_T UB;
-//   typedef typename DimType<UB, 2>::VEC_T UV2;
-//   typedef typename DimType<UB, 3>::VEC_T UV3;
-//   typedef typename DimType<UB, 4>::VEC_T UV4;
-//   if constexpr    (std::is_same_v<T, TV2>) // T --> 2D vector
-//     { if constexpr(std::is_same_v<U, UB>)  { return T{(TB)s, (TB)s}; }              // U --> scalar
-//       else if     (std::is_same_v<U, UV2>) { return T{(TB)s.x, (TB)s.y}; }          // U --> 2D vector
-//       else                                 { return T(); } }
-//   else if         (std::is_same_v<T, TV3>) // T --> 3D vector
-//     { if constexpr(std::is_same_v<U, UB>)  { return T{(TB)s, (TB)s, (TB)s}; }       // U --> scalar   
-//       else if     (std::is_same_v<U, UV3>) { return T{(TB)s.x, (TB)s.y, (TB)s.z}; } // U --> 3D vector
-//       else                                 { return T(); } }
-//   else if         (std::is_same_v<T, TB>)  // T --> scalar
-//     { if constexpr(std::is_same_v<U, UB>)  { return (TB)s; }                        // U --> scalar
-//       else                                 { return T(); } }
-//   // else if(std::is_same_v<T, TV4>)       // T --> 4D vector
-//   //   { if constexpr(std::is_same_v<U, UB>)  { return T{(TB)s, (TB)s, (TB)s, (TB)s}; }           // U --> scalar   
-//   //     else if     (std::is_same_v<U, UV4>) { return T{(TB)s.x, (TB)s.y, (TB)s.z, (TB)s.w}; } } // U --> 4D vector
-//   //else { return T(s); }
-//   return T();
-// }
-
-
-
-
 // INDEX TYPES
 template<typename T> __host__ __device__  inline typename DimType<typename Dim<T>::BASE_T, Dim<T>::N>::SIZE_T makeI(int sx, int sy, int sz);
 template<> __host__ __device__ inline int2 makeI<int2>    (int sx, int sy, int sz) { return int2{sx, sy}; }
@@ -150,7 +118,6 @@ template<> __host__ __device__ inline int4 makeI<float4>  (int sx, int sy, int s
 template<> __host__ __device__ inline int2 makeI<double2> (int sx, int sy, int sz) { return int2{(int)sx, (int)sy}; }
 template<> __host__ __device__ inline int3 makeI<double3> (int sx, int sy, int sz) { return int3{(int)sx, (int)sy, (int)sz}; }
 template<> __host__ __device__ inline int4 makeI<double4> (int sx, int sy, int sz) { return int4{(int)sx, (int)sy, (int)sz, 0}; }
-
 
 // ostream
 __host__ inline std::ostream& operator<<(std::ostream &os, const int2    &v) { os << "<" << v.x << ", " << v.y << ">"; return os; }
@@ -192,114 +159,129 @@ __host__ inline std::istream& operator>>(std::istream &is, double4 &v)
 { char c; is.get(c); if(c=='<') { is >> v.x; is.ignore(1,','); is >> v.y; is.ignore(1,','); is >> v.z; is.ignore(1,','); is >> v.w;
     is.ignore('>'); } else { v = double4{0.0,0.0,0.0,0.0}; }    return is; }
 
-__host__ inline std::string to_string(const int2    &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const int3    &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const int4    &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const float2  &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const float3  &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const float4  &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const double2 &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const double3 &v) { std::stringstream ss; ss << v; return ss.str(); }
-__host__ inline std::string to_string(const double4 &v) { std::stringstream ss; ss << v; return ss.str(); }
+// to_string / from_string
+template<typename T>
+__host__ std::enable_if_t<is_cuda_v<T>, std::string> to_string(const T &v, const int precision=6)
+{ std::stringstream ss; ss.precision(precision); ss << v; return ss.str(); }
+template<typename T>
+__host__ std::enable_if_t<is_cuda_v<T>, T> from_string(const std::string &str)
+{ std::stringstream ss(str); T v; ss >> v; return v; }
 
-// template<typename T>
-// __host__ inline T from_string(const std::string &str) { T v; std::stringstream ss(str); ss >> v; return v; }
-// __host__ inline std::string from_string(const int3    &v) { std::stringstream ss; ss << v; return ss.str(); }
-// __host__ inline std::string from_string(const int4    &v) { std::stringstream ss; ss << v; return ss.str(); }
-// __host__ inline std::string from_string(const float2  &v) { std::stringstream ss; ss << v; return ss.str(); }
-// __host__ inline std::string from_string(const float3  &v) { std::stringstream ss; ss << v; return ss.str(); }
-// __host__ inline std::string from_string(const float4  &v) { std::stringstream ss; ss << v; return ss.str(); }
-// __host__ inline std::string from_string(const double2 &v) { std::stringstream ss; ss << v; return ss.str(); }
-// __host__ inline std::string from_string(const double3 &v) { std::stringstream ss; ss << v; return ss.str(); }
-// __host__ inline std::string from_string(const double4 &v) { std::stringstream ss; ss << v; return ss.str(); }
+
+//// TODO: reduce repetition in rest of code with this template structure? (see -+*/ operators)
+// apply a unary functor (e.g. std::negate) to a cuda vector
+template<template<typename> typename F, typename T> __host__ __device__ std::enable_if_t<Dim<T>::N==2, T> vapply(const T &v)
+{ return T{F<typename Dim<T>::BASE_T>()(v.x), F<typename Dim<T>::BASE_T>()(v.y)}; }
+template<template<typename> typename F, typename T> __host__ __device__ std::enable_if_t<Dim<T>::N==3, T> vapply(const T &v)
+{ return T{F<typename Dim<T>::BASE_T>()(v.x), F<typename Dim<T>::BASE_T>()(v.y), F<typename Dim<T>::BASE_T>()(v.z)}; }
+template<template<typename> typename F, typename T> __host__ __device__ std::enable_if_t<Dim<T>::N==4, T> vapply(const T &v)
+{ return T{F<typename Dim<T>::BASE_T>()(v.x), F<typename Dim<T>::BASE_T>()(v.y), F<typename Dim<T>::BASE_T>()(v.z), F<typename Dim<T>::BASE_T>()(v.w)}; }
+// apply a binary functor (e.g. std::plus/std::minus, etc.) as an operator to a cuda vector (NOTE: element-wise)
+template<template<typename> typename F, typename T> __host__ __device__ std::enable_if_t<Dim<T>::N==2, T> vapply(const T &v1, const T &v2)
+{ return T{F<typename Dim<T>::BASE_T>()(v1.x, v2.x), F<typename Dim<T>::BASE_T>()(v1.y, v2.y)}; }
+template<template<typename> typename F, typename T> __host__ __device__ std::enable_if_t<Dim<T>::N==3, T> vapply(const T &v1, const T &v2)
+{ return T{F<typename Dim<T>::BASE_T>()(v1.x, v2.x), F<typename Dim<T>::BASE_T>()(v1.y, v2.y),
+           F<typename Dim<T>::BASE_T>()(v1.z, v2.z)}; }
+template<template<typename> typename F, typename T> __host__ __device__ std::enable_if_t<Dim<T>::N==4, T> vapply(const T &v1, const T &v2)
+{ return T{F<typename Dim<T>::BASE_T>()(v1.x, v2.x), F<typename Dim<T>::BASE_T>()(v1.y, v2.y),
+           F<typename Dim<T>::BASE_T>()(v1.z, v2.z), F<typename Dim<T>::BASE_T>()(v1.w, v2.w)}; }
+
 
 // NEGATION
-__host__ __device__  inline int2    operator-(const int2    &u) { return int2   {-u.x, -u.y}; }
-__host__ __device__  inline int3    operator-(const int3    &u) { return int3   {-u.x, -u.y, -u.z}; }
-__host__ __device__  inline int4    operator-(const int4    &u) { return int4   {-u.x, -u.y, -u.z, -u.w}; }
-__host__ __device__  inline float2  operator-(const float2  &u) { return float2 {-u.x, -u.y}; }
-__host__ __device__  inline float3  operator-(const float3  &u) { return float3 {-u.x, -u.y, -u.z}; }
-__host__ __device__  inline float4  operator-(const float4  &u) { return float4 {-u.x, -u.y, -u.z, -u.w}; }
-__host__ __device__  inline double2 operator-(const double2 &u) { return double2{-u.x, -u.y}; }
-__host__ __device__  inline double3 operator-(const double3 &u) { return double3{-u.x, -u.y, -u.z}; }
-__host__ __device__  inline double4 operator-(const double4 &u) { return double4{-u.x, -u.y, -u.z, -u.w}; }
-
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T> operator-(const T &v) { return vapply<std::negate, T>(v); }
+// __host__ __device__  inline int2    operator-(const int2    &v) { return int2   {-v.x, -v.y}; }
+// __host__ __device__  inline int3    operator-(const int3    &v) { return int3   {-v.x, -v.y, -v.z}; }
+// __host__ __device__  inline int4    operator-(const int4    &v) { return int4   {-v.x, -v.y, -v.z, -v.w}; }
+// __host__ __device__  inline float2  operator-(const float2  &v) { return float2 {-v.x, -v.y}; }
+// __host__ __device__  inline float3  operator-(const float3  &v) { return float3 {-v.x, -v.y, -v.z}; }
+// __host__ __device__  inline float4  operator-(const float4  &v) { return float4 {-v.x, -v.y, -v.z, -v.w}; }
+// __host__ __device__  inline double2 operator-(const double2 &v) { return double2{-v.x, -v.y}; }
+// __host__ __device__  inline double3 operator-(const double3 &v) { return double3{-v.x, -v.y, -v.z}; }
+// __host__ __device__  inline double4 operator-(const double4 &v) { return double4{-v.x, -v.y, -v.z, -v.w}; }
 // VECTOR + VECTOR
-__host__ __device__  inline int2     operator+(const int2    &u, const int2    &v) { return int2   {u.x+v.x, u.y+v.y}; }
-__host__ __device__  inline int3     operator+(const int3    &u, const int3    &v) { return int3   {u.x+v.x, u.y+v.y, u.z+v.z}; }
-__host__ __device__  inline int4     operator+(const int4    &u, const int4    &v) { return int4   {u.x+v.x, u.y+v.y, u.z+v.z, u.w+v.w}; }
-__host__ __device__  inline float2   operator+(const float2  &u, const float2  &v) { return float2 {u.x+v.x, u.y+v.y}; }
-__host__ __device__  inline float3   operator+(const float3  &u, const float3  &v) { return float3 {u.x+v.x, u.y+v.y, u.z+v.z}; }
-__host__ __device__  inline float4   operator+(const float4  &u, const float4  &v) { return float4 {u.x+v.x, u.y+v.y, u.z+v.z, u.w+v.w}; }
-__host__ __device__  inline double2  operator+(const double2 &u, const double2 &v) { return double2{u.x+v.x, u.y+v.y}; }
-__host__ __device__  inline double3  operator+(const double3 &u, const double3 &v) { return double3{u.x+v.x, u.y+v.y, u.z+v.z}; }
-__host__ __device__  inline double4  operator+(const double4 &u, const double4 &v) { return double4{u.x+v.x, u.y+v.y, u.z+v.z, u.w+v.w}; }
-__host__ __device__  inline int2&    operator+=(int2    &u, const int2    &v)  { u = u + v; return u; }
-__host__ __device__  inline int3&    operator+=(int3    &u, const int3    &v)  { u = u + v; return u; }
-__host__ __device__  inline int4&    operator+=(int4    &u, const int4    &v)  { u = u + v; return u; }
-__host__ __device__  inline float2&  operator+=(float2  &u, const float2  &v)  { u = u + v; return u; }
-__host__ __device__  inline float3&  operator+=(float3  &u, const float3  &v)  { u = u + v; return u; }
-__host__ __device__  inline float4&  operator+=(float4  &u, const float4  &v)  { u = u + v; return u; }
-__host__ __device__  inline double2& operator+=(double2 &u, const double2 &v)  { u = u + v; return u; }
-__host__ __device__  inline double3& operator+=(double3 &u, const double3 &v)  { u = u + v; return u; }
-__host__ __device__  inline double4& operator+=(double4 &u, const double4 &v)  { u = u + v; return u; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T> operator+(const T &u, const T &v) { return vapply<std::plus, T>(u, v); }
+// __host__ __device__  inline int2     operator+(const int2    &u, const int2    &v) { return int2   {u.x+v.x, u.y+v.y}; }
+// __host__ __device__  inline int3     operator+(const int3    &u, const int3    &v) { return int3   {u.x+v.x, u.y+v.y, u.z+v.z}; }
+// __host__ __device__  inline int4     operator+(const int4    &u, const int4    &v) { return int4   {u.x+v.x, u.y+v.y, u.z+v.z, u.w+v.w}; }
+// __host__ __device__  inline float2   operator+(const float2  &u, const float2  &v) { return float2 {u.x+v.x, u.y+v.y}; }
+// __host__ __device__  inline float3   operator+(const float3  &u, const float3  &v) { return float3 {u.x+v.x, u.y+v.y, u.z+v.z}; }
+// __host__ __device__  inline float4   operator+(const float4  &u, const float4  &v) { return float4 {u.x+v.x, u.y+v.y, u.z+v.z, u.w+v.w}; }
+// __host__ __device__  inline double2  operator+(const double2 &u, const double2 &v) { return double2{u.x+v.x, u.y+v.y}; }
+// __host__ __device__  inline double3  operator+(const double3 &u, const double3 &v) { return double3{u.x+v.x, u.y+v.y, u.z+v.z}; }
+// __host__ __device__  inline double4  operator+(const double4 &u, const double4 &v) { return double4{u.x+v.x, u.y+v.y, u.z+v.z, u.w+v.w}; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T&> operator+=(T &u, const T &v) { u = u + v; return u; }
+// __host__ __device__  inline int2&    operator+=(int2    &u, const int2    &v)  { u = u + v; return u; }
+// __host__ __device__  inline int3&    operator+=(int3    &u, const int3    &v)  { u = u + v; return u; }
+// __host__ __device__  inline int4&    operator+=(int4    &u, const int4    &v)  { u = u + v; return u; }
+// __host__ __device__  inline float2&  operator+=(float2  &u, const float2  &v)  { u = u + v; return u; }
+// __host__ __device__  inline float3&  operator+=(float3  &u, const float3  &v)  { u = u + v; return u; }
+// __host__ __device__  inline float4&  operator+=(float4  &u, const float4  &v)  { u = u + v; return u; }
+// __host__ __device__  inline double2& operator+=(double2 &u, const double2 &v)  { u = u + v; return u; }
+// __host__ __device__  inline double3& operator+=(double3 &u, const double3 &v)  { u = u + v; return u; }
+// __host__ __device__  inline double4& operator+=(double4 &u, const double4 &v)  { u = u + v; return u; }
 // VECTOR - VECTOR
-__host__ __device__  inline int2     operator-(const int2    &u, const int2    &v) { return int2   {u.x-v.x, u.y-v.y}; }
-__host__ __device__  inline int3     operator-(const int3    &u, const int3    &v) { return int3   {u.x-v.x, u.y-v.y, u.z-v.z}; }
-__host__ __device__  inline int4     operator-(const int4    &u, const int4    &v) { return int4   {u.x-v.x, u.y-v.y, u.z-v.z, u.w-v.w}; }
-__host__ __device__  inline float2   operator-(const float2  &u, const float2  &v) { return float2 {u.x-v.x, u.y-v.y}; }
-__host__ __device__  inline float3   operator-(const float3  &u, const float3  &v) { return float3 {u.x-v.x, u.y-v.y, u.z-v.z}; }
-__host__ __device__  inline float4   operator-(const float4  &u, const float4  &v) { return float4 {u.x-v.x, u.y-v.y, u.z-v.z, u.w-v.w}; }
-__host__ __device__  inline double2  operator-(const double2 &u, const double2 &v) { return double2{u.x-v.x, u.y-v.y}; }
-__host__ __device__  inline double3  operator-(const double3 &u, const double3 &v) { return double3{u.x-v.x, u.y-v.y, u.z-v.z}; }
-__host__ __device__  inline double4  operator-(const double4 &u, const double4 &v) { return double4{u.x-v.x, u.y-v.y, u.z-v.z, u.w-v.w}; }
-__host__ __device__  inline int2&    operator-=(int2    &u, const int2    &v)  { u = u - v; return u; }
-__host__ __device__  inline int3&    operator-=(int3    &u, const int3    &v)  { u = u - v; return u; }
-__host__ __device__  inline int4&    operator-=(int4    &u, const int4    &v)  { u = u - v; return u; }
-__host__ __device__  inline float2&  operator-=(float2  &u, const float2  &v)  { u = u - v; return u; }
-__host__ __device__  inline float3&  operator-=(float3  &u, const float3  &v)  { u = u - v; return u; }
-__host__ __device__  inline float4&  operator-=(float4  &u, const float4  &v)  { u = u - v; return u; }
-__host__ __device__  inline double2& operator-=(double2 &u, const double2 &v)  { u = u - v; return u; }
-__host__ __device__  inline double3& operator-=(double3 &u, const double3 &v)  { u = u - v; return u; }
-__host__ __device__  inline double4& operator-=(double4 &u, const double4 &v)  { u = u - v; return u; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T> operator-(const T &u, const T &v) { return vapply<std::minus, T>(u, v); }
+// __host__ __device__  inline int2     operator-(const int2    &u, const int2    &v) { return int2   {u.x-v.x, u.y-v.y}; }
+// __host__ __device__  inline int3     operator-(const int3    &u, const int3    &v) { return int3   {u.x-v.x, u.y-v.y, u.z-v.z}; }
+// __host__ __device__  inline int4     operator-(const int4    &u, const int4    &v) { return int4   {u.x-v.x, u.y-v.y, u.z-v.z, u.w-v.w}; }
+// __host__ __device__  inline float2   operator-(const float2  &u, const float2  &v) { return float2 {u.x-v.x, u.y-v.y}; }
+// __host__ __device__  inline float3   operator-(const float3  &u, const float3  &v) { return float3 {u.x-v.x, u.y-v.y, u.z-v.z}; }
+// __host__ __device__  inline float4   operator-(const float4  &u, const float4  &v) { return float4 {u.x-v.x, u.y-v.y, u.z-v.z, u.w-v.w}; }
+// __host__ __device__  inline double2  operator-(const double2 &u, const double2 &v) { return double2{u.x-v.x, u.y-v.y}; }
+// __host__ __device__  inline double3  operator-(const double3 &u, const double3 &v) { return double3{u.x-v.x, u.y-v.y, u.z-v.z}; }
+// __host__ __device__  inline double4  operator-(const double4 &u, const double4 &v) { return double4{u.x-v.x, u.y-v.y, u.z-v.z, u.w-v.w}; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T&> operator-=(T &u, const T &v) { u = u - v; return u; }
+// __host__ __device__  inline int2&    operator-=(int2    &u, const int2    &v)  { u = u - v; return u; }
+// __host__ __device__  inline int3&    operator-=(int3    &u, const int3    &v)  { u = u - v; return u; }
+// __host__ __device__  inline int4&    operator-=(int4    &u, const int4    &v)  { u = u - v; return u; }
+// __host__ __device__  inline float2&  operator-=(float2  &u, const float2  &v)  { u = u - v; return u; }
+// __host__ __device__  inline float3&  operator-=(float3  &u, const float3  &v)  { u = u - v; return u; }
+// __host__ __device__  inline float4&  operator-=(float4  &u, const float4  &v)  { u = u - v; return u; }
+// __host__ __device__  inline double2& operator-=(double2 &u, const double2 &v)  { u = u - v; return u; }
+// __host__ __device__  inline double3& operator-=(double3 &u, const double3 &v)  { u = u - v; return u; }
+// __host__ __device__  inline double4& operator-=(double4 &u, const double4 &v)  { u = u - v; return u; }
 // VECTOR * VECTOR
-__host__ __device__  inline int2     operator*(const int2    &u, const int2    &v) { return int2   {u.x*v.x, u.y*v.y}; }
-__host__ __device__  inline int3     operator*(const int3    &u, const int3    &v) { return int3   {u.x*v.x, u.y*v.y, u.z*v.z}; }
-__host__ __device__  inline int4     operator*(const int4    &u, const int4    &v) { return int4   {u.x*v.x, u.y*v.y, u.z*v.z, u.w*v.w}; }
-__host__ __device__  inline float2   operator*(const float2  &u, const float2  &v) { return float2 {u.x*v.x, u.y*v.y}; }
-__host__ __device__  inline float3   operator*(const float3  &u, const float3  &v) { return float3 {u.x*v.x, u.y*v.y, u.z*v.z}; }
-__host__ __device__  inline float4   operator*(const float4  &u, const float4  &v) { return float4 {u.x*v.x, u.y*v.y, u.z*v.z, u.w*v.w}; }
-__host__ __device__  inline double2  operator*(const double2 &u, const double2 &v) { return double2{u.x*v.x, u.y*v.y}; }
-__host__ __device__  inline double3  operator*(const double3 &u, const double3 &v) { return double3{u.x*v.x, u.y*v.y, u.z*v.z}; }
-__host__ __device__  inline double4  operator*(const double4 &u, const double4 &v) { return double4{u.x*v.x, u.y*v.y, u.z*v.z, u.w*v.w}; }
-__host__ __device__  inline int2&    operator*=(int2    &u, const int2    &v)  { u = u * v; return u; }
-__host__ __device__  inline int3&    operator*=(int3    &u, const int3    &v)  { u = u * v; return u; }
-__host__ __device__  inline int4&    operator*=(int4    &u, const int4    &v)  { u = u * v; return u; }
-__host__ __device__  inline float2&  operator*=(float2  &u, const float2  &v)  { u = u * v; return u; }
-__host__ __device__  inline float3&  operator*=(float3  &u, const float3  &v)  { u = u * v; return u; }
-__host__ __device__  inline float4&  operator*=(float4  &u, const float4  &v)  { u = u * v; return u; }
-__host__ __device__  inline double2& operator*=(double2 &u, const double2 &v)  { u = u * v; return u; }
-__host__ __device__  inline double3& operator*=(double3 &u, const double3 &v)  { u = u * v; return u; }
-__host__ __device__  inline double4& operator*=(double4 &u, const double4 &v)  { u = u * v; return u; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T> operator*(const T &u, const T &v) { return vapply<std::multiplies, T>(u, v); }
+// __host__ __device__  inline int2     operator*(const int2    &u, const int2    &v) { return int2   {u.x*v.x, u.y*v.y}; }
+// __host__ __device__  inline int3     operator*(const int3    &u, const int3    &v) { return int3   {u.x*v.x, u.y*v.y, u.z*v.z}; }
+// __host__ __device__  inline int4     operator*(const int4    &u, const int4    &v) { return int4   {u.x*v.x, u.y*v.y, u.z*v.z, u.w*v.w}; }
+// __host__ __device__  inline float2   operator*(const float2  &u, const float2  &v) { return float2 {u.x*v.x, u.y*v.y}; }
+// __host__ __device__  inline float3   operator*(const float3  &u, const float3  &v) { return float3 {u.x*v.x, u.y*v.y, u.z*v.z}; }
+// __host__ __device__  inline float4   operator*(const float4  &u, const float4  &v) { return float4 {u.x*v.x, u.y*v.y, u.z*v.z, u.w*v.w}; }
+// __host__ __device__  inline double2  operator*(const double2 &u, const double2 &v) { return double2{u.x*v.x, u.y*v.y}; }
+// __host__ __device__  inline double3  operator*(const double3 &u, const double3 &v) { return double3{u.x*v.x, u.y*v.y, u.z*v.z}; }
+// __host__ __device__  inline double4  operator*(const double4 &u, const double4 &v) { return double4{u.x*v.x, u.y*v.y, u.z*v.z, u.w*v.w}; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T&> operator*=(T &u, const T &v) { u = u * v; return u; }
+// __host__ __device__  inline int2&    operator*=(int2    &u, const int2    &v)  { u = u * v; return u; }
+// __host__ __device__  inline int3&    operator*=(int3    &u, const int3    &v)  { u = u * v; return u; }
+// __host__ __device__  inline int4&    operator*=(int4    &u, const int4    &v)  { u = u * v; return u; }
+// __host__ __device__  inline float2&  operator*=(float2  &u, const float2  &v)  { u = u * v; return u; }
+// __host__ __device__  inline float3&  operator*=(float3  &u, const float3  &v)  { u = u * v; return u; }
+// __host__ __device__  inline float4&  operator*=(float4  &u, const float4  &v)  { u = u * v; return u; }
+// __host__ __device__  inline double2& operator*=(double2 &u, const double2 &v)  { u = u * v; return u; }
+// __host__ __device__  inline double3& operator*=(double3 &u, const double3 &v)  { u = u * v; return u; }
+// __host__ __device__  inline double4& operator*=(double4 &u, const double4 &v)  { u = u * v; return u; }
 // VECTOR / VECTOR
-__host__ __device__  inline int2     operator/(const int2    &u, const int2    &v) { return int2   {u.x/v.x, u.y/v.y}; }
-__host__ __device__  inline int3     operator/(const int3    &u, const int3    &v) { return int3   {u.x/v.x, u.y/v.y, u.z/v.z}; }
-__host__ __device__  inline int4     operator/(const int4    &u, const int4    &v) { return int4   {u.x/v.x, u.y/v.y, u.z/v.z, u.w/v.w}; }
-__host__ __device__  inline float2   operator/(const float2  &u, const float2  &v) { return float2 {u.x/v.x, u.y/v.y}; }
-__host__ __device__  inline float3   operator/(const float3  &u, const float3  &v) { return float3 {u.x/v.x, u.y/v.y, u.z/v.z}; }
-__host__ __device__  inline float4   operator/(const float4  &u, const float4  &v) { return float4 {u.x/v.x, u.y/v.y, u.z/v.z, u.w/v.w}; }
-__host__ __device__  inline double2  operator/(const double2 &u, const double2 &v) { return double2{u.x/v.x, u.y/v.y}; }
-__host__ __device__  inline double3  operator/(const double3 &u, const double3 &v) { return double3{u.x/v.x, u.y/v.y, u.z/v.z}; }
-__host__ __device__  inline double4  operator/(const double4 &u, const double4 &v) { return double4{u.x/v.x, u.y/v.y, u.z/v.z, u.w/v.w}; }
-__host__ __device__  inline int2&    operator/=(int2    &u, const int2    &v)  { u = u / v; return u; }
-__host__ __device__  inline int3&    operator/=(int3    &u, const int3    &v)  { u = u / v; return u; }
-__host__ __device__  inline int4&    operator/=(int4    &u, const int4    &v)  { u = u / v; return u; }
-__host__ __device__  inline float2&  operator/=(float2  &u, const float2  &v)  { u = u / v; return u; }
-__host__ __device__  inline float3&  operator/=(float3  &u, const float3  &v)  { u = u / v; return u; }
-__host__ __device__  inline float4&  operator/=(float4  &u, const float4  &v)  { u = u / v; return u; }
-__host__ __device__  inline double2& operator/=(double2 &u, const double2 &v)  { u = u / v; return u; }
-__host__ __device__  inline double3& operator/=(double3 &u, const double3 &v)  { u = u / v; return u; }
-__host__ __device__  inline double4& operator/=(double4 &u, const double4 &v)  { u = u / v; return u; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T> operator/(const T &u, const T &v) { return vapply<std::divides, T>(u, v); }
+// __host__ __device__  inline int2     operator/(const int2    &u, const int2    &v) { return int2   {u.x/v.x, u.y/v.y}; }
+// __host__ __device__  inline int3     operator/(const int3    &u, const int3    &v) { return int3   {u.x/v.x, u.y/v.y, u.z/v.z}; }
+// __host__ __device__  inline int4     operator/(const int4    &u, const int4    &v) { return int4   {u.x/v.x, u.y/v.y, u.z/v.z, u.w/v.w}; }
+// __host__ __device__  inline float2   operator/(const float2  &u, const float2  &v) { return float2 {u.x/v.x, u.y/v.y}; }
+// __host__ __device__  inline float3   operator/(const float3  &u, const float3  &v) { return float3 {u.x/v.x, u.y/v.y, u.z/v.z}; }
+// __host__ __device__  inline float4   operator/(const float4  &u, const float4  &v) { return float4 {u.x/v.x, u.y/v.y, u.z/v.z, u.w/v.w}; }
+// __host__ __device__  inline double2  operator/(const double2 &u, const double2 &v) { return double2{u.x/v.x, u.y/v.y}; }
+// __host__ __device__  inline double3  operator/(const double3 &u, const double3 &v) { return double3{u.x/v.x, u.y/v.y, u.z/v.z}; }
+// __host__ __device__  inline double4  operator/(const double4 &u, const double4 &v) { return double4{u.x/v.x, u.y/v.y, u.z/v.z, u.w/v.w}; }
+template<typename T> __host__ __device__ std::enable_if_t<is_cuda_v<T>, T&> operator/=(T &u, const T &v) { u = u / v; return u; }
+// __host__ __device__  inline int2&    operator/=(int2    &u, const int2    &v)  { u = u / v; return u; }
+// __host__ __device__  inline int3&    operator/=(int3    &u, const int3    &v)  { u = u / v; return u; }
+// __host__ __device__  inline int4&    operator/=(int4    &u, const int4    &v)  { u = u / v; return u; }
+// __host__ __device__  inline float2&  operator/=(float2  &u, const float2  &v)  { u = u / v; return u; }
+// __host__ __device__  inline float3&  operator/=(float3  &u, const float3  &v)  { u = u / v; return u; }
+// __host__ __device__  inline float4&  operator/=(float4  &u, const float4  &v)  { u = u / v; return u; }
+// __host__ __device__  inline double2& operator/=(double2 &u, const double2 &v)  { u = u / v; return u; }
+// __host__ __device__  inline double3& operator/=(double3 &u, const double3 &v)  { u = u / v; return u; }
+// __host__ __device__  inline double4& operator/=(double4 &u, const double4 &v)  { u = u / v; return u; }
 
 // VECTOR + SCALAR
 __host__ __device__  inline int2     operator+(const int2    &u, const int    &s) { return int2   {u.x+s, u.y+s}; }
@@ -474,15 +456,15 @@ __host__ __device__  inline double  sum(const double3 &v) { return (v.x+v.y+v.z)
 __host__ __device__  inline double  sum(const double4 &v) { return (v.x+v.y+v.z+v.w); }
 
 // PRODUCT OF ELEMENTS
-__host__ __device__  inline int     product(const int2    &v) { return (v.x*v.y); }
-__host__ __device__  inline int     product(const int3    &v) { return (v.x*v.y*v.z); }
-__host__ __device__  inline int     product(const int4    &v) { return (v.x*v.y*v.z*v.w); }
-__host__ __device__  inline float   product(const float2  &v) { return (v.x*v.y); }
-__host__ __device__  inline float   product(const float3  &v) { return (v.x*v.y*v.z); }
-__host__ __device__  inline float   product(const float4  &v) { return (v.x*v.y*v.z*v.w); }
-__host__ __device__  inline double  product(const double2 &v) { return (v.x*v.y); }
-__host__ __device__  inline double  product(const double3 &v) { return (v.x*v.y*v.z); }
-__host__ __device__  inline double  product(const double4 &v) { return (v.x*v.y*v.z*v.w); }
+__host__ __device__  inline int     mul(const int2    &v) { return (v.x*v.y); }
+__host__ __device__  inline int     mul(const int3    &v) { return (v.x*v.y*v.z); }
+__host__ __device__  inline int     mul(const int4    &v) { return (v.x*v.y*v.z*v.w); }
+__host__ __device__  inline float   mul(const float2  &v) { return (v.x*v.y); }
+__host__ __device__  inline float   mul(const float3  &v) { return (v.x*v.y*v.z); }
+__host__ __device__  inline float   mul(const float4  &v) { return (v.x*v.y*v.z*v.w); }
+__host__ __device__  inline double  mul(const double2 &v) { return (v.x*v.y); }
+__host__ __device__  inline double  mul(const double3 &v) { return (v.x*v.y*v.z); }
+__host__ __device__  inline double  mul(const double4 &v) { return (v.x*v.y*v.z*v.w); }
 
 
 
@@ -745,31 +727,35 @@ __host__ __device__  inline double4  pow(const double4 &v, const double4 &m) { r
 // array data
 ////////////////////////////////////////////////////////////////////////////////
 
-__host__ __device__  inline const int*     arr(const int     &v)  { return (int   *)&v;   }
-__host__ __device__  inline const int*     arr(const int2    &v)  { return (int   *)&v.x; }
-__host__ __device__  inline const int*     arr(const int3    &v)  { return (int   *)&v.x; }
-__host__ __device__  inline const int*     arr(const int4    &v)  { return (int   *)&v.x; }
-__host__ __device__  inline const float*   arr(const float   &v)  { return (float *)&v;   }
-__host__ __device__  inline const float*   arr(const float2  &v)  { return (float *)&v.x; }
-__host__ __device__  inline const float*   arr(const float3  &v)  { return (float *)&v.x; }
-__host__ __device__  inline const float*   arr(const float4  &v)  { return (float *)&v.x; }
-__host__ __device__  inline const double*  arr(const double  &v)  { return (double*)&v;   }
-__host__ __device__  inline const double*  arr(const double2 &v)  { return (double*)&v.x; }
-__host__ __device__  inline const double*  arr(const double3 &v)  { return (double*)&v.x; }
-__host__ __device__  inline const double*  arr(const double4 &v)  { return (double*)&v.x; }
+__host__ __device__  inline constexpr const int*     arr(const int     &v)  { return (int   *)&v;   }
+__host__ __device__  inline constexpr const float*   arr(const float   &v)  { return (float *)&v;   }
+__host__ __device__  inline constexpr const double*  arr(const double  &v)  { return (double*)&v;   }
+template<typename T> __host__ __device__ constexpr typename Dim<T>::BASE_T* arr(T &v)
+{ return (typename Dim<T>::BASE_T*)&v.x; }
+// __host__ __device__  inline constexpr const int*     arr(const int2    &v)  { return (int   *)&v.x; }
+// __host__ __device__  inline constexpr const int*     arr(const int3    &v)  { return (int   *)&v.x; }
+// __host__ __device__  inline constexpr const int*     arr(const int4    &v)  { return (int   *)&v.x; }
+// __host__ __device__  inline constexpr const float*   arr(const float2  &v)  { return (float *)&v.x; }
+// __host__ __device__  inline constexpr const float*   arr(const float3  &v)  { return (float *)&v.x; }
+// __host__ __device__  inline constexpr const float*   arr(const float4  &v)  { return (float *)&v.x; }
+// __host__ __device__  inline constexpr const double*  arr(const double2 &v)  { return (double*)&v.x; }
+// __host__ __device__  inline constexpr const double*  arr(const double3 &v)  { return (double*)&v.x; }
+// __host__ __device__  inline constexpr const double*  arr(const double4 &v)  { return (double*)&v.x; }
 
-__host__ __device__  inline int*     arr(int     &v)  { return (int   *)&v;   }
-__host__ __device__  inline int*     arr(int2    &v)  { return (int   *)&v.x; }
-__host__ __device__  inline int*     arr(int3    &v)  { return (int   *)&v.x; }
-__host__ __device__  inline int*     arr(int4    &v)  { return (int   *)&v.x; }
-__host__ __device__  inline float*   arr(float   &v)  { return (float *)&v;   }
-__host__ __device__  inline float*   arr(float2  &v)  { return (float *)&v.x; }
-__host__ __device__  inline float*   arr(float3  &v)  { return (float *)&v.x; }
-__host__ __device__  inline float*   arr(float4  &v)  { return (float *)&v.x; }
-__host__ __device__  inline double*  arr(double  &v)  { return (double*)&v;   }
-__host__ __device__  inline double*  arr(double2 &v)  { return (double*)&v.x; }
-__host__ __device__  inline double*  arr(double3 &v)  { return (double*)&v.x; }
-__host__ __device__  inline double*  arr(double4 &v)  { return (double*)&v.x; }
+__host__ __device__  inline constexpr int*     arr(int     &v)  { return (int   *)&v;   }
+__host__ __device__  inline constexpr float*   arr(float   &v)  { return (float *)&v;   }
+__host__ __device__  inline constexpr double*  arr(double  &v)  { return (double*)&v;   }
+template<typename T> __host__ __device__ constexpr const typename Dim<T>::BASE_T* arr(const T &v)
+{ return (typename Dim<T>::BASE_T*)&v.x; }
+// __host__ __device__  inline constexpr int*     arr(int2    &v)  { return (int   *)&v.x; }
+// __host__ __device__  inline constexpr int*     arr(int3    &v)  { return (int   *)&v.x; }
+// __host__ __device__  inline constexpr int*     arr(int4    &v)  { return (int   *)&v.x; }
+// __host__ __device__  inline constexpr float*   arr(float2  &v)  { return (float *)&v.x; }
+// __host__ __device__  inline constexpr float*   arr(float3  &v)  { return (float *)&v.x; }
+// __host__ __device__  inline constexpr float*   arr(float4  &v)  { return (float *)&v.x; }
+// __host__ __device__  inline constexpr double*  arr(double2 &v)  { return (double*)&v.x; }
+// __host__ __device__  inline constexpr double*  arr(double3 &v)  { return (double*)&v.x; }
+// __host__ __device__  inline constexpr double*  arr(double4 &v)  { return (double*)&v.x; }
 
 
 
@@ -1012,11 +998,11 @@ template<>           __device__ inline bool isinf<double2>(double2 v) { return (
 template<>           __device__ inline bool isinf<double3>(double3 v) { return (isinf(v.x) || isinf(v.y) || isinf(v.z)); }
 template<>           __device__ inline bool isinf<double4>(double4 v) { return (isinf(v.x) || isinf(v.y) || isinf(v.z) || isinf(v.w)); }
 
-// LINEAR INTERPOLATION
-template<typename T, typename A=float> __device__ T lerp(T x0, T x1, A alpha) { return x1*alpha + x0*(1.0f-alpha); }
-// BILINEAR INTERPOLATION
-template<typename T, typename A=float> T blerp(const T &p00, const T &p01, const T &p10, const T &p11, const A &alpha2)
-{ return lerp(lerp(p00, p01, alpha2.x), lerp(p10, p11, alpha2.x), alpha2.y); }
+// // LINEAR INTERPOLATION
+// template<typename T, typename A=float> __device__ T lerp(T x0, T x1, A alpha) { return x1*alpha + x0*(1.0f-alpha); }
+// // BILINEAR INTERPOLATION
+// template<typename T, typename A=float> __device__ T blerp(const T &p00, const T &p01, const T &p10, const T &p11, const A &alpha2)
+// { return lerp(lerp(p00, p01, alpha2.x), lerp(p10, p11, alpha2.x), alpha2.y); }
 
 ////////////////////////////////////////////////////////////////////////////////
 // smoothstep
@@ -1024,7 +1010,7 @@ template<typename T, typename A=float> T blerp(const T &p00, const T &p01, const
 // - returns 1 if x > b
 // - otherwise returns smooth interpolation between 0 and 1 based on x
 ////////////////////////////////////////////////////////////////////////////////
-inline __device__ __host__ float smoothstep(float a, float b, float x)
+inline __device__ __host__ float  smoothstep(float a, float b, float x)
 { float y = clamp((x - a) / (b - a), 0.0f, 1.0f); return (y*y*(3.0f - (2.0f*y))); }
 inline __device__ __host__ float2 smoothstep(float2 a, float2 b, float2 x)
 { float2 y = clamp((x - a) / (b - a), 0.0f, 1.0f); return (y*y*(make_float2(3.0f) - (make_float2(2.0f)*y))); }

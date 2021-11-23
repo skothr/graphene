@@ -10,25 +10,20 @@
 
 // General tools/helpers
 
-// converts given value to a string with specified precision
-// TODO: find a better place for this
-template <typename T>
-std::string to_string(const T &val, const int precision = 6)
-{
-  std::ostringstream out;
-  out.precision(precision);
-  out << std::fixed << val;
-  return out.str();
-}
-
-// converts given string to a typed value (specify explicitly with template parameter)
+#ifndef __NVCC__
 template<typename T>
-T from_string(const std::string &valStr)
-{
-  std::istringstream out(valStr);
-  T val; out >> val;
-  return val;
-}
+std::enable_if_t<std::is_arithmetic_v<T>, std::string> to_string(const T &e, int precision=6)
+{ std::stringstream ss; ss.precision(precision); ss << e; return ss.str(); }
+template<typename T>
+std::enable_if_t<std::is_arithmetic_v<T>, T> from_string(const std::string &str)
+{ std::stringstream ss(str); T e; ss >> e; return e; }
+#endif // __NVCC__
+
+// linear interpolation
+template<typename T, typename A=float> T lerp(T x0, T x1, A alpha) { return x1*alpha + x0*(1.0f-alpha); }
+// bilinear interpolation
+template<typename T, typename A=float> T blerp(const T &p00, const T &p01, const T &p10, const T &p11, const A &alpha2)
+{ return lerp(lerp(p00, p01, alpha2.x), lerp(p10, p11, alpha2.x), alpha2.y); }
 
 // simple file management
 inline bool directoryExists(const std::string &path)
@@ -66,48 +61,14 @@ inline std::string getBaseName(const std::string &path)
 
 inline bool makeDirectory(const std::string &path)
 {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__MINGW32__)
   int err = mkdir(path.c_str());
-#else 
+#elif defined(__linux__)
   mode_t nMode = 0733; // UNIX style permissions
   int err = mkdir(path.c_str(), nMode);
 #endif
   return (err == 0);
 }
-
-
-// // provides access to simple info for an std::function object
-// template<typename T>  struct FunctionInfo;
-// template<typename R, typename ...Args>
-// struct FunctionInfo<std::function<R(Args...)>>
-// {
-//   static const size_t nargs = sizeof...(Args);
-//   typedef R returnType;
-//   // individual argument types --> print name of type with:
-//   //      std::cout << typeid(FunctionInfo<f>::arg<0>::type).name() << "\n";
-//   template<size_t i> struct arg
-//   { typedef typename std::tuple_element<i, std::tuple<Args...>>::type type; };
-// };
-
-// // structure for storing vectors of booleans normally
-// struct BoolStruct
-// {
-//   bool data;
-//   BoolStruct(bool val = false) : data(val) { }
-//   operator bool() const { return data; }
-//   friend std::ostream& operator<<(std::ostream &os, const BoolStruct &b);
-//   friend std::istream& operator>>(std::istream &is, BoolStruct &b);
-// };
-// inline std::ostream& operator<<(std::ostream &os, const BoolStruct &b)
-// { os << (b.data ? "1" : "0") << " "; return os; }
-// inline std::istream& operator>>(std::istream &is, BoolStruct &b)
-// {
-//   std::string str;
-//   is >> str; b.data = (str != "0");
-//   return is;
-// }
-
-
 
 // defines (some) bitwise operators for an enum that works as a flag type
 #define ENUM_FLAG_OPERATORS(TYPE)                                       \

@@ -1,398 +1,329 @@
-#ifndef MATRIX_HPPxxx
+#ifndef MATRIX_HPP
 #define MATRIX_HPP
 
-#include <cmath>
-#include <vector>
-#include <ostream>
-#include <sstream>
-#include <functional>
+#include <array>
+#include <iostream>
+#include <iomanip>
 
 #include "vector.hpp"
 
+template<typename T, int N, int M=N> class Matrix;
 
-// Matrix class
-template<typename T>
-struct Matrix
+// shorthand types
+typedef Matrix<int,    2> Mat2i;
+typedef Matrix<int,    3> Mat3i;
+typedef Matrix<int,    4> Mat4i;
+typedef Matrix<float,  2> Mat2f;
+typedef Matrix<float,  3> Mat3f;
+typedef Matrix<float,  4> Mat4f;
+typedef Matrix<double, 2> Mat2d;
+typedef Matrix<double, 3> Mat3d;
+typedef Matrix<double, 4> Mat4d;
+
+// Matrix -- Matrix<T,N> for NxN matrix, or Matrix<T,N,M> for NxM matrix
+template<typename T, int N, int M> // N --> ROWS, M --> COLS
+class Matrix
 {
-  std::vector<std::vector<T>> data; // mat[ROW][COL] or mat.data[ROW][COL]
+public: // (static)
+  // static constexpr int ROWS = N; static constexpr int COLS = M; static constexpr int DATASIZE = N*M; typedef Matrix<T,N,M> type;
+  typedef Vector<T, M> RowVector; // row of the matrix
+  typedef Vector<T, N> ColVector; // column of the matrix
 
-  // initialization
-  Matrix(int nRows=0, int nCols=0)                             { resize(nRows, nCols); }
-  Matrix(int nRows, int nCols, T value)                        { resize(nRows, nCols, value); }
-  Matrix(const std::vector<T> &data_, bool column=true)
+private:
+
+  union
+  { // matrix data
+    std::array<T,       N*M> mData;    // full data
+    std::array<ColVector, M> mColumns; // as basis vectors (column major)
+  };
+
+  // utilities for calulating inverse matrix
+  template<typename TT = Matrix<T,N,M>>
+  typename std::enable_if<(N == M), void>::type cofactor(Matrix<T,N,M> &result, int row, int col, int dim) const
   {
-    if(column) { resize(data_.size(), 1); for(int i = 0; i < data.size(); i++) { data[i][0] = data_[i]; } }
-    else       { resize(1, data_.size()); for(int i = 0; i < data.size(); i++) { data[0][i] = data_[i]; } }
+    int i = 0; int j = 0;
+    for(int x = 0; x < dim; x++)
+      for(int y = 0; y < dim; y++)
+        if(x != col && y != row)
+          {
+            result[j++][i] = mColumns[x][y];
+            if(j == dim - 1) { j = 0; i++; }
+          }
   }
-  Matrix(const Matrix &m)
+  template<typename TT = Matrix<T,N,M>>
+  typename std::enable_if<(N == M), T>::type determinant(int dim) const
   {
-    resize(m.rows(), m.cols());
-    for(int i = 0; i < m.rows(); i++) for(int j = 0; j < m.cols(); j++) { data[i][j] = m.data[i][j]; }
-  }
-  // assigment
-  Matrix& operator=(const Matrix &m)
-  {
-    resize(m.rows(), m.cols());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] = m.data[i][j]; return *this; }
-    return *this;
-  }
-  Matrix& operator=(const std::vector<T> &data_)
-  { resize(data_.size(), 1); for(int i = 0; i < data.size(); i++) { data[i][0] = data_[i]; } return *this; }
-  // equivalence
-  bool operator==(const Matrix &m) const
-  {
-    if(rows() != m.rows() || cols() != m.cols()) { return false; }
-    else
+    if(dim == 1) { return mColumns[0][0]; } // base case
+    T det  = (T)0; T sign = (T)1; Matrix<T,N,M> temp;
+    for(int c = 0; c < dim; c++)
       {
-        for(int i = 0; i < m.rows(); i++) for(int j = 0; j < m.cols(); j++) { if(data[i][j] != m.data[i][j]) { return false; } }
-        return true;
+        cofactor(temp, 0, c, dim);
+        det += sign*mColumns[c][0] * temp.determinant(dim-1);
+        sign = -sign;
       }
+    return det;
   }
-  bool operator!=(const Matrix &m) const { return !(*this == m); }
-
-  // access
-  std::vector<T>& operator[](int r)             { return data[r]; } // returns row vector
-  const std::vector<T>& operator[](int r) const { return data[r]; }
-
-  std::vector<T>& getRow(int r)             { return data[r]; }
-  const std::vector<T>& getRow(int r) const { return data[r]; }
-  std::vector<T> getCol(int c) const
+  template<typename TT = Matrix<T,N,M>>
+  typename std::enable_if<(N == M), TT>::type adjoint() const
   {
-    std::vector<T> cv; cv.reserve(rows());
-    for(int i = 0; i < rows(); i++) { cv.push_back(data[i][c]); }
-    return cv;
+    T sign = 1; Matrix<T,N,M> result, temp;
+    if(N == 1) { result[0][0] = 1; return result; }
+    for(int c = 0; c < N; c++)
+      for(int r = 0; r < N; r++)
+        {
+          cofactor(temp, r, c, N);
+          sign = ((r+c) % 2 == 0) ? 1 : -1;
+          result[r][c] = sign*temp.determinant(N-1);
+        }
+    return result;
   }
 
-  // sizing
-  int rows() const { return data.size(); }
-  int cols() const { return (data.size() == 0 ? 0 : data[0].size()); }
-  Vec2i size() const { return Vec2i(rows(), cols()); }
+public:
+  Matrix() { identity(); } // initialized to identity by default
+  Matrix(const std::array<ColVector, M> &colData) : mColumns(colData)  { }
+  Matrix(const std::array<T, N*M>       &matData) : mData(matData)     { }
+  Matrix(const Matrix<T,N,M>          &other)   : mData(other.mData) { }
 
-  void resize(int nRows, int nCols, const T &value) { data.resize(nRows); for(int i = 0; i < nRows; i++) { data[i].resize(nCols, value); } }
-  void resize(int nRows, int nCols)                    { data.resize(nRows); for(int i = 0; i < nRows; i++) { data[i].resize(nCols);        } }
-  void resizeF(int nRows, int nCols, const std::function<T()> &func)
+  // 
+  template<typename TT = Matrix<T,N,M>>
+  static typename std::enable_if<(N == M), TT>::type makeIdentity()
+  { return Matrix<T,N,M>(); }
+  template<typename TT = Matrix<T,N,M>>
+  static typename std::enable_if<(N == M), TT>::type makeTranslate(const Vector<T, N-1> &dPos)
   {
-    int oldRows = rows(); int oldCols = cols();
-    data.resize(nRows);
-    for(int i = 0; i < nRows; i++) { data[i].resize(nCols); for(int j = oldCols; j < nCols; j++) { data[i][j] = (func ? func() : T()); } }
-    for(int i = oldRows; i < nRows; i++) for(int j = oldCols; j < nCols; j++) { data[i][j] = (func ? func() : T()); }
+    Matrix<T,N,M> result = makeIdentity();
+    for(int i = 0; i < N-1; i++) { result[N-1][i] = dPos[i]; }
+    return result;
   }
-  
-  // setting values
-  void set(const T &value)                  { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] = value; } }
-  void setF(const std::function<T()> &func) { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] = (func ? func() : T()); } }
-
-  void setRow (int row, const T &value)                 { for(int j = 0; j < cols(); j++) { data[row][j] = value;  } }
-  void setRow (int row, const std::vector<T> &v)        { data[row] = v; }
-  void setRowF(int row, const std::function<T()> &func) { for(int j = 0; j < cols(); j++) { data[row][j] = (func ? func() : T()); } }
-  void setCol (int col, const T &value)                 { for(int i = 0; i < rows(); i++) { data[i][col] = value;  } }
-  void setCol (int col, const std::vector<T> &v)        { for(int i = 0; i < rows(); i++) { data[i][col] = v[i];   } }
-  void setColF(int col, const std::function<T()> &func) { for(int i = 0; i < rows(); i++) { data[i][col] = (func ? func() : T()); } }
-
-  void zero()     { set((T)0); }
-  void identity() { zero(); if(rows() == cols()) { for(int i = 0; i < rows(); i++) { data[i][i] = (T)1; } } }
-  
-  void apply(const std::function<T(T)> &func)
-  { if(func) { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] = func(data[i][j]); } } }
-
-  bool setNan(const T &value)
+  template<typename TT = Matrix<T,N,M>>
+  static typename std::enable_if<(N == M), TT>::type makeScale(const Vector<T, N-1> &dScale)
   {
-    bool replaced = false;
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { if(std::isnan(data[i][j]) || std::isinf(data[i][j])) { data[i][j] = value; } }
-    return replaced;
+    Matrix<T,N,M> result = makeIdentity();
+    for(int i = 0; i < N-1; i++) { result[i][i] = dScale[i]; }
+    return result;
   }
-  bool setNanF(const std::function<T()> &func)
+  template<typename TT = Matrix<T,N,M>>
+  static typename std::enable_if<(N == 4 && N == M), TT>::type makeProjection(float fov, float aspect, float near, float far)
   {
-    bool replaced = false;
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { if(std::isnan(data[i][j]) || std::isinf(data[i][j])) { data[i][j] = (func ? func() : T()); } } 
-    return replaced;
-  }
-
-  void insertRow(int row, const T &value)
-  { data.insert(data.begin()+row, std::vector<T>(std::max(cols(), 1), value)); }
-  void insertRow(int row, const std::vector<T> &v)
-  { data.insert(data.begin()+row, v); }
-  void insertRowF(int row, const std::function<T()> &func)
-  { data.insert(data.begin()+row, std::vector<T>(std::max(cols(), 1))); for(int j = 0; j < cols(); j++) { data[row][j] = (func ? func() : T()); } }
+    T t = std::tan(fov/2)*near; // TOP
+    T b = -t;                   // BOTTOM
+    T r =  t * aspect;          // RIGHT
+    T l = -t * aspect;          // LEFT
     
-  void insertCol(int col, const T &value)
-  { if(rows() == 0) { resize(1,0); col = 0; } for(int i = 0; i < rows(); i++) { data[i].insert(data[i].begin()+col, value); } }
-  void insertCol(int col, const std::vector<T> &v)
-  { if(rows() == 0) { resize(1,0); col = 0; } for(int i = 0; i < rows(); i++) { data[i].insert(data[i].begin()+col, v[i]);  } }
-  void insertColF(int col, const std::function<T()> &func)
-  { if(rows() == 0) { resize(1,0); col = 0; } for(int i = 0; i < rows(); i++) { data[i].insert(data[i].begin()+col, (func ? func() : T())); } }
-  
-  void eraseRow(int row) { data.erase(data.begin()+row); }
-  void eraseCol(int col) { for(int i = 0; i < rows(); i++) { if(data[i].size() > col) { data[i].erase(data[i].begin()+col); } } }
-
-  // swapping
-  void swapRows(int r1, int r2) { std::swap(data[r1], data[r2]); }
-  void swapCols(int c1, int c2) { for(int i = 0; i  < rows(); i++) { std::swap(data[i][c1], data[i][c2]); } }
-
-  // averaging
-  Matrix colAvg() const // averages each column --> returns row vector
-  {
-    Matrix m(rows(), 1, T());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { m[j] += data[i][j]; }
-    return (m / rows());
-  }
-  Matrix rowAvg() const // averages each column --> returns column vector
-  {
-    Matrix m(1, rows(), T());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { m[i] += data[i][j]; }
-    return (m /= cols());
-  }
-  
-  // transposition
-  Matrix t() const
-  {
-    Matrix m(cols(), rows());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { m.data[j][i] = data[i][j]; }
-    return m;
+    Matrix<T,N,M> mat;
+    mat(0,0) = 2*near/(r-l); mat(0,1) = 0;            mat(0,2) = (r+l)/(r-l);            mat(0,3) =  0;
+    mat(1,0) = 0;            mat(1,1) = 2*near/(t-b); mat(1,2) = (t+b)/(t-b);            mat(1,3) =  0;
+    mat(2,0) = 0;            mat(2,1) = 0;            mat(2,2) = -(far+near)/(far-near); mat(2,3) = -2*far*near/(far-near);
+    mat(3,0) = 0;            mat(3,1) = 0;            mat(3,2) = -1;                     mat(3,3) =  0;
+    return mat;
   }
 
-  // negation
-  Matrix operator-() const
+  template<typename TT = Matrix<T,N,M>>
+  static typename std::enable_if<(N == 4 && N == M), TT>::type makeLookAt(const Vector<T, 3> &pos, const Vector<T, 3> &focus,
+                                                                          const Vector<T, 3> &upBasis=Vector<T, 3>(0,1,0))
   {
-    Matrix m(rows(), cols());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { m.data[i][j] = -data[i][j]; }
-    return m;
-  }
-  
-  /////////////////////////////
-  // MATRIX-MATRIX operators
-  /////////////////////////////
-  // addition
-  Matrix& operator+=(const Matrix &m)
-  {
-    if(rows() == m.rows() && cols() == m.cols())
-      { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] += m.data[i][j]; } }
-    else
-      { std::cout << "====> WARNING: Matrix(" << rows() << ", " << cols()
-                  << ") += Matrix(" << m.rows() << ", " << m.cols() << ") --> skipping!\n"; }
-    return *this;
-  }
-  Matrix operator+(const Matrix &m) const
-  {
-    if(rows() == m.rows() && cols() == m.cols())
-      {
-        Matrix result(rows(), cols());
-        for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = data[i][j] + m.data[i][j]; }
-        return result;
-      } else { return Matrix(0,0); } // invalid
-  }
-  // subtraction
-  Matrix& operator-=(const Matrix &m)
-  {
-    if(rows() == m.rows() && cols() == m.cols())
-      { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] -= m.data[i][j]; } }
-    else
-      { std::cout << "====> WARNING: Matrix(" << rows() << ", " << cols()
-                  << ") -= Matrix(" << m.rows() << ", " << m.cols() << ") --> skipping!\n"; }
-    return *this;
-  }
-  Matrix operator-(const Matrix &m) const
-  {
-    if(rows() == m.rows() && cols() == m.cols())
-      {
-        Matrix result(rows(), cols());
-        for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = data[i][j] - m.data[i][j]; }
-        return result;
-      } else { return Matrix(0,0); } // invalid
-  }
-  
-  // * (element-wise multiplication)
-  Matrix& operator*=(const Matrix &m)
-  {
-    if(cols() == m.cols() && rows() == m.rows())
-      { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] *= m.data[i][j]; } }
-    else
-      { std::cout << "====> WARNING: Matrix(" << rows() << ", " << cols()
-                  << ") *= Matrix(" << m.rows() << ", " << m.cols() << ") --> skipping!\n"; }
-    return *this;
-  }
-  Matrix operator*(const Matrix &m) const
-  {
-    if(cols() == m.cols() && rows() == m.rows())
-      {
-        Matrix result(rows(), cols());
-        for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = (data[i][j] * m.data[i][j]); }
-        return result;
-      } else { return Matrix(0,0); } // invalid
-  }
-  
-  // / (element-wise division)
-  Matrix& operator/=(const Matrix &m)
-  {
-    if(cols() == m.cols() && rows() == m.rows())
-      { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] /= m.data[i][j]; } }
-    else
-      { std::cout << "====> WARNING: Matrix(" << rows() << ", " << cols()
-                  << ") /= Matrix(" << m.rows() << ", " << m.cols() << ") --> skipping!\n"; }
-    return *this;
-  }
-  Matrix operator/(const Matrix &m) const
-  {
-    if(cols() == m.cols() && rows() == m.rows())
-      {
-        Matrix result(rows(), cols());
-        for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = (data[i][j] / m.data[i][j]); }
-        return result;
-      } else { return Matrix(0,0); } // invalid
+    // view vectors
+    Vector<T, 3> eye   = normalize(pos-focus);
+    Vector<T, 3> up    = upBasis;
+    Vector<T, 3> right = normalize(cross(up, eye));
+    up = cross(eye, right);
+    // calculate lookat matrix
+    Matrix<T,N,M> basis; basis.identity();
+    basis(0,0) = right.x; basis(0,1) = up.x; basis(0,2) = eye.x;
+    basis(1,0) = right.y; basis(1,1) = up.y; basis(1,2) = eye.y;
+    basis(2,0) = right.z; basis(2,1) = up.z; basis(2,2) = eye.z;
+    Matrix<T,N,M> posMat; posMat.identity();
+    posMat(0,3) = -pos.x;
+    posMat(1,3) = -pos.y;
+    posMat(2,3) = -pos.z;
+    return (basis ^ posMat).transposed();
   }
 
-  
-  /////////////////////////////
-  // MATRIX-SCALAR operators
-  /////////////////////////////
+  // data access
+  T* data()             { return mData.data(); }
+  const T* data() const { return mData.data(); }
+  ColVector col(int c) const { return mColumns[c]; }
+  RowVector row(int r) const { RowVector result; for(int c = 0; c < M; c++) { result[c] = mColumns[c][r]; } return result; }
 
-  // + (post-offset)
-  Matrix& operator+=(T s) { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] += s; } return *this; }
-  Matrix operator+(T s) const
+  // matrix
+  template<typename TT = Matrix<T,N,M>> typename std::enable_if<(N == M), TT&>::type identity()
+  { for(int c = 0; c < M; c++) for(int r = 0; r < N; r++) { mColumns[c][r] = (T)(r == c ? 1 : 0); }; return *this; }
+  template<typename TT = Matrix<T,N,M>> typename std::enable_if<(N == M), TT&>::type zero()
+  { for(auto &d : mData) { d = (T)0.0; } return *this; }
+  
+  template<typename TT = Matrix<T,N,M>> typename std::enable_if<(N == M), TT&>::type translate(const Vector<T, N-1> &dPos)
+  { return ((*this) = Matrix<T,N,M>::makeTranslate(dPos)^(*this)); }
+  template<typename TT = Matrix<T,N,M>> typename std::enable_if<(N == M), TT&>::type scale(const Vector<T, N-1> &dScale)
+  { return ((*this) = Matrix<T,N,M>::makeScale(dScale)^(*this)); }
+  
+  template<typename TT = Matrix<T,N,M>> typename std::enable_if<(N == M), TT >::type translated(const Vector<T, N-1> &dPos) const
+  { return (Matrix<T,N,M>::makeTranslate(dPos)^(*this)); }
+  template<typename TT = Matrix<T,N,M>> typename std::enable_if<(N == M), TT >::type scaled(const Vector<T, N-1> &dScale) const
+  { return (Matrix<T,N,M>::makeScale(dScale)^(*this)); }
+
+  // transpose
+  Matrix<T, M, N> transposed() const
   {
-    Matrix result(rows(), cols());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = data[i][j] + s; }
-    return result;
-  }
-  // - (post-offset)
-  Matrix& operator-=(T s) { for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] -= s; } return *this; }
-  Matrix operator-(T s) const
-  {
-    Matrix result(rows(), cols());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = data[i][j] - s; }
+    Matrix<T, M, N> result;
+    for(int x = 0; x < M; x++) for(int y = 0; y < N; y++) { result[x][y] = mColumns[x][y]; }
     return result;
   }
 
-  // * (post-scaling)
-  Matrix& operator*=(T s)
+public:
+
+  // inverse
+  template<typename TT = Matrix<T,N,M>>
+  typename std::enable_if<(N == M), TT>::type inverse() const
   {
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] *= s; }
+    T det = determinant(N);
+    if(det == 0) { std::cout << "====> WARNING: Matrix doesn't have an inverse!\n"; return *this; } // no inverse
+    return adjoint() / det;
+  }
+
+  // assignment
+  Matrix<T,N,M>& operator=(const Matrix<T,N,M> &other) { mData = other.mData; return *this; }
+  // comparison
+  bool operator==(const Matrix<T,N,M> &other) { for(int i = 0; i < N*M; i++) if(mData[i] != other.mData[i]) { return false; } return true;  }
+  bool operator!=(const Matrix<T,N,M> &other) { for(int i = 0; i < N*M; i++) if(mData[i] != other.mData[i]) { return true;  } return false; }
+  // access (column vectors)
+  const ColVector& operator[](int c) const { return mColumns[c]; }
+  ColVector& operator[](int c)             { return mColumns[c]; }
+  const T& operator()(int r, int c) const  { return mColumns[c][r]; }
+  T& operator()(int r, int c)              { return mColumns[c][r]; }
+
+  //////// MATH OPERATORS ////////
+  // Matrix + Matrix
+  Matrix<T,N,M>& operator+=(const Matrix<T,N,M> &rhs)       { for(int i = 0; i < N*M; i++) { mData[i] += rhs.mData[i]; } return *this; }
+  Matrix<T,N,M>  operator+ (const Matrix<T,N,M> &rhs) const { Matrix<T,N,M> result(*this); return (result += rhs); }
+  // Matrix - Matrix
+  Matrix<T,N,M>& operator-=(const Matrix<T,N,M> &rhs)       { for(int i = 0; i < N*M; i++) { mData[i] -= rhs.mData[i]; } return *this; }
+  Matrix<T,N,M>  operator- (const Matrix<T,N,M> &rhs) const { Matrix<T,N,M> result(*this); return (result -= rhs); }
+
+  // ^= (matrix multiplication + assignment -- both must be square and the same size to overwrite)
+  template<typename TT=Matrix<T,N,M>>
+  typename std::enable_if<(N == M), TT&>::type operator^=(const TT &rhs)
+  {
+    std::array<Vector<T, M>, N> result;
+    for(int r = 0; r < N; r++) for(int c = 0; c < M; c++) { result[r][c] = dot(row(r), rhs.col(c)); }
+    mColumns = result;
     return *this;
   }
-  Matrix operator*(T s) const
+  template<typename TT=Matrix<T,N,M>>
+  typename std::enable_if<(N == M), TT>::type operator^(const TT &rhs) const { TT result(*this); return (result ^= rhs); }
+  // ^ (const matrix multiplication -- lhs rows)
+  template<int NN=N, int MM=M, typename TT=Matrix<T,NN,MM>>
+  typename std::enable_if<((N != M && NN != MM) && M == NN), TT>::type operator^(const TT &rhs) const
   {
-    Matrix result(rows(), cols());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = data[i][j] * s; }
-    return result;
-  }
-  // / (post-scaling)
-  Matrix& operator/=(T s)
-  {
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { data[i][j] /= s; }
-    return *this;
-  }
-  Matrix operator/(T s) const
-  {
-    Matrix result(rows(), cols());
-    for(int i = 0; i < rows(); i++) for(int j = 0; j < cols(); j++) { result.data[i][j] = data[i][j] / s; }
+    Matrix<T, N, MM> result;
+    for(int r = 0; r < N; r++) for(int c = 0; c < MM; c++) { result[r][c] = dot(row(r), rhs.col(c)); }
     return result;
   }
 
-  T determinant() const
+  // ^= (const vector multiplication)
+  Vector<T, M> operator^(const Vector<T, M> &rhs) const // ==> M ^ [col]
   {
-    if(rows() != cols()) { return (T)0; }
-    T result = (T)0;
-    bool pn = true; // T/F --> +/-
-    for(int j = 0; j < cols(); j++)
-      { // recurse to find sub-matrix determinant
-        Matrix<T> sub(rows()-1, cols()-1);
-        for(int ii = 1; ii < rows(); ii++)
-          for(int jj = j+1; ii != j; jj = ((jj+1) % cols()))
-            { sub.data[ii-1][jj-j-1] = data[ii][jj]; }
-        // + - + - ...[N-1]
-        result += (pn ? 1 : -1) * data[0][j]*sub.determinant();
-      }
+    Vector<T, M> result;
+    for(int i = 0; i < M; i++) { result[i] = dot(row(i), rhs); }
     return result;
-  }  
-
-
-
+  }
+  // ^= (const vector multiplication)
+  template<typename TT, int NN, int MM> // ==> [row] ^ M
+  friend Vector<TT, NN> operator^(const Vector<TT, NN> &lhs, const Matrix<TT, NN, MM> &rhs);
   
-  // string conversion
-  std::string toString(int padding=2) const
-  {
-    std::stringstream ss;
-    for(int p = 0; p < padding; p++) { ss << " "; }
-    ss << "[ ";
-    for(int i = 0; i < rows(); i++)
-      {
-        for(int j = 0; j < cols(); j++) { ss << data[i][j] << " "; }
-        if(i != rows() - 1)             { ss << "\n  "; for(int p = 0; p < padding; p++) { ss << " "; } }
-      }
-    ss << "]";
-    return ss.str();
-  }
+  // % (matrix division -- multiply by inverse of rhs)
+  template<int NN=N, int MM=M>
+  typename std::enable_if<(NN == MM && M == NN), Matrix<T,NN,MM>&>::type operator%=(const Matrix<T,NN,MM> &rhs)
+  { return (*this ^= rhs.inverse()); }
+  template<int NN=N, int MM=M>
+  typename std::enable_if<(NN == MM && M == NN), Matrix<T,NN,MM> >::type operator% (const Matrix<T,NN,MM> &rhs) const
+  { Matrix<T,NN,MM> result(*this); result %= rhs; return result; }
   
+  // Matrix / Matrix (element-wise)
+  Matrix<T,N,M>& operator/=(const Matrix<T,N,M> &rhs)       { for(int i = 0; i < N*M; i++) { mData[i] /= rhs; } return *this; }
+  Matrix<T,N,M>  operator/ (const Matrix<T,N,M> &rhs) const { Matrix<T, N, M> result(*this); return (result /= rhs); }
+  // Matrix / Matrix (element-wise)
+  Matrix<T,N,M>& operator*=(const Matrix<T,N,M> &rhs)       { for(int i = 0; i < N*M; i++) { mData[i] *= rhs; } return *this; }
+  Matrix<T,N,M>  operator* (const Matrix<T,N,M> &rhs) const { Matrix<T, N, M> result(*this); return (result *= rhs); }
+  // Matrix * Scalar
+  Matrix<T,N,M>& operator*=(const T &rhs)      { for(int i = 0; i < N*M; i++) { mData[i] *= rhs; } return *this; }
+  Matrix<T,N,M>  operator*(const T &rhs) const { Matrix<T,N,M> result(*this); return (result *= rhs); }
+  // Matrix / Scalar
+  Matrix<T,N,M>& operator/=(const T &rhs)      { for(int i = 0; i < N*M; i++) { mData[i] /= rhs; } return *this; }
+  Matrix<T,N,M>  operator/(const T &rhs) const { Matrix<T,N,M> result(*this); return (result /= rhs); }
+  // scalar reverse order
+  template<typename T2, int N2, int M2> friend Matrix<T2,N2,M2> operator+(const T &lhs, const Matrix<T2,N2,M2> &rhs);
+  template<typename T2, int N2, int M2> friend Matrix<T2,N2,M2> operator-(const T &lhs, const Matrix<T2,N2,M2> &rhs);
+  template<typename T2, int N2, int M2> friend Matrix<T2,N2,M2> operator*(const T &lhs, const Matrix<T2,N2,M2> &rhs);
+  template<typename T2, int N2, int M2> friend Matrix<T2,N2,M2> operator/(const T &lhs, const Matrix<T2,N2,M2> &rhs);
+  // printing
+  std::string toString() const { std::stringstream ss; ss << *this; return ss.str(); }
+  template<typename T2, int N2, int M2> friend std::ostream& operator<<(std::ostream &os, const Matrix<T2,N2,M2> &mat);
+  template<typename T2, int N2, int M2> friend std::istream& operator>>(std::istream &is, Matrix<T2,N2,M2> &mat);
 };
 
-// ^ (matrix multiplication)
-//// this   --> N(i,j) --> i rows, j cols
-//// other  --> M(j,k) --> j rows, k cols
-//// result --> P(k,i) --> k rows, i cols
-template<typename T>
-Matrix<T> operator^(const Matrix<T> &l, const Matrix<T> &r)
-{
-  if(l.cols() == r.rows())
-    {
-      Matrix<T> result(l.rows(), r.cols(), 0);
-      for(int i = 0; i < l.rows(); i++)
-        for(int j = 0; j < r.cols(); j++)     // (NOTE: loop order optimized for cache)
-          for(int k = 0; k < l.cols(); k++)
-            { result.data[i][j] += l.data[i][k] * r.data[k][j]; }
-      return result;
-    }
-  else
-    {
-      std::cout << "====> WARNING: Matrix(" << l.rows() << ", " << l.cols()
-                << ") ^ Matrix(" << r.rows() << ", " << r.cols() << ") --> invalid!\n";
-      return Matrix<T>(0,0);
-    }
-}
 
-// * (pre)
-template<typename T>
-Matrix<T> operator*(T s, const Matrix<T> &m)
+// friend function definitions
+template<typename T, int N, int M> inline Matrix<T,N,M> operator+(const T &lhs, const Matrix<T,N,M> &rhs) { return lhs + rhs; }
+template<typename T, int N, int M> inline Matrix<T,N,M> operator-(const T &lhs, const Matrix<T,N,M> &rhs)
 {
-  Matrix<T> result(m.rows(), m.cols());
-  for(int i = 0; i < m.rows(); i++) for(int j = 0; j < m.cols(); j++) { result[i][j] = s * m[i][j]; }
+  Matrix<T,N,M> result = rhs;
+  for(int i = 0; i < N*M; i++) { result.mData[i] = lhs - rhs.mData[i]; }
   return result;
 }
-// / (pre)
-template<typename T>
-Matrix<T> operator/(T s, const Matrix<T> &m)
+template<typename T, int N, int M> inline Matrix<T,N,M> operator*(const T &lhs, const Matrix<T,N,M> &rhs) { return lhs * rhs; }
+template<typename T, int N, int M> inline Matrix<T,N,M> operator/(const T &lhs, const Matrix<T,N,M> &rhs)
 {
-  Matrix<T> result(m.rows(), m.cols());
-  for(int i = 0; i < m.rows(); i++) for(int j = 0; j < m.cols(); j++) { result[i][j] = s / m[i][j]; }
-  return result;
-}
-
-// + (pre)
-template<typename T>
-Matrix<T> operator+(T s, const Matrix<T> &m)
-{
-  Matrix<T> result(m.rows(), m.cols());
-  for(int i = 0; i < m.rows(); i++) for(int j = 0; j < m.cols(); j++) { result[i][j] = s + m[i][j]; }
-  return result;
-}
-// - (pre)
-template<typename T>
-Matrix<T> operator-(T s, const Matrix<T> &m)
-{
-  Matrix<T> result(m.rows(), m.cols());
-  for(int i = 0; i < m.rows(); i++) for(int j = 0; j < m.cols(); j++) { result[i][j] = s - m[i][j]; }
+  Matrix<T,N,M> result = rhs;
+  for(int i = 0; i < N*M; i++) { result.mData[i] = lhs/rhs.mData[i]; }
   return result;
 }
 
 
-
-
-template<typename T>
-inline std::ostream& operator<<(const Matrix<T> &m, std::ostream &os)
+// ^= (const vector multiplication)
+template<typename T, int N, int M>
+// template<typename TT=Vector<T,N>> // ==> [row] ^ M
+Vector<T, N> operator^(const Vector<T, N> &lhs, const Matrix<T, N, M> &rhs)
 {
-  os << m.toString();
+  Vector<T, N> result;
+  for(int i = 0; i < N; i++) { result[i] = dot(lhs, rhs.col(i)); }
+  return result;
+}
+
+
+template<typename T, int N, int M>
+inline std::ostream& operator<<(std::ostream &os, const Matrix<T,N,M> &mat)
+{
+  os << "  ";
+  for(int i = 0; i < 8*4+1; i++) { os << "="; }
+  os << "\n  |";
+  for(int r = 0; r < N; r++)
+    for(int c = 0; c < M; c++)
+      {
+        os << std::right << std::internal << std::setprecision(5) << std::fixed << std::setw(10) << mat(r,c);
+        os << ((r != N-1 || c != M-1) ? ((c == M-1) ? "|\n  |" : (" ")) : "|");
+      }
+  os << "\n  ";
+  for(int i = 0; i < 8*4+1; i++) { os << "="; }
+  os << "\n";
   return os;
 }
 
+template<typename T, int N, int M>
+inline std::istream& operator>>(std::istream &is, Matrix<T,N,M> &mat)
+{
+  // os << "  ";
+  // for(int i = 0; i < 8*4+1; i++) { os << "="; }
+  // os << "\n  |";
+  for(int r = 0; r < N; r++)
+    for(int c = 0; c < M; c++)
+      {
+        is >> mat[r][c];
+        is.ignore((r != N-1 || c != M-1) ? ((c == M-1) ? 5 : 1) : 1);
+      }
+  // os << "\n  ";
+  // for(int i = 0; i < 8*4+1; i++) { os << "="; }
+  // os << "\n";
+  return is;
+}
 
-
-#endif //MATRIX_HPP
+#endif // MATRIX_HPP

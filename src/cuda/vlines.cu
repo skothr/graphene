@@ -1,11 +1,11 @@
 #include "cuda-vbo.cuh"
-#include "field.cuh"
-#include "fluid.cuh"
 
 #include <cuda_runtime.h>
 #include <cufft.h>
 #include <helper_cuda.h>
 
+#include "field.cuh"
+#include "fluid.cuh"
 #include "vector-operators.h"
 #include "cuda-tools.cuh"
 
@@ -38,7 +38,7 @@ void fillVLines(FluidField<T> &src, CudaVBO &dst, FluidParams<T> &cp)
       fillVLines_k <T> <<<grid, threads>>>(src, dst, cp);
       dst.unmap();
     }
-  else { std::cout << "Skipped fillVLines --> " << src.size << " / " << dst.size << "\n"; }
+  else { std::cout << "====> WARNING: skipped fillVLines --> " << src.size << " / " << dst.size << "\n"; }
 }
 
 // template instantiation

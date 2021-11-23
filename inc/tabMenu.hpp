@@ -6,8 +6,8 @@
 #include <functional>
 #include "vector.hpp"
 
-#define TABMENU_TAB_PADDING  Vec2f(10.0f, 6.0f)
-#define TABMENU_MENU_PADDING 5.0f
+#define TABMENU_TAB_PADDING  Vec2f(10.0f, 10.0f)
+#define TABMENU_MENU_PADDING 10.0f
 
 // forward declarations
 struct ImFont;
@@ -15,13 +15,13 @@ struct ImFont;
 typedef std::function<void()> TabCallback;
 struct TabDesc
 {
-  std::string label;           // tab label
-  std::string title;           // tab title over child window
-  TabCallback drawMenu;        // draw callback
-  int         width;           // width of contents when open (measured)
-  int         minWidth;        // minimum width
-  int         fixedWidth = -1; // constant width
-  ImFont     *titleFont = nullptr;
+  TabCallback drawMenu;           // draw callback
+  std::string label;              // tab label
+  std::string title;              // tab title over child window
+  float       width;              // width of contents when open (measured)
+  float       minWidth   = -1.0f; // minimum width
+  float       fixedWidth = -1.0f; // constant width
+  ImFont     *titleFont  = nullptr;
 };
 
 class TabMenu
@@ -37,12 +37,14 @@ private:
   
 public:
   TabMenu() { }
-  TabMenu(int width, int length);
+  TabMenu(int barWidth, int length);
   
   Vec2f getSize()      const;
   float getBarWidth()  const;
   float getTabLength() const;
 
+  int selected() const { return mSelected; }
+  
   void setItemWidth(int index, int w)      { mTabs[index].width      = w; }
   void setItemFixedWidth(int index, int w) { mTabs[index].fixedWidth = w; }
   

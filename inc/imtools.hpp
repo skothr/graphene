@@ -10,45 +10,31 @@
 #include "glfwKeys.hpp"
 #include "rect.hpp"
 
-#define ASPECT_MAX_W        3.0f
-#define ASPECT_BORDER_MAX_W 1.0f
-#define ASPECT_BORDER_COLOR Vec4f(1,1,1,1)
 
-#define ARROW_COLOR         Vec4f(0.0f, 0.0f, 0.0f, 1.0f)
-#define ARROW_BORDER_COLOR  Vec4f(1.0f, 1.0f, 1.0f, 1.0f)
-#define ARROW_BORDER_W      2.0f // width of border
-#define ARROW_WIDTH         7.0f // size in tangential direction
-#define ARROW_LENGTH        4.0f // size in radial direction
-  
-// begin imgui tooltip with spacing/padding set for scaling
-#define TOOLTIP_PADDING      Vec2f(4.0f, 4.0f)
-#define TOOLTIP_SPACING      Vec2f(4.0f, 4.0f)
-#define TOOLTIP_BORDER_SIZE  1.0f
-#define TOOLTIP_GRAB_MINSIZE 12.0f
-
-
+static ImFont *DEFAULT_SUPER_FONT = nullptr;
+inline void setDefaultSuperFont(ImFont *superFont) { DEFAULT_SUPER_FONT = superFont; }
 
 
 // superscript text
-inline void TextSuper(const std::string &text, ImFont *superFont=nullptr, bool normalSpacing=true)
+inline void TextSuper(const std::string &text, ImFont *superFont=DEFAULT_SUPER_FONT, bool normalSpacing=true)
 {
   if(text.empty()) { return; }
   
   Vec2f spacing = Vec2f(ImGui::GetStyle().ItemSpacing.x, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Vec2f(0,0));
-  {  
+  {
     Vec2f p0     = ImGui::GetCursorPos();
     Vec2f tSize0 = ImGui::CalcTextSize(text.c_str());
-
+    
     if(superFont) { ImGui::PushFont(superFont); }
     Vec2f sSize = ImGui::CalcTextSize(text.c_str());
-    ImGui::SetCursorPos(p0 + Vec2f(0.0f, sSize.y*0.4f)); // vertical space for superscript  
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(-spacing.x, -(sSize.y)*0.6f));
+    Vec2f sDiff = tSize0 - sSize;
+    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(-spacing.x, 0));
     ImGui::TextUnformatted(text.c_str());
-    ImGui::SetCursorPos(p0 + Vec2f(sSize.x, 0.0f));
+    ImGui::SetCursorPos(p0 + Vec2f(sSize.x+sDiff.x, 0.0f));
     if(superFont) { ImGui::PopFont(); }
     
-    // remove extra horizontal spacing
+    // remove extra horizontal spacing (?)
     ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) - Vec2f(spacing.x, 0.0f));
     if(normalSpacing) { ImGui::TextUnformatted(""); } // next line
   }
@@ -56,7 +42,7 @@ inline void TextSuper(const std::string &text, ImFont *superFont=nullptr, bool n
 }
 
 // subscript text
-inline void TextSub(const std::string &text, ImFont *superFont=nullptr, bool normalSpacing=true)
+inline void TextSub(const std::string &text, ImFont *superFont=DEFAULT_SUPER_FONT, bool normalSpacing=true)
 {
   if(text.empty()) { return; }
   
@@ -68,34 +54,29 @@ inline void TextSub(const std::string &text, ImFont *superFont=nullptr, bool nor
 
     if(superFont) { ImGui::PushFont(superFont); }
     Vec2f sSize = ImGui::CalcTextSize(text.c_str());
-    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(-spacing.x, sSize.y*0.6f));
+    Vec2f sDiff = tSize0 - sSize;
+    ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(-spacing.x, sDiff.y + sSize.y*0.4f));
     ImGui::TextUnformatted(text.c_str());
-    ImGui::SetCursorPos(p0 + Vec2f(sSize.x, 0.0f));
+    ImGui::SetCursorPos(p0 + Vec2f(sSize.x+sDiff.x, 0.0f));
     if(superFont) { ImGui::PopFont(); }
     // remove extra spacing (?)
     ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) - Vec2f(spacing.x, 0.0f));
-    if(normalSpacing)
-      {
-        ImGui::TextUnformatted("");
-        ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f)); // vertical space for subscript
-      } // next line
-    
+    if(normalSpacing) { ImGui::TextUnformatted(""); } // next line
   }
   ImGui::PopStyleVar();
-
 }
-#define SUPER_KEY std::string(">^")
-#define SUB_KEY   std::string("<^")
+
+// keys for denoting equation-related text
+static const std::string SUPER_KEY = ">^"; // "x>^(2)" ==> x²
+static const std::string SUB_KEY   = "<^"; // "x<^(2)" ==> x₂
+static const std::string FRACT_KEY = "/^"; // "x/^(2)" ==> x/2 (vertical) (TODO)
 
 // combined text with plain, superscript, and subscript (denoted using keys)
-inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
+inline void TextPhysics(const std::string &text, ImFont *superFont=DEFAULT_SUPER_FONT)
 {
   if(superFont) { ImGui::PushFont(superFont); }
   Vec2f sSize = ImGui::CalcTextSize(text.c_str());
   if(superFont) { ImGui::PopFont(); }
-
-  // extra vertical space for subscript
-  ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f));
   
   Vec2f spacing = Vec2f(ImGui::GetStyle().ItemSpacing.x, 0.0f);  
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Vec2f(0,0));
@@ -109,12 +90,13 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
 
       // check for superscript
       auto openSuper = str.find(SUPER_KEY + "(");
-      auto openSub   = str.find(SUB_KEY + "(");
-      
+      auto openSub   = str.find(SUB_KEY   + "(");
+      //auto openFract = str.find(")" + FRACT_KEY + "("); // TODO: fractions separated by horizontal line
+
       if(openSuper != std::string::npos && (openSub == std::string::npos || openSuper < openSub))
         { // found superscript
           // skip groups of parentheses within superscript parentheses
-          auto offset = openSuper+3;
+          auto offset = openSuper + SUPER_KEY.size()+1;
           auto openParen = str.find("(", offset); auto closeParen = str.find(")", offset);
           bool subParen = false;
           while(openParen != std::string::npos && openParen < closeParen)
@@ -125,7 +107,7 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
           if(closeSuper != std::string::npos)
             {
               std::string lhs      = str.substr(0, openSuper);
-              std::string strSuper = str.substr(openSuper+3, closeSuper-openSuper-3);
+              std::string strSuper = str.substr(openSuper+(SUPER_KEY.size()+1), closeSuper-openSuper-(SUPER_KEY.size()+1));
               str = str.substr(closeSuper+1);
               if(!lhs.empty())      { ImGui::TextUnformatted(lhs.c_str()); ImGui::SameLine(); }
               if(!strSuper.empty()) { TextSuper(strSuper, superFont, false); }
@@ -135,7 +117,7 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
       else if(openSub != std::string::npos && (openSuper == std::string::npos || openSub < openSuper))
         { // found subscript
           // skip groups of parentheses within subscript parentheses
-          auto offset = openSub+3;
+          auto offset = openSub + SUB_KEY.size()+1;
           auto openParen = str.find("(", offset); auto closeParen = str.find(")", offset);
           bool subParen = false;
           while(openParen != std::string::npos && openParen < closeParen)
@@ -146,13 +128,13 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
           if(closeSub != std::string::npos)
             {
               std::string lhs   = str.substr(0, openSub);
-              std::string strSub = str.substr(openSub+3, closeSub-openSub-3);
+              std::string strSub = str.substr(openSub+(SUB_KEY.size()+1), closeSub-openSub-(SUB_KEY.size()+1));
               str = str.substr(closeSub+1);
               if(!lhs.empty())    { ImGui::TextUnformatted(lhs.c_str()); ImGui::SameLine(); }
               if(!strSub.empty()) { TextSub(strSub, superFont, false); }
               found = true;
             }
-        }
+        }      
       if(!found)
         { // rest is plain text
           ImGui::TextUnformatted(str.c_str());
@@ -160,9 +142,6 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
         }
     }
   ImGui::PopStyleVar();
-
-  // extra vertical space for subscript
-  //ImGui::SetCursorPos(Vec2f(ImGui::GetCursorPos()) + Vec2f(0.0f, sSize.y*0.4f));
 }
 
 
@@ -171,11 +150,7 @@ inline void TextPhysics(const std::string &text, ImFont *superFont=nullptr)
 
 
 
-
-
-
-
-// improved checkbox
+// small checkbox
 inline bool Checkbox(const std::string &label, bool* v, const Vec2f &size=Vec2f(0,0))
 {
   ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -225,7 +200,7 @@ inline bool Checkbox(const std::string &label, bool* v, const Vec2f &size=Vec2f(
 
 #define SLIDER_BTN_W 10.0f
 template<typename T>
-inline bool RangeSlider(const std::string &label, T* v0, T* v1, T vMin, T vMax, const Vec2f &size=Vec2f(0,0))
+inline bool RangeSlider(const std::string &label, T* v0, T* v1, T vMin, T vMax, const Vec2f &size=Vec2f(250,20))
 {
   bool changed = false;
   ImDrawList *drawList = ImGui::GetWindowDrawList();
@@ -239,7 +214,6 @@ inline bool RangeSlider(const std::string &label, T* v0, T* v1, T vMin, T vMax, 
   ImGui::Button((label+"##btn1").c_str(), Vec2f(SLIDER_BTN_W, size.y));
   bool c1 = ImGui::IsItemActive();
 
-  
   float mval = (vMax-vMin)*(ImGui::GetMousePos().x - p0.x)/size.x;
   mval = std::max(std::min(mval+0.5f, (float)vMax), (float)vMin);
   
@@ -269,14 +243,8 @@ inline bool RangeSlider(const std::string &label, T* v0, T* v1, T vMin, T vMax, 
   return changed;
 }
 
-
-
-
-
-
-#define VTEXT_UP_TO_DOWN true
 /// Draws vertical text (rotated). The position is the bottom left of the text rect.
-inline void AddTextVertical(ImDrawList* DrawList, const char *text, Vec2f pos, const Vec4f &textColor)
+inline void AddTextVertical(ImDrawList* DrawList, const char *text, Vec2f pos, const Vec4f &textColor, bool upToDown=true)
 {
   pos.x = IM_ROUND(pos.x);
   pos.y = IM_ROUND(pos.y);
@@ -287,7 +255,7 @@ inline void AddTextVertical(ImDrawList* DrawList, const char *text, Vec2f pos, c
   Vec2f textSize = ImGui::CalcTextSize(text);
   pos.x += textSize.y;
   
-  int dirMult = (VTEXT_UP_TO_DOWN ? 1 : -1);
+  int dirMult = (upToDown ? 1 : -1); // direction
   
   while((c = *text++))
     {
@@ -308,6 +276,16 @@ inline void AddTextVertical(ImDrawList* DrawList, const char *text, Vec2f pos, c
     }
 }
   
+
+
+
+
+
+
+
+
+
+
 // draws a bordered line (simple rectangle)
 //   TODO(?): endpoint type (e.g. triangular, rounded, 
 inline void drawLine(ImDrawList *drawList, Vec2f p0, Vec2f p1,              // screen points to connect, and center point
@@ -360,46 +338,42 @@ inline void drawLine(ImDrawList *drawList, Vec2f p0, Vec2f p1,              // s
     }
 }
 
-// draws a triangle denoting an orientation
-inline void drawArrowTip(ImDrawList *drawList, Vec2f p, Vec2f v, float scale=1.0f, bool hollow=false)
+
+inline void drawVector(ImDrawList *drawList, const Vec2f &p, const Vec2f &v, const Vec4f &color, float width, float tipW, float tipAspect)
 {
-  // measurements (TODO: simplify)
-  Vec2f n(v.y, -v.x); // normal (tangent to circle)
-    
-  float theta = atan(ARROW_LENGTH / (ARROW_WIDTH/2.0f));  // angle of corners not touching p
-  float cTheta = M_PI/2.0 - theta;
-  float cTheta2 = (M_PI - 2.0f*theta)/2.0f;
-  float pTheta = M_PI - 2.0f*theta;                       // angle of corner touching p
+  float vL = length(v);
+  Vec2f v0 = v / vL;
+  Vec2f n0 = Vec2f(v0.y, -v0.x); // CW normal
+  float theta = M_PI/3.0;
 
-  float dTt = ARROW_BORDER_W * tan(cTheta) + ARROW_BORDER_W / cos(cTheta2);
-  float dTp = ARROW_BORDER_W / sin(pTheta/2.0f);
-    
-  // fill points
-  Vec2f p0 = p + (dTp*scale)*v;
-  Vec2f p1 = p0 + (ARROW_LENGTH*scale)*v - (ARROW_WIDTH/2.0f*scale)*n;
-  Vec2f p2 = p1 + (ARROW_WIDTH*scale)*n;
+  drawList->Flags &= ~ImDrawListFlags_AntiAliasedFill; // turn off antialiasing to avoid shape overlap
+  
+  width      = std::min(width, vL);
+  tipW       = std::max(tipW, 3.0f*width);
+  
+  // if(tipW > 0.8f*vL)
+  //   {
+  //     width = vL*0.8f/tipAspect;
+  //     tipW  = std::max(tipW, 3.0f*width);
+  //   }
+  float tipL = std::min(tipW*tipAspect, vL);
+  tipW = tipL/tipAspect;
 
-  // border points
-  Vec2f bp0 = p;
-  Vec2f bp1 = p1 - (dTt*scale)*n + (ARROW_BORDER_W*scale)*v;
-  Vec2f bp2 = p2 + (dTt*scale)*n + (ARROW_BORDER_W*scale)*v;
-
-  if(hollow)
-    { // draw border only
-      drawList->AddTriangleFilled(bp0, p0, bp1, ImColor(ARROW_BORDER_COLOR));
-      drawList->AddTriangleFilled(bp1, p0, p1, ImColor(ARROW_BORDER_COLOR));
-      drawList->AddTriangleFilled(bp1, p1, bp2, ImColor(ARROW_BORDER_COLOR));
-      drawList->AddTriangleFilled(bp2, p1, p2, ImColor(ARROW_BORDER_COLOR));
-      drawList->AddTriangleFilled(bp2, p2, bp0, ImColor(ARROW_BORDER_COLOR));
-      drawList->AddTriangleFilled(bp0, p2, p0, ImColor(ARROW_BORDER_COLOR));
+  if(vL > tipL)
+    { // line
+      Vec2f pl00 = p + n0*width/2.0f;
+      Vec2f pl01 = p - n0*width/2.0f;
+      Vec2f pl10 = p + n0*width/2.0f + v - v0*tipL;
+      Vec2f pl11 = p - n0*width/2.0f + v - v0*tipL;
+      drawList->AddTriangleFilled(pl00, pl10, pl11, ImColor(color));
+      drawList->AddTriangleFilled(pl11, pl01, pl00, ImColor(color));
     }
-  else
-    {
-      // draw border first
-      drawList->AddTriangleFilled(bp0, bp1, bp2, ImColor(ARROW_BORDER_COLOR));
-      // fill second (on top)
-      drawList->AddTriangleFilled(p0, p1, p2, ImColor(ARROW_COLOR));
-    }
+  
+  // arrow tip
+  Vec2f pt0 = p + v;
+  Vec2f pt1 = p + v0*(vL-tipL) + n0*tipW/2;
+  Vec2f pt2 = p + v0*(vL-tipL) - n0*tipW/2;
+  drawList->AddTriangleFilled(pt0, pt1, pt2, ImColor(color));
 }
 
 

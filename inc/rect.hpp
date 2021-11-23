@@ -20,7 +20,13 @@ struct Rect
   Rect() : p1(0,0), p2(0,0)                                                 { }
   Rect(const Rect<T> &other) : p1(other.p1), p2(other.p2)                   { }
   Rect(const Vector<T, 2> &_p1, const Vector<T, 2> &_p2) : p1(_p1), p2(_p2) { }
-  Rect<T>& operator=(const Rect<T> &other)     { p1=other.p1; p2=other.p2; return *this; }
+  Rect<T>& operator=(const Rect<T> &other) { p1=other.p1; p2=other.p2; return *this; }
+
+  template<typename U> Rect(const Rect<U> &other)
+    : p1(Vector<T,2>(other.p1)), p2(Vector<T,2>(other.p2)) { }
+  template<typename U> Rect<T>& operator=(const Rect<U> &other)
+  { p1=Vector<T,2>(other.p1); p2=Vector<T,2>(other.p2); return *this; }
+  
   bool operator==(const Rect<T> &other) const  { return (p1 == other.p1 && p2 == other.p2); }
   bool operator!=(const Rect<T> &other) const  { return (p1 != other.p1 || p2 != other.p2); }
 
@@ -45,8 +51,10 @@ struct Rect
   void move(const Vector<T, 2> &dp)     { p1 += dp; p2 += dp; }
   void setPos(const Vector<T, 2> &p)    { p2 = p+size(); p1 = p; }
   void setSize(const Vector<T, 2> &s)   { p2 = p1+s; }
-  void scale(const Vector<T, 2> &mult)  { Vec2f newSize = size()*mult; Vec2f sizeDiff = newSize - size(); p1 -= sizeDiff/2.0f; p2 += sizeDiff/2.0f; }
   void setCenter(const Vector<T, 2> &c) { Vector<T, 2> hs = size()/2.0; p1 = c-hs; p2 = c+hs; }
+  void scale(const Vector<T, 2> &mult)  { Vector<T, 2> sizeDiff = (mult*size() - size())*0.5f; p1 -= sizeDiff; p2 += sizeDiff; }
+  void scaleX(T xMult)                  { T offset = (xMult*size().x - size().x)*0.5f; p1.x -= offset; p2.x += offset; }
+  void scaleY(T yMult)                  { T offset = (yMult*size().y - size().y)*0.5f; p1.y -= offset; p2.y += offset; }
   
   bool valid() const { return (p1.x < p2.x && p1.y < p2.y); }
   void fix()

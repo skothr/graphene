@@ -2,6 +2,7 @@
 #define KEY_MANAGER_HPP
 
 #include <vector>
+#include <queue>
 #include <thread>
 #include <mutex>
 #include <nlohmann/json_fwd.hpp> // json forward declarations
@@ -27,6 +28,8 @@ private:
   KeyBinding *mBindingEdit = nullptr;   // points to binding currently being edited
   KeyBinding  mOldBinding;              // previous binding for mBindingEdit (in case cancelled/taken)
 
+  std::queue<std::vector<KeyPress>> mTriggered;  // triggered sequences
+  
   int mMaxNameLength = 0; // max length of binding name
   int mMaxKeyLength  = 0; // max length of shortcut text
   

@@ -29,8 +29,6 @@ enum KeyEventClass
    EVENTCLASS_COUNT
   };
 
-
-
 enum KeyEventType
   {
    KEYEVENT_INVALID    = -1,
@@ -61,7 +59,8 @@ inline std::ostream& operator<<(std::ostream &os, const KeyEventType t)
     }
   return os;
 }
-
+template<typename T>
+std::enable_if_t<std::is_same_v<T, KeyEventType>, std::string> to_string(T e) { std::stringstream ss; ss << e; return ss.str(); }
 
 template<KeyEventType T> struct KeyEvent;
 
@@ -69,22 +68,10 @@ template<KeyEventType T> struct KeyEvent;
 struct KeyEventBase
 {
   double t = -1.0;  // timestamp (sim time)
-  // double end   = -1.0;  // timestamp (sim time)
-  KeyEventBase(double t_) : t(t_) { } // ,  end(t)  { }
-  // KeyEventBase(double t0, double t1) : start(t0), end(t1) { }
+  KeyEventBase(double t_) : t(t_) { }
   virtual constexpr KeyEventType type() const = 0;
   template<KeyEventType T> KeyEvent<T>* sub() { return static_cast<KeyEvent<T>*>(this); }
 };
-
-
-// // specialization for each event type
-// template<KeyEventType T=KEYEVENT_INVALID>
-// struct KeyEvent : public KeyEventBase
-// {
-//   KeyEvent(double t) : KeyEventBase(t) { }
-//   virtual constexpr KeyEventType type() const override { return T; }
-// };
-
 
 // add signal source
 template<> struct KeyEvent<KEYEVENT_SIGNAL_ADD> : public KeyEventBase
@@ -93,11 +80,7 @@ template<> struct KeyEvent<KEYEVENT_SIGNAL_ADD> : public KeyEventBase
   float3           pos;
   SignalPen<float> pen;
   KeyEvent(double t0, const std::string &id_, const float3 &pos_, const SignalPen<float> &pen_)
-    : KeyEventBase(t0),  id(id_), pos(pos_), pen(pen_) { } // full event
-  // KeyEvent(double t0, const std::string &id_, const float3 &pos_, const SignalPen<float> &pen_)
-  //   : KeyEventBase(t0, -1.0), id(id_), pos(pos_), pen(pen_) { } // incomplete event (if recording) [start-->cursor]
-  // KeyEvent(double t1, const std::string &id_)
-  //   : KeyEventBase(-1.0, t1), id(id_) { } // end incomplete event
+    : KeyEventBase(t0),  id(id_), pos(pos_), pen(pen_) { }
   virtual constexpr KeyEventType type() const override { return KEYEVENT_SIGNAL_ADD; }
 };
 
@@ -109,7 +92,6 @@ template<> struct KeyEvent<KEYEVENT_SIGNAL_REMOVE> : public KeyEventBase
   virtual constexpr KeyEventType type() const override { return KEYEVENT_SIGNAL_REMOVE; }
 };
 
-
 // move signal source
 template<> struct KeyEvent<KEYEVENT_SIGNAL_MOVE> : public KeyEventBase
 {
@@ -118,7 +100,6 @@ template<> struct KeyEvent<KEYEVENT_SIGNAL_MOVE> : public KeyEventBase
   KeyEvent(double t, const std::string &id_, const float3 &pos_) : KeyEventBase(t), id(id_), pos(pos_) { }
   virtual constexpr KeyEventType type() const override { return KEYEVENT_SIGNAL_MOVE; }
 };
-
 
 // set signal source pen
 template<> struct KeyEvent<KEYEVENT_SIGNAL_PEN> : public KeyEventBase
@@ -129,7 +110,6 @@ template<> struct KeyEvent<KEYEVENT_SIGNAL_PEN> : public KeyEventBase
   virtual constexpr KeyEventType type() const override { return KEYEVENT_SIGNAL_PEN; }
 };
 
-
 // place material
 template<> struct KeyEvent<KEYEVENT_MATERIAL> : public KeyEventBase
 {
@@ -139,7 +119,6 @@ template<> struct KeyEvent<KEYEVENT_MATERIAL> : public KeyEventBase
   virtual constexpr KeyEventType type() const override { return KEYEVENT_MATERIAL; }
 };
 
-
 // set 2D view rect
 template<> struct KeyEvent<KEYEVENT_VIEW2D> : public KeyEventBase
 {
@@ -147,7 +126,6 @@ template<> struct KeyEvent<KEYEVENT_VIEW2D> : public KeyEventBase
   KeyEvent(double t, const Rect2f &view_) : KeyEventBase(t), view(view_) { }
   virtual constexpr KeyEventType type() const override { return KEYEVENT_VIEW2D; }
 };
-
 
 // set 3D view camera
 template<> struct KeyEvent<KEYEVENT_VIEW3D> : public KeyEventBase
@@ -157,7 +135,6 @@ template<> struct KeyEvent<KEYEVENT_VIEW3D> : public KeyEventBase
   virtual constexpr KeyEventType type() const override { return KEYEVENT_VIEW3D; }
 };
 
-
 // adjust another setting
 template<> struct KeyEvent<KEYEVENT_SETTING> : public KeyEventBase
 {
@@ -165,25 +142,6 @@ template<> struct KeyEvent<KEYEVENT_SETTING> : public KeyEventBase
   std::any value; // setting value
   KeyEvent(double t, const std::string &id_, const std::any &val) : KeyEventBase(t), id(id_), value(val) { }
   virtual constexpr KeyEventType type() const override { return KEYEVENT_SETTING; }
-};
-
-
-
-
-// represents a persistent signal source
-struct SignalSource
-{
-  float3 pos;
-  SignalPen<float> pen;
-  double start = -1.0;
-  double end   = -1.0;
-};
-  
-// represents placement of material at some location
-struct MaterialPlaced
-{
-  float3 pos;
-  MaterialPen<float> pen;
 };
 
 

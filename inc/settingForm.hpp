@@ -3,44 +3,40 @@
 
 #include <vector>
 #include <string>
-#include <nlohmann/json.hpp> // json forward declarations
+#include <nlohmann/json_fwd.hpp> // json forward declarations
 using json = nlohmann::json;
 #include "vector.hpp"
 
 // forward declarations
 class SettingBase;
+class SettingGroup;
 
 class SettingForm
 {
+private:
+  SettingForm(const SettingForm &other) = delete; // : SettingForm(other.mTitle) { }
+  SettingForm& operator=(const SettingForm &other) = delete; // { cleanup(); mTitle = other.mTitle; return *this; }
+  
 protected:
-  std::vector<SettingBase*>    mSettings;
-  float mLabelColW = 200; // width of column with setting name labels    
-  float mInputColW = 150; // width of column with setting input widget(s)
+  std::vector<SettingBase*> mSettings;
+  SettingGroup *mOther = nullptr;
   std::string mTitle = "";
   Vec2f mSize;
-    
+  
 public:
-  SettingForm()  { }
-  SettingForm(const std::string &title, float labelColW, float inputColW)
-    : mTitle(title) { setLabelColWidth(labelColW); setInputColWidth(inputColW); }
-  ~SettingForm();
-
+  SettingForm(const std::string &title);
+  SettingForm() : SettingForm("") { }
+  virtual ~SettingForm();
+  
+  void cleanup();
+  
   json toJSON() const;
   bool fromJSON(const json &js);
-  
-  void add(SettingBase *setting);
-  SettingBase* get(const std::string &name);
-  void remove(const std::string &name);
-  bool draw(float scale=1.0f, bool busy=false, bool visible=true);
-
+  Vec2f getSize() const { return mSize; }
+  void add(SettingBase *setting, bool other=false);
   void updateAll();
   
-  void setLabelColWidth(float w);
-  void setInputColWidth(float w);
-  float labelColWidth() const { return mLabelColW; }
-  float inputColWidth() const { return mInputColW; }
-
-  Vec2f getSize() const { return mSize; }
+  virtual bool draw();
 };
 
 #endif // SETTINGS_FORM_HPP

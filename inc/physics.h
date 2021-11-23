@@ -87,6 +87,14 @@ template<> __device__ inline float3  coulombForce<float3,  float> (float  q0, fl
 template<> __device__ inline double3 coulombForce<double3, double>(double q0, double q1, const double3 &n)
 { double dist = length(n); return (dist != 0.0f ? (M_Ke*(q0*q1*n) / (dist*dist*dist)) : double3{0.0f, 0.0f, 0.0f}); }
 
+// (normalized units)
+template<typename VT=float3, typename ST=float> __device__ VT coulombForceN(ST q0, ST q1, const VT &n);
+template<> __device__ inline float3  coulombForceN<float3,  float> (float  q0, float  q1, const float3  &n)
+{ float  dist = length(n); return (dist != 0.0f ? ((q0*q1*n) / (dist*dist*dist)) : float3{0.0f, 0.0f, 0.0f}); }
+
+template<> __device__ inline double3 coulombForceN<double3, double>(double q0, double q1, const double3 &n)
+{ double dist = length(n); return (dist != 0.0f ? ((q0*q1*n) / (dist*dist*dist)) : double3{0.0f, 0.0f, 0.0f}); }
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 // calculates Lorentz force F on a charge q (single particle) given charge velocity and vectors E and B at charge position

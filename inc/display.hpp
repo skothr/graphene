@@ -1,10 +1,8 @@
 #ifndef DISPLAY_HPP
 #define DISPLAY_HPP
 
-#include <nlohmann/json.hpp> // json implementation (NOTE: should be in settings.hpp?)
-using json = nlohmann::json;
-
 #include "render.cuh"
+#include "setting.hpp"
 #include "settingForm.hpp"
 
 
@@ -13,65 +11,61 @@ template<typename T>
 struct VectorFieldParams
 {
   // vector field
-  bool  drawVectors     = true;  // draws vector field on screen
-  bool  smoothVectors   = false; // uses bilinear interpolation, centering at samples mouse instead of exact cell centers
-  //bool  borderedVectors = false; // uses fancy bordered polygons instead of standard GL_LINES (slower -- TODO: optimize with cudaVBO(?))
-  bool  mouseRadius     = true;  // only draw vectors within some radius of the mouse (for isolated inspection)
-  int   vecMRadius      = 64;    //  --> radius around mouse
-  int   vecSpacing      = 1;     // base spacing 
-  int   vecCRadius      = 1024;  // only draws maximum of this radius number of vectors, adding spacing  
-  float vecMultE        = 1.0f;  // E length multiplier
-  float vecMultB        = 1.0f;  // B length multiplier
-  float vecLineW        = 0.2f;  // line width
-  float vecAlpha        = 0.2f;  // line opacity
-  float vecBorderW      = 1.0f;  // border width
-  float vecBAlpha       = 1.0f;  // border opacity
+  bool  drawVectors   = true;  // draws vector field on screen
+  bool  mouseRadius   = true;  // only draw vectors within some radius of the mouse (for isolated inspection)
+  bool  smoothVectors = false; // uses bilinear interpolation, centering at samples mouse instead of exact cell centers
+  bool  scaleToView   = false; // scale line width based on view scale
+  int   spacing       = 1;     // base spacing
+  int   mRadius       = 32;    //  --> radius around mouse
+  int   cRadius       = 256;   //  -- maximum radius (in number of vectors drawn) -- adds spacing if needed
+  
+  float aBase         = 0.5f;  // base alpha mult
+  float lBase         = 1.0f;  // base length mult
+  float wBase         = 3.0f;  // base line width mult
+  
+  // toggles
+  bool   drawV   = false; // V  (fluid velocity)
+  bool   drawQpv = false; // (Q+)v (charge velocity)
+  bool   drawQnv = false; // (Q-)v (charge velocity)
+  bool   drawE   = true;  // E  (electric field strength)
+  bool   drawB   = true;  // B  (magnetic field strength)
+  // line colors
+  float4 colV   = float4{1.0f, 0.0f, 0.0f, 1.0f};
+  float4 colQnv = float4{1.0f, 0.0f, 1.0f, 1.0f};
+  float4 colQpv = float4{1.0f, 0.0f, 1.0f, 1.0f};
+  float4 colE   = float4{0.0f, 1.0f, 0.0f, 1.0f};
+  float4 colB   = float4{0.0f, 0.0f, 1.0f, 1.0f};
+  // length multipliers
+  float multV   = 1.0f;
+  float multQnv = 1.0f;
+  float multQpv = 1.0f;
+  float multE   = 1.0f;
+  float multB   = 1.0f;
+  // width multipliers
+  float lwV   = 1.0f;
+  float lwQnv = 1.0f;
+  float lwQpv = 1.0f;
+  float lwE   = 1.0f;
+  float lwB   = 1.0f;
 };
 
 template<typename T>
-struct DisplayInterface
+struct DisplayInterface : public SettingForm
 {
   // flags
   bool showEMView  = true;
-  bool showMatView = true;
+  bool showMatView = false;
   bool show3DView  = true;
-  bool drawAxes    = true; // axes at origin in each view
+  bool drawAxes    = true; // X/Y/Z axes from <0,0,0> in each view
   bool drawOutline = true; // outline of field in each view
-  
-  bool vsync       = true;  // vertical sync
-
-  bool  limitFps  = false; // FPS limiter (inactive if <= 0)
-  float maxFps    = 30.0f;
   
   // main parameters
   RenderParams<T>      *rp = nullptr; bool rpDelete = false;
   VectorFieldParams<T> *vp = nullptr; bool vpDelete = false;
   int *zSize = nullptr;
   
-  SettingForm *mForm = nullptr;
-  std::vector<SettingBase*> mExtraSettings;
-  json toJSON() const
-  {
-    json js = (mForm ? mForm->toJSON() : json::object());
-    for(auto s : mExtraSettings) { js[s->getId()] = s->toJSON(); }
-    return js;
-  }
-  bool fromJSON(const json &js)
-  {
-    bool success = (mForm ? mForm->fromJSON(js) : false);
-    for(auto s : mExtraSettings)
-      {
-        if(js.contains(s->getId())) { s->fromJSON(js[s->getId()]); }
-        else                        { success = false; }
-      }
-    return success;
-  }
-  
   DisplayInterface(RenderParams<T> *rParams, VectorFieldParams<T> *vParams, int *zs);
   ~DisplayInterface();
-
-  void draw();
-  void updateAll() { mForm->updateAll(); }
 };
 
 #define COLOR_SMALLSTEP float4{0.01f, 0.01f, 0.01f, 0.1f}
@@ -86,131 +80,146 @@ template<typename T>
 DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParams<T> *vParams, int *zs)
   : rp(rParams), vp(vParams), zSize(zs)
 {
-  typedef typename DimType<T, 4>::VEC_T VT4;
-  
   if(!rp) { rp = new RenderParams<T>();      rpDelete = true; }
   if(!vp) { vp = new VectorFieldParams<T>(); vpDelete = true; }
   
-  mForm = new SettingForm("Display Settings", 180, 300);
-
-  // flags
-  auto *sSFEM  = new Setting<bool> ("Show EM View",        "showEMView",  &showEMView);  mForm->add(sSFEM);
-  auto *sSFMAT = new Setting<bool> ("Show Material View",  "showMatView", &showMatView); mForm->add(sSFMAT);
-  auto *sSF3D  = new Setting<bool> ("Show 3D View",        "show3DView",  &show3DView);  mForm->add(sSF3D);
-  auto *sSFA   = new Setting<bool> ("Show Axes",           "showAxes",    &drawAxes);    mForm->add(sSFA);
-  auto *sSFO   = new Setting<bool> ("Show Field Outline",  "showOutline", &drawOutline); mForm->add(sSFO);
-
-
-  auto *sVS    = new Setting<bool> ("VSync",               "vsync",       &vsync);       mForm->add(sVS);
-  sVS->updateCallback = [&](){ glfwSwapInterval(vsync ? 1 : 0); };
-  sVS->setHelp("");
-  auto *sLFPS  = new Setting<float>("Limit Physics FPS",   "maxFps",      &maxFps);      mForm->add(sLFPS);
-  sLFPS->setToggle(&limitFps); sLFPS->setFormat(1.0f, 10.0f, "%0.2f");
-  sLFPS->setHelp("");
-
-  
   // render params
-  auto *sRZL   = new Setting<int2> ("Z Range", "zRange", &rp->zRange, rp->zRange); mForm->add(sRZL);
-  sRZL->setMin(int2{0,0}); sRZL->setMax(int2{1,1}*(zSize ? *zSize-1 : 0));
-  sRZL->drawCustom = [this](bool busy, bool &changed) -> bool
-                     {
-                       changed |= RangeSlider("##zSlider", &rp->zRange.x, &rp->zRange.y, 0, (zSize ? *zSize-1 : 0), Vec2f(250, 20));
-                       return busy;
-                     };
-  auto *sRCS  = new Setting<bool> ("Surfaces", "surfaces", &rp->surfaces); mForm->add(sRCS);
-  auto *sRSMP = new Setting<bool> ("Simple",   "simple",   &rp->simple);   mForm->add(sRSMP);
+  SettingGroup *rGroup = new SettingGroup("Render Data",  "renderData", { }); add(rGroup);
+  auto *sRZL   = new SliderSetting<int>("Z Range", "zRange", &rp->zRange, nullptr, zSize); rGroup->add(sRZL);
+  auto *sRCS  = new Setting<bool> ("Surfaces", "surfaces", &rp->surfaces); rGroup->add(sRCS);
+  sRCS->setHelp ("Interesting ray marching option that solidifies wavefront surfaces \n"
+                 " off --> Ray marching breaks if A >= 1\n"
+                 "  on --> Ray marching breaks if R, G, B, or A is >= 1");
+
+  // vector draw params
+  SettingGroup *vGroup = new SettingGroup("Vector Field", "vecField", { }); add(vGroup);
+  auto *sVE    = new Setting<bool> ("Enable",        "vEnable",     &vp->drawVectors);   vGroup->add(sVE);
+  sVE->setHelp ("Enable vector field overlay over 2D view (NOTE: may be slow with a lot of vectors)");
+  auto *sVR    = new Setting<bool> ("Mouse Radius",  "mouseRadius", &vp->mouseRadius);   vGroup->add(sVR);
+  sVR->setHelp (" off --> draws vectors across entire field\n"
+                "  on --> draws vectors within radius around mouse position");
+  auto *sVI    = new Setting<bool> ("Smooth",        "vecSmooth",   &vp->smoothVectors); vGroup->add(sVI);
+  sVI->setHelp (" off --> shows exact cell contents at cell centers\n"
+                "  on --> interpolates between cells (based on mouse position)");
+  auto *sVWV   = new Setting<bool> ("Scale to View", "scaleToView", &vp->scaleToView);   vGroup->add(sVWV);
+  sVWV->setHelp(" off --> line widths relative to screen (unaffected by zoom) \n"
+                "  on --> line widths relative to cell size");
+  auto *sVMR   = new Setting<int>  ("Radius",        "mRad",        &vp->mRadius);       vGroup->add(sVMR);   sVMR->setMin(0);
+  sVMR->setHelp("Radius around mouse within which vectors are drawn");
+  auto *sVCR   = new Setting<int>  ("Max Count",     "cRad",        &vp->cRadius);       vGroup->add(sVCR);   sVCR->setMin(0);
+  sVCR->setHelp("Spacing is adjusted if Mouse Radius is greater than this");
+  auto *sVSP   = new Setting<int>  ("Spacing",       "spacing",     &vp->spacing);       vGroup->add(sVSP);   sVSP->setMin(1);
+  sVSP->setHelp("Vector spacing/stride --> decreases density by only showing 1/N cells");
   
-  SettingGroup *fDGroup   = new SettingGroup("Fluid Components",    "fData",   { }, true);
-  SettingGroup *emDGroup  = new SettingGroup("EM Components",       "emData",  { }, true);
-  SettingGroup *matDGroup = new SettingGroup("Material Components", "matData", { }, true);
+  auto *sVLCV   = new ColorSetting  ("", "colV",     &vp->colV);
+  auto *sVLCQnv = new ColorSetting  ("", "colQnv",   &vp->colQnv);
+  auto *sVLCQpv = new ColorSetting  ("", "colQpv",   &vp->colQpv);
+  auto *sVLCE   = new ColorSetting  ("", "colE",     &vp->colE);
+  auto *sVLCB   = new ColorSetting  ("", "colB",     &vp->colB);
+  auto *sVLAV   = new Setting<float>("", "alphaV",   &vp->colV.w);   sVLAV->setMin(0.0f);   sVLAV->setFormat  (0.01f, 0.1f, "%0.4f");
+  auto *sVLAQnv = new Setting<float>("", "alphaQnv", &vp->colQnv.w); sVLAQnv->setMin(0.0f); sVLAQnv->setFormat(0.01f, 0.1f, "%0.4f");
+  auto *sVLAQpv = new Setting<float>("", "alphaQpv", &vp->colQpv.w); sVLAQpv->setMin(0.0f); sVLAQpv->setFormat(0.01f, 0.1f, "%0.4f");
+  auto *sVLAE   = new Setting<float>("", "alphaE",   &vp->colE.w);   sVLAE->setMin(0.0f);   sVLAE->setFormat  (0.01f, 0.1f, "%0.4f");
+  auto *sVLAB   = new Setting<float>("", "alphaB",   &vp->colB.w);   sVLAB->setMin(0.0f);   sVLAB->setFormat  (0.01f, 0.1f, "%0.4f");
+  
+  auto *sVLMV   = new Setting<float>("", "multV",   &vp->multV);   sVLMV->setFormat  (0.01f, 0.1f, "%0.4f");
+  auto *sVLMQnv = new Setting<float>("", "multQnv", &vp->multQnv); sVLMQnv->setFormat(0.01f, 0.1f, "%0.4f");
+  auto *sVLMQpv = new Setting<float>("", "multQpv", &vp->multQpv); sVLMQpv->setFormat(0.01f, 0.1f, "%0.4f");
+  auto *sVLME   = new Setting<float>("", "multE",   &vp->multE);   sVLME->setFormat  (0.01f, 0.1f, "%0.4f");
+  auto *sVLMB   = new Setting<float>("", "multB",   &vp->multB);   sVLMB->setFormat  (0.01f, 0.1f, "%0.4f");
+  auto *sVLWV   = new Setting<float>("", "lwV",     &vp->lwV);     sVLWV->setFormat  (0.01f, 0.1f, "%0.4f");
+  auto *sVLWQnv = new Setting<float>("", "lwQnv",   &vp->lwQnv);   sVLWQnv->setFormat(0.01f, 0.1f, "%0.4f");
+  auto *sVLWQpv = new Setting<float>("", "lwQpv",   &vp->lwQpv);   sVLWQpv->setFormat(0.01f, 0.1f, "%0.4f");
+  auto *sVLWE   = new Setting<float>("", "lwE",     &vp->lwE);     sVLWE->setFormat  (0.01f, 0.1f, "%0.4f");
+  auto *sVLWB   = new Setting<float>("", "lwB",     &vp->lwB);     sVLWB->setFormat  (0.01f, 0.1f, "%0.4f");
 
-  auto *sRCOF  = new Setting<float> ("Opacity",    "fOpacity",       &rp->fOpacity);      fDGroup->add(sRCOF);
-  sRCOF->setFormat (0.01f, 0.1f, "%0.4f"); 
-  auto *sRCBRF = new Setting<float> ("Brightness", "fBrightness",    &rp->fBrightness);   fDGroup->add(sRCBRF);
-  sRCBRF->setFormat(0.01f, 0.1f, "%0.4f"); 
-  auto *sRCOS  = new Setting<float> ("Opacity",     "emOpacity",     &rp->emOpacity);     emDGroup->add(sRCOS);
-  sRCOS->setFormat (0.01f, 0.1f, "%0.4f"); 
-  auto *sRCBRS = new Setting<float> ("Brightness",  "emBrightness",  &rp->emBrightness);  emDGroup->add(sRCBRS);
-  sRCBRS->setFormat(0.01f, 0.1f, "%0.4f"); 
-  auto *sRCOM  = new Setting<float> ("Opacity",     "matOpacity",    &rp->matOpacity);    matDGroup->add(sRCOM);
-  sRCOM->setFormat (0.01f, 0.1f, "%0.4f"); 
-  auto *sRCBRM = new Setting<float> ("Brightness",  "matBrightness", &rp->matBrightness); matDGroup->add(sRCBRM);
-  sRCBRM->setFormat(0.01f, 0.1f, "%0.4f"); 
+  auto *sVA = new Setting<float>("", "vAlpha",  &vp->aBase); sVA->setFormat(0.01f, 0.1f, "%0.4f"); sVA->setMin(0.0f); sVA->setMax(1.0f);
+  auto *sVL = new Setting<float>("", "vLength", &vp->lBase); sVL->setFormat(0.01f, 0.1f, "%0.4f");
+  auto *sVW = new Setting<float>("", "vWidth",  &vp->wBase); sVW->setFormat( 0.1f, 1.0f, "%0.4f");
+  std::vector<SettingBase*> sGlobal{{sVA, sVL, sVW}};
+  auto *g = new SettingGroup("Global", "globalMask", sGlobal); vGroup->add(g); g->setColumns(3); g->setHorizontal(true);
+  g->setColumnLabels(std::vector<std::string>{"Alpha", "Length", "Width"});
 
-  SettingGroup *activeGroup = fDGroup;
+  auto *sVVG   = new SettingGroup("V",  "vV",  {sVLCV,  sVLAV,  sVLMV,  sVLWV});  sVVG->setToggle(&vp->drawV); sVVG->setColumns(4);  sVVG->setHorizontal(true);
+  sVVG->setColumnLabels(std::vector<std::string>{"", "Alpha", "Length", "Width"});
+  sVVG->setHelp("Fluid velocity vector parameters");
+  auto *sVQnvG = new SettingGroup("Qnv", "vQnv", {sVLCQnv, sVLAQnv, sVLMQnv, sVLWQnv}); sVQnvG->setToggle(&vp->drawQnv);
+  sVQnvG->setColumns(4); sVQnvG->setHorizontal(true);
+  sVQnvG->setHelp("Charge velocity vector parameters");
+  auto *sVQpvG = new SettingGroup("Qpv", "vQpv", {sVLCQpv, sVLAQpv, sVLMQpv, sVLWQpv}); sVQpvG->setToggle(&vp->drawQpv);
+  sVQpvG->setColumns(4); sVQpvG->setHorizontal(true);
+  sVQpvG->setHelp("Charge velocity vector parameters");
+  auto *sVEG   = new SettingGroup("E",  "vE",  {sVLCE,  sVLAE,  sVLME,  sVLWE});  sVEG->setToggle(&vp->drawE); sVEG->setColumns(4);  sVEG->setHorizontal(true);
+  sVEG->setHelp("E (electric) field vector parameters");
+  auto *sVBG   = new SettingGroup("B",  "vB",  {sVLCB,  sVLAB,  sVLMB,  sVLWB});  sVBG->setToggle(&vp->drawB); sVBG->setColumns(4);  sVBG->setHorizontal(true);
+  sVBG->setHelp("B (magnetic) field vector parameters");
+  
+  auto *vvGroup = new SettingGroup("Fields", "vV",  {sVVG, sVQnvG, sVQpvG, sVEG, sVBG}); vGroup->add(vvGroup); // vvGroup->setToggle(&vp->drawVectors);
+
+  // visualized render data
+  auto *sRSMP = new Setting<bool> ("Simple", "simple", &rp->simple);
+  sRSMP->setHelp("Hide extra options for a more compact interface and slightly faster performance");
+  
+  auto *sRCOF  = new Setting<float> ("Opacity",    "fOpacity",       &rp->fOpacity);      sRCOF->setFormat (MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCBRF = new Setting<float> ("Brightness", "fBrightness",    &rp->fBrightness);   sRCBRF->setFormat(MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCOS  = new Setting<float> ("Opacity",     "emOpacity",     &rp->emOpacity);     sRCOS->setFormat (MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCBRS = new Setting<float> ("Brightness",  "emBrightness",  &rp->emBrightness);  sRCBRS->setFormat(MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCOM  = new Setting<float> ("Opacity",     "matOpacity",    &rp->matOpacity);    sRCOM->setFormat (MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCBRM = new Setting<float> ("Brightness",  "matBrightness", &rp->matBrightness); sRCBRM->setFormat(MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  SettingGroup *fDGroup   = new SettingGroup("Fluid",             "fRender",    { sRCBRF, sRCOF }); fDGroup->setColumns(1);   fDGroup->setCollapsible(true);
+  SettingGroup *emDGroup  = new SettingGroup("EM",                "emRender",   { sRCBRS, sRCOS }); emDGroup->setColumns(1);  emDGroup->setCollapsible(true);
+  SettingGroup *matDGroup = new SettingGroup("Material",          "matRender",  { sRCBRM, sRCOM }); matDGroup->setColumns(1); matDGroup->setCollapsible(true);
+  SettingGroup *compGroup = new SettingGroup("Render Components", "components", { sRSMP, fDGroup, emDGroup, matDGroup }); add(compGroup);
+  
+  g = fDGroup;
+  SettingGroup *subgroup = nullptr;
   for(long long i = 0LL; i < RENDER_FLAG_COUNT; i++)
     {
       RenderFlags f = (RenderFlags)(1LL << i);
-      VT4        *c = rp->getColor(f);
+      float4     *c = rp->getColor(f);
       T          *m = rp->getMult(f);
       
-      if     (f == FLUID_RENDER_EMOFFSET)  { activeGroup = emDGroup;  }
-      else if(f == FLUID_RENDER_MATOFFSET) { activeGroup = matDGroup; }
-      if(!c || !m) { std::cout << "====> WARNING: DisplayInterface skipping RenderFlag " << (unsigned long long)f << " (" << i << ")\n"; continue; }
+      if     (f == FLUID_RENDER_EMOFFSET)  { g = emDGroup;  subgroup = nullptr; }
+      else if(f == FLUID_RENDER_MATOFFSET) { g = matDGroup; subgroup = nullptr; }
+      if(!c || !m) { std::cout << "====> WARNING: DisplayInterface skipping RenderFlag " << renderFlagName(f) << " (2^" << i << ")\n"; continue; }
       
       std::string name  = renderFlagName(f);
-      std::string nameC = name + " Color";
-      std::string nameM = name + " Multiplier";
-      std::string idC   = std::string("##") + name + "Color";
-      std::string idM   = std::string("##") + name + "Mult";
-      auto sRFC = new Setting<VT4>(nameC, idC, c);
-      sRFC->setToggle(rp->getToggle(f));
-      sRFC->visibleCallback = [f, this]() -> bool { return ((RenderParams<T>::MAIN & f) || !rp->simple); };
-      sRFC->drawCustom = [sRFC, idM, m, this](bool busy, bool &changed) -> bool
-                         {
-                           sRFC->onDraw(1.0f, busy, changed, true); // color picker
-                           ImGui::SameLine(); ImGui::SetNextItemWidth(150);
-                           changed |= ImGui::InputFloat(idM.c_str(), m, 0.01f, 0.1f, "%.8f");
-                           return busy;
-                         };
-      sRFC->setFormat(COLOR_SMALLSTEP, COLOR_BIGSTEP, COLOR_FORMAT);
-      activeGroup->add(sRFC);
-      auto sRFM = new Setting<T>(nameM, idM, m);
-      sRFM->setFormat(MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
-      mExtraSettings.emplace_back(sRFM);
+      std::string id    = name + "(2^"+std::to_string(i)+")";
+      std::string idC   = id + "-color";
+      std::string idM   = id + "-mult";
+      
+      std::string gName = renderFlagGroupName(f);
+      if(gName.find("INVALID") == std::string::npos)
+        { // create new tree group (TODO --> tree)
+          subgroup = new SettingGroup(gName, gName, { }); g->add(subgroup);
+        }
+      
+      auto sRFC = new ColorSetting("", idC, c); sRFC->setFormat(COLOR_SMALLSTEP, COLOR_BIGSTEP, COLOR_FORMAT);
+      auto sRFM = new Setting<T>  ("", idM, m); sRFM->setFormat(MULT_SMALLSTEP,  MULT_BIGSTEP,  MULT_FORMAT);
+      
+      SettingGroup *rfg = new SettingGroup(name, id, { sRFC, sRFM });
+      rfg->setHorizontal(true); rfg->setColumns(2); rfg->setToggle(rp->getToggle(f));
+      rfg->setVisibleCallback([f, this]() -> bool { return ((RenderParams<T>::MAIN & f) || !rp->simple); });
+      (subgroup ? subgroup : g)->add(rfg);
     }
+  
+  // views
+  auto *sSFEM  = new Setting<bool>("EM View",       "EMView",   &showEMView);
+  auto *sSFMAT = new Setting<bool>("Material View", "MatView",  &showMatView);
+  auto *sSF3D  = new Setting<bool>("3D View",       "3DView",   &show3DView);
+  auto *viewGroup = new SettingGroup("Views",       "viewGroup", { sSFEM, sSFMAT, sSF3D }); add(viewGroup, true);
+  // features (axes, field outline)
+  auto *sSFA   = new Setting<bool>("Axes",          "axes",     &drawAxes);
+  auto *sSFO   = new Setting<bool>("Field Outline", "fOutline", &drawOutline);
+  auto *featGroup = new SettingGroup("Features",    "featureFlags", { sSFA, sSFO }); add(featGroup, true);
 
-  SettingGroup *vecGroup = new SettingGroup("Vector Field", "vecField", { }, true);
-  
-  // vector draw params
-  auto *sVF    = new Setting<bool>("Draw Vectors", "drawVec",     &vp->drawVectors);  vecGroup->add(sVF);
-  auto *sVI    = new Setting<bool>("Smooth",       "vecSmooth",   &vp->smoothVectors);vecGroup->add(sVI);
-  //auto *sFV  = new Setting<bool>("Bordered",     "vecBordered", &vp->borderedVectors); vecGroup->add(sFV);
-  auto *sVR    = new Setting<bool>("Mouse Radius", "mouseRadius", &vp->mouseRadius);  vecGroup->add(sVR);
-  
-  auto *sVMR   = new Setting<int> ("Radius",       "vecMRad",     &vp->vecMRadius);   vecGroup->add(sVMR);  sVMR->setMin(0);
-  auto *sVSP   = new Setting<int> ("Spacing",      "vecSpacing",  &vp->vecSpacing);   vecGroup->add(sVSP);  sVSP->setMin(1); 
-  auto *sVCR   = new Setting<int> ("Max Count",    "vecCRad",     &vp->vecCRadius);   vecGroup->add(sVCR);
-  
-  auto *sVLME = new Setting<float>("E Length",     "vecMultE",    &vp->vecMultE);     vecGroup->add(sVLME); sVLME->setFormat(0.1f,  1.0f, "%0.4f"); 
-  auto *sVLMB = new Setting<float>("B Length",     "vecMultB",    &vp->vecMultB);     vecGroup->add(sVLMB); sVLMB->setFormat(0.1f,  1.0f, "%0.4f"); 
-  auto *sVLW  = new Setting<float>("Line Width",   "vWidth",      &vp->vecLineW);     vecGroup->add(sVLW);  sVLW->setFormat (0.1f,  1.0f, "%0.4f"); 
-  auto *sVLA  = new Setting<float>("Line Alpha",   "vecAlpha",    &vp->vecAlpha);     vecGroup->add(sVLA);  sVLA->setFormat (0.01f, 0.1f, "%0.4f");
-  sVLA->setMin(0.0f); sVLA->setMax(1.0f);
-  auto *sVBW  = new Setting<float>("Border Width", "bWidth",      &vp->vecBorderW);   vecGroup->add(sVBW);  sVBW->setFormat(0.1f,  1.0f, "%0.4f"); 
-  auto *sVBA  = new Setting<float>("Border Alpha", "vecBAlpha",   &vp->vecBAlpha);    vecGroup->add(sVBA);  sVBA->setFormat(0.01f, 0.1f, "%0.4f");
-  sVBA->setMin(0.0f); sVBA->setMax(1.0f);
-
-  mForm->add(fDGroup);
-  mForm->add(emDGroup);
-  mForm->add(matDGroup);
-  mForm->add(vecGroup);
 }
 
 template<typename T>
 inline DisplayInterface<T>::~DisplayInterface()
 {
-  if(mForm)          { delete mForm; mForm = nullptr; }
-  for(auto s : mExtraSettings) { if(s) { delete s; }  } mExtraSettings.clear();
-  if(rp && rpDelete) { delete rp;    rp    = nullptr; }
-  if(vp && vpDelete) { delete vp;    vp    = nullptr; }
-}
-
-
-template<typename T>
-inline void DisplayInterface<T>::draw()
-{
-  mForm->draw();
+  if(rp && rpDelete) { delete rp; rp = nullptr; }
+  if(vp && vpDelete) { delete vp; vp = nullptr; }
 }
 
 

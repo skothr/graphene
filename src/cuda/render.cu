@@ -4,12 +4,12 @@
 #include <cufft.h>
 #include <helper_cuda.h>
 
-#include "physics.h"
-#include "raytrace.cuh"
 #include "vector-operators.h"
 #include "cuda-tools.cuh"
+#include "raytrace.cuh"
 #include "cuda-vbo.cuh"
-#include "mathParser.hpp"
+#include "camera.cuh"
+#include "physics.h"
 #include "draw.cuh"
 
 #define BLOCKDIM_X 16
@@ -103,8 +103,7 @@ __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, Render
 
 
 template<typename T>
-__global__ void rtRenderFieldEM_k(FluidField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FluidParams<T> cp,
-                                  typename DimType<T, 2>::VEC_T aspect)
+__global__ void rtRenderFieldEM_k(FluidField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FluidParams<T> cp)
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   typedef typename DimType<T,4>::VEC_T VT4;
@@ -112,7 +111,7 @@ __global__ void rtRenderFieldEM_k(FluidField<T> src, CudaTexture dst, CameraDesc
   long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
     {
-      Ray<T> ray = cam.castRay(VT2{ix/(T)dst.size.x, iy/(T)dst.size.y}, aspect);
+      Ray<T> ray = cam.castRay(VT2{ix/(T)dst.size.x, iy/(T)dst.size.y});
       ray.pos /= cp.u.dL; // scale by cell size
       VT4 color = rayTraceField(src, ray, rp, cp);
       
@@ -121,8 +120,7 @@ __global__ void rtRenderFieldEM_k(FluidField<T> src, CudaTexture dst, CameraDesc
     }
 }
 template<typename T>
-__global__ void rtRenderFieldMat_k(FluidField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FluidParams<T> cp,
-                                   typename DimType<T, 2>::VEC_T aspect)
+__global__ void rtRenderFieldMat_k(FluidField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FluidParams<T> cp)
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   typedef typename DimType<T,4>::VEC_T VT4;
@@ -130,7 +128,7 @@ __global__ void rtRenderFieldMat_k(FluidField<T> src, CudaTexture dst, CameraDes
   long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
     {
-      Ray<T> ray = cam.castRay(VT2{ix/(T)dst.size.x, iy/(T)dst.size.y}, aspect);
+      Ray<T> ray = cam.castRay(VT2{ix/(T)dst.size.x, iy/(T)dst.size.y});
       ray.pos /= cp.u.dL; // scale by cell size
       VT4 color = rayTraceField(src, ray, rp, cp);
       
@@ -147,13 +145,13 @@ void renderFieldEM(FluidField<T> &src, CudaTexture &dst, const RenderParams<T> &
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
       dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
-                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- thread texture pixels
+                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- texture pixels
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
       renderFieldEM_k<<<grid, threads>>>(src, dst, rp, cp);
       if(!mapped) { dst.unmap(); }
     }
-  else { std::cout << "Skipped EMField render --> " << src.size << " / " << dst.size << " \n"; }
+  else { std::cout << "====> WARNING: skipped EMField render --> " << src.size << " / " << dst.size << " \n"; }
 }
 template<typename T>
 void renderFieldMat(Field<Material<T>> &src, CudaTexture &dst, const RenderParams<T> &rp, const FluidParams<T> &cp)
@@ -162,55 +160,53 @@ void renderFieldMat(Field<Material<T>> &src, CudaTexture &dst, const RenderParam
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
       dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
-                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- thread texture pixels
+                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- texture pixels
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
       renderFieldMat_k<<<grid, threads>>>(src, dst, rp, cp);
       if(!mapped) { dst.unmap(); }
     }
-  else { std::cout << "Skipped EMField render --> " << src.size << " / " << dst.size << " \n"; }
+  else { std::cout << "====> WARNING: skipped EMField render --> " << src.size << " / " << dst.size << " \n"; }
 }
 
 template<typename T>
-void raytraceFieldEM(FluidField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FluidParams<T> &cp, 
-                     const Vector<T, 2> &aspect)
+void raytraceFieldEM(FluidField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FluidParams<T> &cp)
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   if(dst.size.x > 0 && dst.size.y > 0)
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
       dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
-                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- thread texture pixels
+                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- texture pixels
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
-      rtRenderFieldEM_k<<<grid, threads>>>(src, dst, camera.desc, rp, cp, VT2{aspect.x, aspect.y});
+      rtRenderFieldEM_k<<<grid, threads>>>(src, dst, camera.desc, rp, cp);
       if(!mapped) { dst.unmap(); }
     }
-  else { std::cout << "Skipped EMField render (RT) --> " << src.size << " / " << dst.size << " \n"; }
+  else { std::cout << "====> WARNING: skipped EMField render (RT) --> " << src.size << " / " << dst.size << " \n"; }
 }
 
 template<typename T>
-void raytraceFieldMat(FluidField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FluidParams<T> &cp,
-                      const Vector<T, 2> &aspect)
+void raytraceFieldMat(FluidField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FluidParams<T> &cp)
 {
   typedef typename DimType<T,2>::VEC_T VT2;
   if(dst.size.x > 0 && dst.size.y > 0)
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
       dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
-                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- thread texture pixels
+                (int)ceil(dst.size.y/(float)BLOCKDIM_Y)); // 2D -- texture pixels
       bool mapped = dst.mapped;
       if(!mapped) { dst.map(); }
-      rtRenderFieldMat_k<<<grid, threads>>>(src, dst, camera.desc, rp, cp, VT2{aspect.x, aspect.y});
+      rtRenderFieldMat_k<<<grid, threads>>>(src, dst, camera.desc, rp, cp);
       if(!mapped) { dst.unmap(); }
     }
-  else { std::cout << "Skipped EMField render (RT) --> " << src.size << " / " << dst.size << " \n"; }
+  else { std::cout << "====> WARNING: skipped EMField render (RT) --> " << src.size << " / " << dst.size << " \n"; }
 }
 
 // template instantiation
 template void renderFieldEM   <float>(FluidField<float>      &src, CudaTexture &dst, const RenderParams<float> &rp, const FluidParams<float> &cp);
 template void renderFieldMat  <float>(Field<Material<float>> &src, CudaTexture &dst, const RenderParams<float> &rp, const FluidParams<float> &cp);
 template void raytraceFieldEM <float>(FluidField<float>      &src, CudaTexture &dst, const Camera<float> &camera,
-                                      const RenderParams<float> &rp, const FluidParams<float> &cp, const Vec2f &aspect);
+                                      const RenderParams<float> &rp, const FluidParams<float> &cp);
 template void raytraceFieldMat<float>(FluidField<float>      &src, CudaTexture &dst, const Camera<float> &camera,
-                                      const RenderParams<float> &rp, const FluidParams<float> &cp, const Vec2f &aspect);
+                                      const RenderParams<float> &rp, const FluidParams<float> &cp);

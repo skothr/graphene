@@ -2,25 +2,31 @@
 
 #include <imgui.h>
 #include <algorithm>
-// #include <nlohmann/json.hpp>
-// using json = nlohmann::json;
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 #include "setting.hpp"
 #include "glfwKeys.hpp"
 
 
-SettingForm::~SettingForm()
+SettingForm::SettingForm(const std::string &title)
+  : mTitle(title)
 {
-  for(auto s : mSettings)
-    { if(s && s->getDelete()) { delete s; } }
-  mSettings.clear();
+  mOther = new SettingGroup("Other", "other", { });
+}
+SettingForm::~SettingForm() { cleanup(); if(mOther) { delete mOther; mOther = nullptr; } }
+
+void SettingForm::cleanup()
+{
+  for(auto s : mSettings) { if(s) { delete s; } } mSettings.clear();
+  mOther->clear();
 }
 
 json SettingForm::toJSON() const
 {
   json js = json::object();
-  for(auto s : mSettings)
-    { js[s->getId()] = s->toJSON(); }
+  for(auto s : mSettings) { js[s->id()] = s->toJSON(); }
+  js[mOther->id()] = mOther->toJSON();
   return js;
 }
 
@@ -29,60 +35,53 @@ bool SettingForm::fromJSON(const json &js)
   bool success = true;
   for(auto s : mSettings)
     {
-      if(js.contains(s->getId()))
-        { s->fromJSON(js[s->getId()]); }
-      else
-        { std::cout << "====> WARNING: SettingForm couldn't find '" << s->getId() << "'\n"; success = false; }
+      if(js.contains(s->id())) { s->fromJSON(js[s->id()]); }
+      else { std::cout << "====> WARNING: SettingForm couldn't find '" << s->id() << "'\n"; success = false; }
     }
+  if(js.contains(mOther->id()))
+    {
+      if(!mOther->fromJSON(js[mOther->id()])) { success = false; std::cout << "====> WARNING: SettingForm couldn't find '" << mOther->id() << "' (Other)\n"; }
+    }
+  else { std::cout << "====> WARNING: SettingForm couldn't find main settings\n"; success = false; }
   return success;
 }
 
-void SettingForm::add(SettingBase *setting)
+void SettingForm::add(SettingBase *setting, bool other)
 {
   if(setting)
     {
-      setting->setLabelColWidth(mLabelColW); setting->setInputColWidth(mInputColW);
-      mSettings.push_back(setting);
+      if(!other && setting->isGroup() && !setting->horizontal()) { mSettings.push_back(setting); }
+      else                                                       { mOther->add(setting); } // extra group for any non-group settings
     }
 }
 
-SettingBase* SettingForm::get(const std::string &name)
+bool SettingForm::draw()
 {
-  auto iter = std::find_if(mSettings.begin(), mSettings.end(), [&](SettingBase *s){ return (s->getName() == name); });
-  return (iter != mSettings.end() ? *iter : nullptr);
-}
-
-void SettingForm::remove(const std::string &name)
-{
-  auto iter = std::find_if(mSettings.begin(), mSettings.end(), [&](SettingBase *s){ return (s->getName() == name); });
-  if(iter != mSettings.end())
-    {
-      mSettings.erase(iter);
-    }
-}
-
-void SettingForm::setLabelColWidth(float w) { mLabelColW = w; for(auto s : mSettings) { s->setLabelColWidth(w); } }
-void SettingForm::setInputColWidth(float w) { mInputColW = w; for(auto s : mSettings) { s->setInputColWidth(mInputColW); } }
-
-bool SettingForm::draw(float scale, bool busy, bool visible)
-{
-  setInputColWidth(ImGui::GetContentRegionMax().x-mLabelColW - ImGui::GetStyle().ItemSpacing.x);
+  ImGuiStyle &style = ImGui::GetStyle();  
   Vec2f p0 = ImGui::GetCursorPos();
+
+  bool changed = false;
   ImGui::BeginGroup();
-  for(int i = 0; i < mSettings.size(); i++)
-    {
-      bool changed = false;
-      busy |= mSettings[i]->draw(scale, busy, changed, visible);
-      if(changed) { mSettings[i]->updateAll(); } // notify if changed
-    }
+  {
+    for(auto s : mSettings)           { changed |= s->draw(); }      // setting groups
+    if(mOther->contents().size() > 0) { changed |= mOther->draw(); } // other settings (no group)
+  }
   ImGui::EndGroup();
-  // mSize = Vec2f(mLabelColW + mInputColW + ImGui::GetStyle().ItemSpacing.x, ImGui::GetCursorPos().y - p0.y);
-  mSize = Vec2f(mLabelColW + mInputColW + ImGui::GetStyle().ItemSpacing.x, ImGui::GetCursorPos().y - p0.y);
-  return busy;
+  mSize = Vec2f(ImGui::GetItemRectMax()) - ImGui::GetItemRectMin(); // update size
+
+  // unify label column widths
+  float labelW = 0.0f;
+  for(auto s : mSettings) { if(s->isGroup() && !s->horizontal()) { labelW = std::max(labelW, s->labelW()); } }
+  if(mOther->contents().size() > 0) { labelW = std::max(labelW, mOther->labelW()); }
+  // propagate label column widths
+  for(auto s : mSettings) { if(s->isGroup() && !s->horizontal()) { s->setLabelW(labelW); } }
+  if(mOther->contents().size() > 0) { mOther->setLabelW(labelW); }
+
+  return changed;
 }
 
 void SettingForm::updateAll()
 {
-  for(int i = 0; i < mSettings.size(); i++)
-    { mSettings[i]->updateAll(); }
+  for(int i = 0; i < mSettings.size(); i++) { mSettings[i]->updateAll(); }
+  mOther->updateAll();
 }
