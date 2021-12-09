@@ -4,18 +4,24 @@
 #include <iostream>
 #include <algorithm>
 #include <bitset>
+#include <cassert>
 
 #include "glfwKeys.hpp"
 
 KeyBinding::KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, KeyBindingFlags flags_,
-                       const std::function<void(float mult)> &action_, float shift, float ctrl, float alt)
+                       const std::function<void(float)> &action_, float shift, float ctrl, float alt)
   : name(name_), defaultBinding(default_), description(desc_), action(action_), flags(flags_), shiftMult(shift), ctrlMult(ctrl), altMult(alt)
 { fromString(default_); }
 
 KeyBinding::KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, KeyBindingFlags flags_,
-                       const std::function<void()> &action_, float shift, float ctrl, float alt)
-  : KeyBinding(name_, default_, desc_, flags_, [action_](float mult){ action_(); }, shift, ctrl, alt)
-{ }
+                       const std::function<void(int)> &action_, bool dummy)
+  : name(name_), defaultBinding(default_), description(desc_), flags(flags_), action([action_](float mult){ action_((int)mult); })
+{ fromString(default_); }
+
+KeyBinding::KeyBinding(const std::string &name_, const std::string &default_, const std::string &desc_, KeyBindingFlags flags_,
+                       const std::function<void()> &action_)
+  : name(name_), defaultBinding(default_), description(desc_), flags(flags_), action([action_](float mult){ action_(); })
+{ fromString(default_); }
 
 KeyBinding& KeyBinding::operator=(const KeyBinding &other)
 {
@@ -28,6 +34,7 @@ KeyBinding& KeyBinding::operator=(const KeyBinding &other)
   shiftMult = other.shiftMult;
   ctrlMult  = other.ctrlMult;
   altMult   = other.altMult;
+  kNumeric  = other.kNumeric;
   return *this;
 }
 
@@ -71,8 +78,14 @@ std::string KeyBinding::getModString(int mod) const
 }
 
 
-int KeyBinding::getKey(const std::string &keyStr) const { return stringToGlfwKey(keyStr); }
-std::string KeyBinding::getKeyString(int key) const     { return glfwKeyToString(key); }
+int KeyBinding::getKey(const std::string &keyStr) const
+{
+  return (((flags & KEYBINDING_NUMERIC) && keyStr == "<#>") ? KEY_NUMERIC : stringToGlfwKey(keyStr));
+}
+std::string KeyBinding::getKeyString(int key) const
+{
+  return (((flags & KEYBINDING_NUMERIC) && key == KEY_NUMERIC) ? "<#>" : glfwKeyToString(key));
+}
   
 bool KeyBinding::check(const std::vector<KeyPress> &seq, bool verbose)
 {
@@ -80,11 +93,21 @@ bool KeyBinding::check(const std::vector<KeyPress> &seq, bool verbose)
   for(auto i = 0; i < seq.size(); i++)
     {
       int modOverlap = (seq[i].mods & sequence[i].mods);
-      if(seq[i].key != sequence[i].key ||
-         ((!(flags & KEYBINDING_GLOBAL) || sequence[i].mods != 0) &&
-          (((flags & KEYBINDING_MOD_MULT) ? (sequence[i].mods != modOverlap) : (seq[i].mods != sequence[i].mods && !(flags & KEYBINDING_EXTRA_MODS))) ||
-           (seq.back().repeat && !(flags & KEYBINDING_REPEAT)))))
-        { pressed = false; return false; }
+      int k = seq[i].key;
+
+      bool noMatch = (((!(flags & KEYBINDING_GLOBAL) || sequence[i].mods != 0) &&
+                       (((flags & KEYBINDING_MOD_MULT) ? (sequence[i].mods != modOverlap) : (seq[i].mods != sequence[i].mods && !(flags & KEYBINDING_EXTRA_MODS))) ||
+                        (seq.back().repeat && !(flags & KEYBINDING_REPEAT)))));
+      
+      // check for numeric key if enabled
+      if((flags & KEYBINDING_NUMERIC) && !noMatch && k >= GLFW_KEY_0 && k <= GLFW_KEY_9)
+        {
+          kNumeric = (k - GLFW_KEY_0);
+          if(verbose) { std::cout << "======> KNUMERIC --> [" << k << "] ==> " << kNumeric << "\n"; }
+        }
+      
+      // check if key matches
+      else if(k != sequence[i].key || noMatch) { pressed = false; return false; }
     }
   pressed = true;
   return pressed;
@@ -105,11 +128,17 @@ bool KeyBinding::update(const std::vector<KeyPress> &seq, bool verbose)
         }
       if(verbose)
         {
-          std::cout << "\n==== " << toString() << " --> "
-                    << name << ((flags & KEYBINDING_MOD_MULT) ? (" (x" + std::to_string(mult) + ")") : "")
+          std::cout << "\n==== " << toString() << (flags & KEYBINDING_NUMERIC ? (" ("+std::to_string(kNumeric)+")") : "")
+                    << " --> " << name << ((flags & KEYBINDING_MOD_MULT) ? (" (x" + std::to_string(mult) + ")") : "")
                     << " | " << description << "\n\n";
         }
-      action(mult); activated = true;
+
+      // set to numeric key if flag enabled
+      if(flags & KEYBINDING_NUMERIC) // && kNumeric >= 0)
+        { mult = (float)kNumeric; }
+      
+      action(mult);
+      activated = true;
     }
   pressed = false;
   return activated;

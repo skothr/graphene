@@ -35,20 +35,15 @@ struct Material
   struct Blend { T alpha; T beta; };
 
   // NOTE: part of Yee's method
-  //   --> E(t) = alphaE*E(t-1) + betaE*dE/dt
   __host__ __device__ Blend getBlendE(T dt, T dL) const
-  { // E1 = ((1 - dt*(σ/(2μ))) / (1 + dt*(σ/(2μ))))*E0 + dt*(dL / (μ + dt*(σ/2)))*dE/dt
-    T C = dt*sigma / (2.0*mu);
-    T D = 1 / (1+C);
-    return Blend{ D*(1-C), (dt/dL)*(D/mu) };
+  {
+    T C = (dt/2.0)*(sigma/mu);
+    return Blend{ (1-C)/(1+C), (dt/dL)/(1+C)/mu };
   }
-  
-  //   --> B(t) = alphaB*B(t-1) + betaB*dB/dt  
   __host__ __device__ Blend getBlendB(T dt, T dL) const
-  { // B1 = ((1 - dt[σ/(2ε)]) / (1 + dt[σ/(2ε)]))*E0 + dt*(dL / (ε + dt[σ/2]))*dE/dt
-    T C = dt*sigma / (2.0*epsilon);
-    T D = 1 / (1+C);
-    return Blend{ D*(1-C), (dt/dL)*(D/epsilon) };
+  {
+    T C = (dt/2.0)*(sigma/epsilon);
+    return Blend{ (1-C)/(1+C), (dt/dL)/(1+C)/epsilon };
   }
 
 

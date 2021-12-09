@@ -36,7 +36,7 @@ struct Camera
   // sp --> screen pos [0.0, 1.0]
   Ray<T> castRay(const VT2 &sp) const;
 
-  Vector<T, 4> worldToView(const Vector<T, 3> &wp, bool *clipped=nullptr) const;
+  Vector<T, 4> worldToView(const Vector<T, 3> &wp) const;
   Vector<T, 2> nearClip   (const Vector<T, 4> &v, const Vector<T, 4> &vo) const;
   Vector<T, 2> vNormalize (const Vector<T, 4> &v) const;
 
@@ -51,12 +51,8 @@ Ray<T> Camera<T>::castRay(const VT2 &sp) const
 { return desc.castRay(VT2{sp.x, (T)1.0-sp.y}); }
 
 template<typename T>
-Vector<T, 4> Camera<T>::worldToView(const Vector<T, 3> &wp, bool *clipped) const
-{
-  Vector<T, 4> result = (proj ^ (view ^ Vector<T, 4>(wp.x-pos.x, wp.y-pos.y, wp.z-pos.z, 1.0)));
-  if(clipped) { *clipped = (result.w < near); }
-  return result;
-}
+Vector<T, 4> Camera<T>::worldToView(const Vector<T, 3> &wp) const
+{ return (proj ^ (view ^ Vector<T, 4>(wp.x-pos.x, wp.y-pos.y, wp.z-pos.z, 1.0))); }
 
 template<typename T> // normalizes v to [0,1]
 Vector<T, 2> Camera<T>::vNormalize(const Vector<T, 4> &v) const

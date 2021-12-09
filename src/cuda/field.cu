@@ -4,8 +4,6 @@
 #include <cufft.h>
 #include <helper_cuda.h>
 
-#include "physics.h"
-//#include "raytrace.cuh"
 #include "vector-operators.h"
 #include "cuda-tools.cuh"
 #include "mathParser.hpp"
@@ -118,11 +116,8 @@ template<> __global__ void fillField_k<float3>(Field<float3> dst, CudaExpression
       vars[1] = s;               // "s" -- size
       vars[2] = c;               // "r" -- radius (position from center)
       vars[3] = n;               // "n" -- normalized radius
-      //vars[4] = float3{t, t, t}; // "t" -- theta from center
-      vars[4] = float3{atan2(n.z, n.y),
-                       atan2(n.x, n.z),
-                       atan2(n.y, n.x)}; // t alternative?
-      // calculate value
+      vars[4] = float3{t, t, t}; // "t" -- theta from center
+      // vars[4] = float3{atan2(n.z, n.y), atan2(n.x, n.z), atan2(n.y, n.x)}; // t alternative?
       dst[i] = expr->calculate(vars);
     }
 }
@@ -170,6 +165,7 @@ void fillFieldValue(Field<T> &dst, const T &val)
       fillFieldValue_k<<<grid, threads>>>(dst, val);
     }
   else { std::cout << "====> WARNING: skipped fillFieldValue --> " << dst.size << " --> " << val << "\n"; }
+  getLastCudaError("fillFieldValue()");
 }
 
 // wrapppers
@@ -186,6 +182,7 @@ void fillField(Field<T> &dst, CudaExpression<T> *dExpr)
       else { std::cout << "====> WARNING: fillField_k skipped -- null expression pointer (dExpr: "<< (long)((void*)dExpr) << ")\n"; }
     }
   else { std::cout << "====> WARNING: skipped fillField --> " << dst.size << " --> " << (long)((void*)dExpr) << "\n"; }
+  getLastCudaError("fillField()");
 }
 
 template<typename T>
@@ -205,7 +202,9 @@ void fillFieldMaterial<T>(Field<Material<T>> &dst, CudaExpression<T> *dExprEp, C
         }
     }
   else { std::cout << "====> WARNING: skipped fillFieldMaterial --> " << dst.size << " \n"; }
+  getLastCudaError("fillFieldMaterial()");
 }
+
 template<typename T>
 void fillFieldChannel(Field<T> &dst, CudaExpression<typename Dim<T>::BASE_T> *dExpr, int channel)
 {
@@ -220,15 +219,16 @@ void fillFieldChannel(Field<T> &dst, CudaExpression<typename Dim<T>::BASE_T> *dE
         { std::cout << "====> WARNING: fillFieldMateral_k skipped -- null expression pointer (" << (long)((void*)dExpr) << ")\n"; }
     }
   else  { std::cout << "====> WARNING: skipped fillFieldChannel --> " << dst.size << " \n"; }
+  getLastCudaError("fillFieldChannel()");
 }
 
 // template instantiation
-template void fillFieldMaterial<float >         (Field<Material<float>> &dst,
-                                                 CudaExpression<float> *dExprEp, CudaExpression<float> *dExprMu, CudaExpression<float> *dExprSig);
+template void fillFieldMaterial<float>          (Field<Material<float>> &dst,    CudaExpression<float> *dExprEp,
+                                                 CudaExpression<float> *dExprMu, CudaExpression<float> *dExprSig);
 template void fillFieldValue   <Material<float>>(Field<Material<float>> &dst, const Material<float> &val);
-template void fillField        <float >         (Field<float>  &dst, CudaExpression<float > *dExpr);
+template void fillField        <float>          (Field<float > &dst, CudaExpression<float > *dExpr);
 template void fillField        <float3>         (Field<float3> &dst, CudaExpression<float3> *dExpr);
-template void fillFieldChannel <float2>         (Field<float2> &dst, CudaExpression<float>  *dExpr, int channel);
+template void fillFieldChannel <float2>         (Field<float2> &dst, CudaExpression<float > *dExpr, int channel);
 
 
 

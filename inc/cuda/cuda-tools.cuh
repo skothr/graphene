@@ -9,6 +9,12 @@
 #include "vector-operators.h"
 #include "fluid.cuh"
 
+// TEMP(?) --> TODO: use Field::idx()
+#define IDX_T unsigned long
+__device__ inline unsigned long idx(const int3 &p, const int3 &sz) { return (IDX_T)p.x + (IDX_T)sz.x*((IDX_T)p.y + ((IDX_T)sz.y*(IDX_T)p.z)); }
+#undef IDX_T
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 //// kernel tools
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -84,8 +90,8 @@ __device__ T texGet(T *tex, typename DimType<int, 3>::VEC_T p, typename DimType<
 {
   typedef typename DimType<int, 3>::VEC_T IT;
   IT p0 = applyBounds(p, s, params);
-  if(p0 >= 0 && p0 < s) { return tex[p0.x + s.x*(p0.y + (s.y*p0.z))]; }
-  else                  { return T(); }
+  if(p0 >= 0) { return tex[idx(p0, s)]; }
+  else        { return T(); }
 }
 template<typename T>
 __device__ void texPut(T *tex, T val, typename DimType<int, 3>::VEC_T p, const FluidParams<typename Dim<T>::BASE_T> &params)
@@ -93,62 +99,10 @@ __device__ void texPut(T *tex, T val, typename DimType<int, 3>::VEC_T p, const F
   typedef typename DimType<int, 3>::VEC_T IT;  
   IT s  = params.fs;
   IT p0 = applyBounds(p, s, params);
-  if(p0.x >= 0 && p0.x < s.x && p0.y >= 0 && p0.y < s.y && p0.z >= 0 && p0.z < s.z) { tex[p0.x + s.x*(p0.y + (s.y*p0.z))] = val; }
+  if(p0 >= 0) { tex[idx(p0, s)] = val; }
 }
 
-// atomically get/put data at single integer index
-// template<typename T>
-// __device__ void texAtomicAdd(T *tex, T val, typename Dim<T>::SIZE_T p, const FluidParams<float2> &params);
 
-// template<>
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T> //, typename ITN=typename DimType<int, N>::VEC_T>
-__device__ inline void texAtomicAdd(float *tex, float val, const IT3 &p, const FluidParams<T> &params)
-{
-  IT3 s  = params.fs;
-  IT3 p0 = applyBounds(p, s, params);
-  
-  if(p0.x >= 0 && p0.x < s.x && p0.y >= 0 && p0.y < s.y && p0.z >= 0 && p0.z < s.z)
-    { atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))], val); }
-}
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T> //, typename ITN=typename DimType<int, N>::VEC_T>
-__device__ inline void texAtomicAdd(float2 *tex, float2 val, const IT3 &p, const FluidParams<T> &params)
-{
-  IT3 s  = params.fs;
-  IT3 p0 = applyBounds(p, s, params);
-  
-  if(p0.x >= 0 && p0.x < s.x && p0.y >= 0 && p0.y < s.y && p0.z >= 0 && p0.z < s.z)
-    {
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].x, val.x);
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].y, val.y);
-    }
-}
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T> //, typename ITN=typename DimType<int, N>::VEC_T>
-__device__ inline void texAtomicAdd(float3 *tex, float3 val, const IT3 &p, const FluidParams<T> &params)
-{
-  IT3 s  = params.fs;
-  IT3 p0 = applyBounds(p, s, params);
-  
-  if(p0.x >= 0 && p0.x < s.x && p0.y >= 0 && p0.y < s.y && p0.z >= 0 && p0.z < s.z)
-    {
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].x, val.x);
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].y, val.y);
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].z, val.z);
-    }
-}
-
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T, typename ITN=typename DimType<int, N>::VEC_T>
-__device__ inline void texAtomicAdd(Material<T> *tex, const Material<T> &val, const ITN &p, const FluidParams<T> &params)
-{
-  IT3 s  = params.fs;
-  IT3 p0 = applyBounds(p, s, params);
-  
-  if(p0.x >= 0 && p0.x < s.x && p0.y >= 0 && p0.y < s.y && p0.z >= 0 && p0.z < s.z)
-    {
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].ep,  val.ep);
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].mu,  val.mu);
-      atomicAdd(&tex[p0.x + s.x*(p0.y + (s.y*p0.z))].sig, val.sig);
-    }
-}
 
 template<typename T, typename BASE=typename Dim<T>::BASE_T, typename VT3=typename DimType<BASE, 3>::VEC_T, typename IT3=typename DimType<int, 3>::VEC_T>
 __device__ T tex2DD(T *tex, VT3 p, const FluidParams<BASE> &params)
@@ -156,19 +110,67 @@ __device__ T tex2DD(T *tex, VT3 p, const FluidParams<BASE> &params)
   IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.y))}; // integer position
   VT3 fp = abs(VT3{p.x-p0.x, p.y-p0.y, p.z-p0.z});                 // fractional position
   IT3 s  = params.fs;
-
+  
   IT3 p000 = applyBounds(p0,   s, params);
   IT3 p111 = applyBounds(p0+1, s, params);
-
-  if(p000.x < 0 || p000.y < 0 || p000.z < 0 || p111.x < 0 || p111.y < 0 || p111.z < 0) { return T(); }
-  
-  T result = lerp<T>(lerp<T>(lerp<T>(texGet(tex, IT3{p000.x, p000.y, p000.z}, s, params), texGet(tex, IT3{p111.x, p000.y, p000.z}, s, params), fp.x),
-                             lerp<T>(texGet(tex, IT3{p000.x, p111.y, p000.z}, s, params), texGet(tex, IT3{p111.x, p111.y, p000.z}, s, params), fp.x), fp.y),
-                     lerp<T>(lerp<T>(texGet(tex, IT3{p000.x, p000.y, p111.z}, s, params), texGet(tex, IT3{p111.x, p000.y, p111.z}, s, params), fp.x),
-                             lerp<T>(texGet(tex, IT3{p000.x, p111.y, p111.z}, s, params), texGet(tex, IT3{p111.x, p111.y, p111.z}, s, params), fp.x), fp.y),
+  if(p000 >= IT3{0,0,0} && p000 < s && p111 >= IT3{0,0,0} && p111 < s)
+    {
+      return lerp<T>(lerp<T>(lerp<T>(texGet(tex, IT3{p000.x, p000.y, p000.z}, s, params),
+                                     texGet(tex, IT3{p111.x, p000.y, p000.z}, s, params), fp.x),
+                             lerp<T>(texGet(tex, IT3{p000.x, p111.y, p000.z}, s, params),
+                                     texGet(tex, IT3{p111.x, p111.y, p000.z}, s, params), fp.x), fp.y),
+                     lerp<T>(lerp<T>(texGet(tex, IT3{p000.x, p000.y, p111.z}, s, params),
+                                     texGet(tex, IT3{p111.x, p000.y, p111.z}, s, params), fp.x),
+                             lerp<T>(texGet(tex, IT3{p000.x, p111.y, p111.z}, s, params),
+                                     texGet(tex, IT3{p111.x, p111.y, p111.z}, s, params), fp.x), fp.y),
                      fp.z);
-  return result;
+    }
+  else { return T(); }
 }
+
+
+
+
+
+// atomically get/put data at single integer index
+template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T>
+__device__ inline void texAtomicAdd(float *tex, float val, const IT3 &p, const FluidParams<T> &params)
+{
+  IT3 s  = params.fs;
+  IT3 p0 = applyBounds(p, s, params);
+  if(p0 >= 0 && p0 < s) { atomicAdd(&tex[idx(p0, s)], val); }
+}
+template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T>
+__device__ inline void texAtomicAdd(float2 *tex, float2 val, const IT3 &p, const FluidParams<T> &params)
+{
+  IT3 s  = params.fs;
+  IT3 p0 = applyBounds(p, s, params);
+  if(p0 >= 0 && p0 < s)
+    { atomicAdd(&tex[idx(p0, s)].x, val.x); atomicAdd(&tex[idx(p0, s)].y, val.y); }
+}
+template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T>
+__device__ inline void texAtomicAdd(float3 *tex, float3 val, const IT3 &p, const FluidParams<T> &params)
+{
+  IT3 s  = params.fs;
+  IT3 p0 = applyBounds(p, s, params);
+  if(p0 >= 0 && p0 < s)
+    { atomicAdd(&tex[idx(p0, s)].x, val.x); atomicAdd(&tex[idx(p0, s)].y, val.y); atomicAdd(&tex[idx(p0, s)].z, val.z); }
+}
+template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T, typename ITN=typename DimType<int, N>::VEC_T>
+__device__ inline void texAtomicAdd(Material<T> *tex, const Material<T> &val, const ITN &p, const FluidParams<T> &params)
+{
+  IT3 s  = params.fs;
+  IT3 p0 = applyBounds(p, s, params);
+  if(p0 >= 0 && p0 < s)
+    { atomicAdd(&tex[idx(p0, s)].ep,  val.ep); atomicAdd(&tex[idx(p0, s)].mu,  val.mu); atomicAdd(&tex[idx(p0, s)].sig, val.sig); }
+}
+
+
+
+
+
+
+
 
 template<typename T, typename BASE=typename Dim<T>::BASE_T, typename IT3=typename Dim<T>::SIZE_T>
 __device__ int4 texPutIX(T p, const FluidParams<BASE> &params)
@@ -201,7 +203,7 @@ template<typename T=float, typename VT3=typename DimType<T, 3>::VEC_T, typename 
 __device__ float4 texPutMults0(const VT3 &p)
 {
   IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.z))}; // integer position
-  VT3 fp = abs(VT3{p.x-p0.x, p.y-p0.y, p.z-p0.z});                 // fractional position
+  VT3 fp = abs(p - makeV<VT3>(p0));                                // fractional position
   T m00 = (-fp.x + 1.0f) * (-fp.y + 1.0f);
   T m10 = (fp.x) * (-fp.y + 1.0f);
   T m01 = (-fp.x + 1.0f) * (fp.y);
@@ -212,8 +214,8 @@ __device__ float4 texPutMults0(const VT3 &p)
 template<typename T=float, typename VT3=typename DimType<T, 3>::VEC_T, typename IT3=typename Dim<VT3>::SIZE_T>
 __device__ float4 texPutMults1(const VT3 &p)
 {
-  IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.z))}; // integer position
-  VT3 fp = abs(VT3{p.x-p0.x, p.y-p0.y, p.z-p0.z});                 // fractional position
+  IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.z))};         // integer position
+  VT3 fp = abs(p - makeV<VT3>(p0));// fractional position
   T m00 = (-fp.x + 1.0f) * (-fp.y + 1.0f);
   T m10 = (fp.x) * (-fp.y + 1.0f);
   T m01 = (-fp.x + 1.0f) * (fp.y);
@@ -232,22 +234,24 @@ __device__ void putTex2DD(T *tex, T val, VT3 p, const FluidParams<BASE> &params)
   
   IT3 p000 = applyBounds(p0,   s, params);
   IT3 p111 = applyBounds(p0+1, s, params);
-  float4 mults0 = texPutMults0(p);
-  float4 mults1 = texPutMults1(p);
-  int4 tiX = texPutIX(p, params);
-  int4 tiY = texPutIY(p, params);
-  int4 tiZ = texPutIZ(p, params);
-  p000     = IT3{ tiX.x, tiY.x, tiZ.x }; IT3 p110 = IT3{ tiX.w, tiY.w, tiZ.x };
-  IT3 p010 = IT3{ tiX.z, tiY.z, tiZ.x }; IT3 p100 = IT3{ tiX.y, tiY.y, tiZ.x };
-  IT3 p001 = IT3{ tiX.x, tiY.x, tiZ.z };     p111 = IT3{ tiX.w, tiY.w, tiZ.z };
-  IT3 p011 = IT3{ tiX.z, tiY.z, tiZ.z }; IT3 p101 = IT3{ tiX.y, tiY.y, tiZ.z };
-  if(p000.x < 0 || p111.x < 0 || p000.y < 0 || p111.y < 0 || p000.z < 0 || p111.z < 0) { return; }
-
-  // scale value by grid overlap and store in each location
-  texAtomicAdd(tex, val*mults0.x, p000, params); texAtomicAdd(tex, val*mults0.y, p100, params);
-  texAtomicAdd(tex, val*mults0.z, p010, params); texAtomicAdd(tex, val*mults0.w, p110, params);
-  texAtomicAdd(tex, val*mults1.x, p001, params); texAtomicAdd(tex, val*mults1.y, p101, params);
-  texAtomicAdd(tex, val*mults1.z, p011, params); texAtomicAdd(tex, val*mults1.w, p111, params);
+  if(p000 >= IT3{0,0,0} && p000 < s && p111 >= IT3{0,0,0} && p111 < s)
+    {
+      float4 mults0 = texPutMults0(p);
+      float4 mults1 = texPutMults1(p);
+      int4 tiX = texPutIX(p, params);
+      int4 tiY = texPutIY(p, params);
+      int4 tiZ = texPutIZ(p, params);
+      p000     = IT3{ tiX.x, tiY.x, tiZ.x }; IT3 p110 = IT3{ tiX.w, tiY.w, tiZ.x };
+      IT3 p010 = IT3{ tiX.z, tiY.z, tiZ.x }; IT3 p100 = IT3{ tiX.y, tiY.y, tiZ.x };
+      IT3 p001 = IT3{ tiX.x, tiY.x, tiZ.z };     p111 = IT3{ tiX.w, tiY.w, tiZ.z };
+      IT3 p011 = IT3{ tiX.z, tiY.z, tiZ.z }; IT3 p101 = IT3{ tiX.y, tiY.y, tiZ.z };
+  
+      // scale value by grid overlap and store in each location
+      texAtomicAdd(tex, val*mults0.x, p000, params); texAtomicAdd(tex, val*mults0.y, p100, params);
+      texAtomicAdd(tex, val*mults0.z, p010, params); texAtomicAdd(tex, val*mults0.w, p110, params);
+      texAtomicAdd(tex, val*mults1.x, p001, params); texAtomicAdd(tex, val*mults1.y, p101, params);
+      texAtomicAdd(tex, val*mults1.z, p011, params); texAtomicAdd(tex, val*mults1.w, p111, params);
+    }
 }
 
 
@@ -255,15 +259,14 @@ __device__ void putTex2DD(T *tex, T val, VT3 p, const FluidParams<BASE> &params)
 
 
 
-
 template<typename T, typename VT>
-__device__ VT integrateReverseEuler(VT *data, const VT &p, const VT &v, T dt)
-{ // trace velocity backward
+__device__ VT integrateBackwardEuler(VT *data, const VT &p, const VT &v, T dt)
+{ // trace velocity backward (IMPLICIT)
   return p - v*dt;
 }
 template<typename T, typename VT>
 __device__ VT integrateForwardEuler(VT *data, const VT &p, const VT &v, T dt)
-{ // trace velocity forward
+{ // trace velocity forward (EXPLICIT)
   return p + v*dt;
 }
 

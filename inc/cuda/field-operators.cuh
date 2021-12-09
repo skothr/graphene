@@ -130,7 +130,7 @@ __device__ VT3 jacobi(const Field<VT3> &src, const IT3 &p, T alpha, T beta, T dL
   VT3 v0  = src[src.idx(p)];
   VT3 vNX = src[src.idx(p.x-1, p.y, p.z)]; VT3 vNY = src[src.idx(p.x, p.y-1, p.z)]; VT3 vNZ = src[src.idx(p.x, p.y, p.z-1)];
   VT3 vPX = src[src.idx(p.x+1, p.y, p.z)]; VT3 vPY = src[src.idx(p.x, p.y+1, p.z)]; VT3 vPZ = src[src.idx(p.x, p.y, p.z+1)];
-  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)/beta;
+  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)*beta;
 }
 // jacobi iteration
 template<typename VT3, typename T=typename Dim<VT3>::BASE_T, typename IT3=typename Dim<VT3>::SIZE_T>
@@ -139,7 +139,7 @@ __device__ VT3 jacobi(const Field<VT3> &src, const IT3 &p0, const IT3 &p1p, cons
   VT3 v0  = src[src.idx(p0)];
   VT3 vNX = src[src.idx(p1n.x, p0.y, p0.z)]; VT3 vNY = src[src.idx(p0.x, p1n.y, p0.z)]; VT3 vNZ = src[src.idx(p0.x, p0.y, p1n.z)];
   VT3 vPX = src[src.idx(p1p.x, p0.y, p0.z)]; VT3 vPY = src[src.idx(p0.x, p1p.y, p0.z)]; VT3 vPZ = src[src.idx(p0.x, p0.y, p1p.z)];
-  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)/beta;
+  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)*beta;
 }
 
 
@@ -150,7 +150,7 @@ __device__ T jacobi(const Field<T> &src, const IT3 &p, T alpha, T beta, T dL, T 
   VT3 v0  = src[src.idx(p)];
   VT3 vNX = src[src.idx(p.x-1, p.y, p.z)]; VT3 vNY = src[src.idx(p.x, p.y-1, p.z)]; VT3 vNZ = src[src.idx(p.x, p.y, p.z-1)];
   VT3 vPX = src[src.idx(p.x+1, p.y, p.z)]; VT3 vPY = src[src.idx(p.x, p.y+1, p.z)]; VT3 vPZ = src[src.idx(p.x, p.y, p.z+1)];
-  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)/beta;
+  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)*beta;
 }
 // jacobi iteration
 template<typename VT3, typename T=typename Dim<VT3>::BASE_T, typename IT3=typename Dim<VT3>::SIZE_T>
@@ -159,7 +159,7 @@ __device__ T jacobi(const Field<T> &src, const IT3 &p0, const IT3 &p1p, const IT
   VT3 v0  = src[src.idx(p0)];
   VT3 vNX = src[src.idx(p1n.x, p0.y, p0.z)]; VT3 vNY = src[src.idx(p0.x, p1n.y, p0.z)]; VT3 vNZ = src[src.idx(p0.x, p0.y, p1n.z)];
   VT3 vPX = src[src.idx(p1p.x, p0.y, p0.z)]; VT3 vPY = src[src.idx(p0.x, p1p.y, p0.z)]; VT3 vPZ = src[src.idx(p0.x, p0.y, p1p.z)];
-  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)/beta;
+  return (vNX+vPX + vNY+vPY + vNZ+vPZ + v0*alpha)*beta;
 }
 
 #endif // NVCC

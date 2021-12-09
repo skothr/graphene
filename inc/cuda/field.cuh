@@ -10,6 +10,41 @@
 #include "units.cuh"
 #include "draw.cuh"
 
+enum EdgeType  // boundary conditions
+  {
+    EDGE_WRAP   =  0, // boundaries wrap to opposite side (2D --> torus?)
+    EDGE_VOID,        // forces and material properties pass through boundary (lost)
+    EDGE_FREESLIP,    // layer of material at boundary can move parallel to boundary edge
+    EDGE_NOSLIP,      // layer of material at boundary sticks to surface (vNormal = 0)
+  };
+enum IntegrationType  // integration for advection step(s)
+  {
+    INTEGRATION_FORWARD_EULER =  0,
+    INTEGRATION_BACKWARD_EULER,
+    INTEGRATION_RK4,
+    // TODO: others?
+
+    INTEGRATION_COUNT,
+  };
+
+__host__ __device__ inline bool isImplicit(IntegrationType it)
+{
+  switch(it)
+    {
+    case INTEGRATION_BACKWARD_EULER: return true;  // implicit methods
+    default:                         return false; // explicit methods
+    }
+}
+
+#ifndef __NVCC__
+#include <vector>
+#include <string>
+static const std::vector<std::string> g_edgeNames {{"Wrap", "Void", "Free-Slip", "No-Slip"}};
+static const std::vector<std::string> g_integrationNames{{ "Forward Euler", "Backward Euler", "RK4" }};
+#endif // __NVCC__
+
+
+
 //// FIELD PARAMS ////
 template<typename T>
 struct FieldParams
@@ -19,17 +54,12 @@ struct FieldParams
   T t = 0.0f; // current simulation time
   
   VT3  fp;                     // field position
-  int3 fs = int3{256, 256, 8}; // number of cells in charge field
-
-  T    decay    = 0.10f;       // source decay
-  VT3  gravity  = VT3{0,0,0};  // force of gravity
-  
-  int  rCoulomb     = 11;      // effective radius of Coulomb force
-  T    coulombMult  = 1.0;     // Coulomb force multiplier
-  T    coulombBlend = 0.5;     // blend D/E
-  int  qIter        = 11;      // chargePotential iterations
-  bool reflect      = false;   // reflective boundaries
+  int3 fs = int3{256, 256, 8}; // size of field (number of cells)
+  T    decay   = 0.10f;        // source decay
+  VT3  gravity = VT3{0,0,0};   // force of gravity
 };
+
+
 
 
 //// FIELD BASE: base class for fields (data type defined in child class) ////

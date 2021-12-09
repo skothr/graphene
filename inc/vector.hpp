@@ -624,18 +624,9 @@ template<> struct Dim<Vector<double, 2>> { static constexpr int N = 2; using BAS
 template<> struct Dim<Vector<double, 3>> { static constexpr int N = 3; using BASE_T = double; using LOWER = Vector<double, 3>; using SIZE_T = Vector<int, 3>; };
 template<> struct Dim<Vector<double, 4>> { static constexpr int N = 4; using BASE_T = double; using LOWER = Vector<double, 4>; using SIZE_T = Vector<int, 4>; };
 
-// enable_if
+// is_vec<T>::value (or) is_vec_v<T> --> true if T is a vector type (e.g. Vector)
 template<typename T> struct is_vec : std::false_type { };
 template<typename T, int N> struct is_vec<Vector<T, N>> : std::true_type { };
-// template<> struct is_vec<int2>     : std::true_type  { };
-// template<> struct is_vec<int3>     : std::true_type  { };
-// template<> struct is_vec<int4>     : std::true_type  { };
-// template<> struct is_vec<float2>   : std::true_type  { };
-// template<> struct is_vec<float3>   : std::true_type  { };
-// template<> struct is_vec<float4>   : std::true_type  { };
-// template<> struct is_vec<double2>  : std::true_type  { };
-// template<> struct is_vec<double3>  : std::true_type  { };
-// template<> struct is_vec<double4>  : std::true_type  { };
 template<typename T> constexpr bool is_vec_v = is_vec<T>::value; // (helper)
 
 // converts a vector to a string with specified precision

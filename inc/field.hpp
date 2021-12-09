@@ -43,17 +43,17 @@ struct FieldInterface : public SettingForm
   bool applyGravity  = false; // toggle gravity
 
   bool updateEM      = true;  // toggle EM updates (Maxwell's equations)
-  bool updateQ       = true;  //   toggle charge update step
-  bool updateCoulomb = true;  //   toggle Coulomb force calculation
-  bool updateQpot    = false; //   toggle charge potential step (WIP)
+  bool updateCoulomb = false; //   toggle Coulomb force calculation
+  bool updateQ       = true;  //   toggle charge update step (advection relative to fluid)
   bool updateE       = true;  //   toggle electric update step
   bool updateB       = true;  //   toggle magnetic update step
+  bool updateDivB    = true;  //   toggle magnetic divergence correction step
 
-  bool updateFluid   = true; // toggle fluid update steps
-  bool updateP1      = true; //    pre-advect pressure solve
-  bool updateAdvect  = true; //    parameter advection
-  bool updateVisc    = true; //    viscosity solve
-  bool updateP2      = true; //    post-advect pressure solve
+  bool updateFluid   = true;  // toggle fluid update steps
+  bool updateP1      = true;  //    pre-advect pressure solve
+  bool updateAdvect  = true;  //    parameter advection
+  bool updateVisc    = false; //    viscosity solve
+  bool updateP2      = true;  //    post-advect pressure solve
 
   // initialization expressions
   FieldInit<VT3>   initV;   // fluid velocity field
@@ -94,8 +94,8 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   initEp.str = "1"; initMu.str = "1";
 
   //// param group
-  SettingGroup *paramGroup = new SettingGroup("Field Parameters", "fieldParams", { }); add(paramGroup);
-  paramGroup->setHelp("TEST");
+  SettingGroup *paramGroup = new SettingGroup("Field Parameters", "fieldParams"); add(paramGroup);
+  paramGroup->setHelp("Parameters that define a field");
 
   // flags
   auto *sRUN   = new Setting<bool>("Running",              "running",    &running);  paramGroup->add(sRUN);
@@ -121,41 +121,66 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
 
   auto *sFPP = new Setting<VT3>  ("Position",               "fPos",      &cp->fp);      paramGroup->add(sFPP);
   sFPP->setHelp("3D position of field within sim");
-  auto *sREF = new Setting<bool> ("Reflective Bounds (EM)", "reflectEM", &cp->reflect); paramGroup->add(sREF);
-  sREF->setHelp("Reflect signals at boundary (some reflections are still apparent even if disabled)");
+  
 
-  std::vector<std::string> edgeNames {"WRAP", "VOID", "FREESLIP"};
-  auto *sREENX = new ComboSetting("-X edge", "edgeNX", (int*)&cp->edgeNX, edgeNames);
-  sREENX->setHelp("-X axis edge conditions"); paramGroup->add(sREENX);
-  auto *sREEPX = new ComboSetting("+X edge", "edgePX", (int*)&cp->edgePX, edgeNames);
-  sREEPX->setHelp("+X axis edge conditions"); paramGroup->add(sREEPX);
-  auto *sREENY = new ComboSetting("-Y edge", "edgeNY", (int*)&cp->edgeNY, edgeNames);
-  sREENY->setHelp("-Y axis edge conditions"); paramGroup->add(sREENY);
-  auto *sREEPY = new ComboSetting("+Y edge", "edgePY", (int*)&cp->edgePY, edgeNames);
-  sREEPY->setHelp("+Y axis edge conditions"); paramGroup->add(sREEPY);
-  auto *sREENZ = new ComboSetting("-Z edge", "edgeNZ", (int*)&cp->edgeNZ, edgeNames);
-  sREENZ->setHelp("-Z axis edge conditions"); paramGroup->add(sREENZ);
-  auto *sREEPZ = new ComboSetting("+Z edge", "edgePZ", (int*)&cp->edgePZ, edgeNames);
-  sREEPZ->setHelp("+Z axis edge conditions"); paramGroup->add(sREEPZ);
-  auto *sSD   = new Setting<T>  ("Input Decay",              "decay",  &cp->decay);  paramGroup->add(sSD);
+  // sREF->setHelp("Reflect signals at boundary (some reflections are still apparent even if disabled)");
+  SettingGroup *simGroup = new SettingGroup("Simulation Parameters", "simParams"); add(simGroup);
+  simGroup->setHelp("Parameters that affect simulation behavior/physics");
+  
+  // edge boundary conditions (wrapper group)
+  SettingGroup *edgeWrapper = new SettingGroup("Boundaries", "edgeWrapper"); simGroup->add(edgeWrapper); // wrapper for name column (TODO: refine)
+  edgeWrapper->setHorizontal(true);
+  // indented edge group  
+  SettingGroup *edgeGroup   = new SettingGroup("",           "edgeParams");  edgeWrapper->add(edgeGroup);
+  edgeGroup->setColumns(2); edgeGroup->setHorizontal(true);
+  edgeGroup->setHelp("Boundary conditions for each field edge (TODO: fix/validate):\n"
+                     "   Wrap:      Edge wraps around to opposite side of field\n"
+                     "   Void:      Edge acts as if nothing is there (WARNING: energy/mass will be \"lost\"\n"
+                     "   Free-Slip: Edge acts as a barrier -- velocity can slide perpendicularly to edge normal\n"
+                     "   No-Slip:   (TODO: impement) Edge acts as a barrier -- velocity (TODO: charge gets stuck...?)");
+  // edgeGroup->setColumnLabels(std::vector<std::string> {"+ Side", "- Side"}); // edgeGroup->setRowLabels   (std::vector<std::string> {"X", "Y", "Z"});
+  // edgeWrapper->setHelp("Boundary conditions for each field edge (TODO: fix/validate):\n"
+  //                      "   Wrap:      Edge wraps around to opposite side of field\n"
+  //                      "   Void:      Edge acts as if nothing is there (WARNING: energy/mass will be \"lost\"\n"
+  //                      "   Free-Slip: Edge acts as a hard barrier -- velocity can slide perpendicularly to edge normal\n"
+  //                      "   No-Slip:   (TODO: impement) Edge acts as a hard barrier -- velocity (TODO: charge gets stuck...?)");
+  auto *sREENX = new ComboSetting("-X", "edgeNX", (int*)&cp->edgeNX, g_edgeNames); sREENX->setHelp("Negative X Edge"); edgeGroup->add(sREENX);
+  auto *sREEPX = new ComboSetting("+X", "edgePX", (int*)&cp->edgePX, g_edgeNames); sREEPX->setHelp("Positive X Edge"); edgeGroup->add(sREEPX);
+  auto *sREENY = new ComboSetting("-Y", "edgeNY", (int*)&cp->edgeNY, g_edgeNames); sREENY->setHelp("Negative Y Edge"); edgeGroup->add(sREENY);
+  auto *sREEPY = new ComboSetting("+Y", "edgePY", (int*)&cp->edgePY, g_edgeNames); sREEPY->setHelp("Positive Y Edge"); edgeGroup->add(sREEPY);
+  auto *sREENZ = new ComboSetting("-Z", "edgeNZ", (int*)&cp->edgeNZ, g_edgeNames); sREENZ->setHelp("Negative Z Edge"); edgeGroup->add(sREENZ);
+  auto *sREEPZ = new ComboSetting("+Z", "edgePZ", (int*)&cp->edgePZ, g_edgeNames); sREEPZ->setHelp("Positive Z Edge"); edgeGroup->add(sREEPZ);
+  
+
+  // integration methods
+  auto *sIV = new ComboSetting("Fluid Integration",  "vIntegration", (int*)(&cp->vIntegration), g_integrationNames); simGroup->add(sIV);
+  sIV->setHelp("Integration method used for fluid advection (v)");
+  auto *sIQ = new ComboSetting("Charge Integration", "qIntegration", (int*)(&cp->qIntegration), g_integrationNames); simGroup->add(sIQ);
+  sIQ->setHelp("Integration method used for charge advection (Qnv, Qpv))\n"
+               "  (Charge velocities defined relative to fluid motion)");
+
+  
+  // auto *sREF = new Setting<bool> ("Reflective Bounds (EM)", "reflectEM", &cp->reflect); paramGroup->add(sREF);  
+  auto *sSD    = new Setting<T>  ("Input Decay", "decay",  &cp->decay);  simGroup->add(sSD);
   sSD->setHelp("Input signal field is multiplied by decay^dt each frame to prevent stuck vectors");
   sSD->setToggle(&inputDecay);
   sSD->setFormat(0.01f, 0.1f); sSD->setMin(-2.0f); sSD->setMax(2.0f);
 
-  auto *sFG = new Setting<VT3>  ("Gravity", "gravity", &cp->gravity); paramGroup->add(sFG);
+  auto *sFG   = new Setting<VT3> ("Gravity", "gravity", &cp->gravity); simGroup->add(sFG);
   sFG->setFormat(VT3{0.01, 0.01, 0.01}, VT3{0.1, 0.1, 0.1}, "%4f");
   sFG->setToggle(&applyGravity);
   sFG->setHelp("(vector) Force of gravity applied to fluid");
 
   //// step group
-  SettingGroup *stepGroup  = new SettingGroup("Physics Steps", "physicsSteps", { }); add(stepGroup);
-  stepGroup->setHelp("TEST");
+  SettingGroup *stepGroup  = new SettingGroup("Physics Steps", "physicsSteps"); add(stepGroup);
+  stepGroup->setHelp("Enable/disable each physics update step, and set base properties (TODO: move/improve)\n");
 
-  // --> Maxwell's equations
+  // EM ===> Maxwell's equations
   auto *sUEM = new Setting<bool>("Update EM",            "updateEM", &updateEM); stepGroup->add(sUEM);
   sUEM->setHelp("EM field update (Maxwell's equations)");
+  
   // Q/E --> E (Coulomb force calcualtion)
-  auto *qcGroup = new SettingGroup  (" --> Coulomb Force", "qCoulomb", {}); stepGroup->add(qcGroup); qcGroup->setHorizontal(true); qcGroup->setColumns(3);
+  auto *qcGroup = new SettingGroup  (" --> Coulomb Force", "qCoulomb"); stepGroup->add(qcGroup); qcGroup->setHorizontal(true); qcGroup->setColumns(3);
   qcGroup->setHelp("Charge field divergence calculation (corrects electric potential as divergence of charge)");
   qcGroup->setEnabledCallback([this]() { return updateEM; });
   auto *sUQcE = new Setting<bool>("",       "qcEnable", &updateCoulomb);   qcGroup->add(sUQcE);
@@ -163,16 +188,8 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUQcR->setHelp("Effective radius of Coulomb force calculations (NOTE: O(r^3) time complexity)"); sUQcR->setFormat(1, 10); sUQcR->setMin(0);
   auto *sUQcM = new Setting<T>   ("Mult",   "qcMult",   &cp->coulombMult); qcGroup->add(sUQcM);
   sUQcM->setHelp("Coulomb force multiplier"); sUQcM->setFormat(0.1f, 1.0f, "%.4f");
-
-  // Q/E --> E (experimental potential correction based on vector calculus)
-  // auto *qpGroup = new SettingGroup  (" --> Correct Potential", "qPotential", {}); stepGroup->add(qpGroup); qpGroup->setHorizontal(true); qpGroup->setColumns(2);
-  // qpGroup->setHelp("Charge field divergence calculation (corrects electric potential as divergence of charge)");
-  // qpGroup->setEnabledCallback([this]() { return updateEM; });
-  // auto *sUQpE = new Setting<bool>("",           "qpEnable", &updateQpot); qpGroup->add(sUQpE);
-  // auto *sUQpI = new Setting<int> ("Iterations", "qpIter",   &cp->qIter);  qpGroup->add(sUQpI);
-  // sUQpI->setHelp("Number of iterations (Jacobi method)"); sUQpI->setFormat(1, 10); sUQpI->setMin(0);
-
-  // E/B/Qv/v --> Q/Qv (apply forces)
+  
+  // E/B/Qv/v ===> Q/Qv (apply forces)
   auto *sUQ  = new Setting<bool> (" --> Update Q", "updateQ", &updateQ); stepGroup->add(sUQ);
   sUQ->setHelp("Charge field physics update (applies forces from E/B field to Q/Qv and steps Q via Qv)");
   sUQ->setEnabledCallback([this]() { return updateEM; });
@@ -185,8 +202,16 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUB->setHelp("Magnetic field physics update");
   sUB->setEnabledCallback([this]() { return updateEM; });
 
+  // (∇·B) --> Bp --> B (remove divergence from B field)
+  auto *bpGroup = new SettingGroup  (" --> ∇·B = 0", "updateDivB"); stepGroup->add(bpGroup); bpGroup->setHorizontal(true); bpGroup->setColumns(2);
+  bpGroup->setHelp("Removes divergence from");
+  bpGroup->setEnabledCallback([this]() { return updateEM; });
+  auto *sUBpE = new Setting<bool>("",           "bpEnable",  &updateDivB);   bpGroup->add(sUBpE);
+  auto *sUBpI = new Setting<int> ("Iterations", "bpIter",    &cp->divBIter); bpGroup->add(sUBpI);
+  sUBpI->setHelp("Effective radius of Coulomb force calculations (NOTE: O(r^3) time complexity)"); sUBpI->setFormat(1, 10); sUBpI->setMin(0);
+
   // --> fluid dynamics
-  auto *fGroup = new SettingGroup("Fluid Dynamics", "fluidUpdate", {}); stepGroup->add(fGroup); fGroup->setHorizontal(true); fGroup->setColumns(2);
+  auto *fGroup = new SettingGroup("Fluid Dynamics", "fluidUpdate"); stepGroup->add(fGroup); fGroup->setHorizontal(true); fGroup->setColumns(2);
   fGroup->setHelp("Fluid physics update");
   auto *sUF  = new Setting<bool>("",        "updateFluid", &updateFluid); fGroup->add(sUF);
   auto *sUFD = new Setting<T>   ("Density", "fDensity",    &cp->density); fGroup->add(sUFD);
@@ -194,7 +219,7 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUFD->setHelp("Fluid density");
 
   // pre-advect pressure
-  auto *fp1Group = new SettingGroup(" --> Pressure(pre)", "fluidP1", {}); stepGroup->add(fp1Group); fp1Group->setHorizontal(true); fp1Group->setColumns(2);
+  auto *fp1Group = new SettingGroup(" --> Pressure(pre)", "fluidP1"); stepGroup->add(fp1Group); fp1Group->setHorizontal(true); fp1Group->setColumns(2);
   fp1Group->setHelp("Fluid pre-advect pressure update");
   fp1Group->setEnabledCallback([this]() { return updateFluid; });
   auto *sUFP1E = new Setting<bool>("",           "fp1Enable", &updateP1); fp1Group->add(sUFP1E);
@@ -202,7 +227,7 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUFP1I->setMin(0); sUFP1I->setMax(11111); sUFP1I->setFormat(1, 10);
   sUFP1I->setHelp("Number of iterations (Jacobi method)");
   // advection
-  auto *faGroup = new SettingGroup(" --> Advect", "fluidAdvect", {}); stepGroup->add(faGroup); faGroup->setHorizontal(true); faGroup->setColumns(2);
+  auto *faGroup = new SettingGroup(" --> Advect", "fluidAdvect"); stepGroup->add(faGroup); faGroup->setHorizontal(true); faGroup->setColumns(2);
   faGroup->setHelp("Fluid advection (move cell contents by velocity)");
   faGroup->setEnabledCallback([this]() { return updateFluid; });
   auto *sUFAE = new Setting<bool>("", "faEnable", &updateAdvect); faGroup->add(sUFAE);
@@ -210,7 +235,7 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUVAL->setMin(0); sUFP1I->setMax(11111); sUVAL->setFormat(0.1f, 1.0f, "%.4f");
   sUVAL->setHelp("Limit fluid velocity (V) to this magnitude\n --> V = normalize(V)*max(length(V), <limit>)");
   // viscosity
-  auto *fvGroup = new SettingGroup(" --> Viscosity", "fluidVisc", {}); stepGroup->add(fvGroup); fvGroup->setHorizontal(true); fvGroup->setColumns(3);
+  auto *fvGroup = new SettingGroup(" --> Viscosity", "fluidVisc"); stepGroup->add(fvGroup); fvGroup->setHorizontal(true); fvGroup->setColumns(3);
   fvGroup->setHelp("Fluid viscosity update");
   fvGroup->setEnabledCallback([this]() { return updateFluid; });
   auto *sUFVE = new Setting<bool> ("", "fvEnable", &updateVisc);    fvGroup->add(sUFVE);
@@ -221,7 +246,7 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUFVI->setMin(0); sUFVI->setMax(11111); sUFVI->setFormat(0.1f, 1.0f);
   sUFVI->setHelp("Number of iterations (Jacobi method)");
   // post-advect pressure
-  auto *fp2Group = new SettingGroup(" --> Pressure(post)", "fluidP2", {}); stepGroup->add(fp2Group); fp2Group->setHorizontal(true); fp2Group->setColumns(2);
+  auto *fp2Group = new SettingGroup(" --> Pressure(post)", "fluidP2"); stepGroup->add(fp2Group); fp2Group->setHorizontal(true); fp2Group->setColumns(2);
   fp2Group->setHelp("Fluid pre-advect pressure update");
   fp2Group->setEnabledCallback([this]() { return updateFluid; });
   auto *sUFP2E = new Setting<bool>("",           "fp2Enable", &updateP2);   fp2Group->add(sUFP2E);
@@ -231,7 +256,7 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
 
 
   //// initial condition group
-  SettingGroup *initGroup  = new SettingGroup("Initial Conditions", "initialConditions", { }); add(initGroup);
+  SettingGroup *initGroup  = new SettingGroup("Initial Conditions", "initialConditions"); add(initGroup);
   initGroup->setHelp("Each component field can be set parametrically\n"
                      "  Vector field:\n"
                      "   --> r:  distance from center of field in each dimension (len(r) ==> magnitude / norm(r) ==> direction)\n"

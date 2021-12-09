@@ -28,11 +28,9 @@ template<typename T> struct Dim { static constexpr int N = 1; typedef T   BASE_T
 template<> struct Dim<int2>     { static constexpr int N = 2; typedef int BASE_T;    typedef int     LOWER; typedef int2 SIZE_T; };
 template<> struct Dim<int3>     { static constexpr int N = 3; typedef int BASE_T;    typedef int2    LOWER; typedef int3 SIZE_T; };
 template<> struct Dim<int4>     { static constexpr int N = 4; typedef int BASE_T;    typedef int3    LOWER; typedef int4 SIZE_T; };
-
 template<> struct Dim<float2>   { static constexpr int N = 2; typedef float BASE_T;  typedef float   LOWER; typedef int2 SIZE_T; };
 template<> struct Dim<float3>   { static constexpr int N = 3; typedef float BASE_T;  typedef float2  LOWER; typedef int3 SIZE_T; };
 template<> struct Dim<float4>   { static constexpr int N = 4; typedef float BASE_T;  typedef float3  LOWER; typedef int4 SIZE_T; };
-
 template<> struct Dim<double2>  { static constexpr int N = 2; typedef double BASE_T; typedef double  LOWER; typedef int2 SIZE_T; };
 template<> struct Dim<double3>  { static constexpr int N = 3; typedef double BASE_T; typedef double2 LOWER; typedef int3 SIZE_T; };
 template<> struct Dim<double4>  { static constexpr int N = 4; typedef double BASE_T; typedef double3 LOWER; typedef int4 SIZE_T; };

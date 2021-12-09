@@ -26,6 +26,7 @@ using json = nlohmann::json;
 #include "tabMenu.hpp"
 #include "toolbar.hpp"
 #include "frameWriter.hpp"
+#include "simulation.hpp"
 
 #include "draw.hpp"
 #include "display.hpp"
@@ -56,52 +57,33 @@ SimWindow::SimWindow(GLFWwindow *window)
   simWin = this; // NOTE/TODO: only one window total allowed for now
   glfwSetKeyCallback(mWindow, &keyCallback); // set key event callback (before ImGui GLFW initialization)
 
+  // default key bindings
   std::vector<KeyBinding> keyBindings =
     {
-     KeyBinding("Quit",            "Ctrl+Esc", "Quit program",                                    KEYBINDING_GLOBAL,[this](){ quit();                }),
-     KeyBinding("Reset Views",     "F1",       "Reset viewports (align field in each view)",      KEYBINDING_GLOBAL,[this](){ resetViews(false);     }),
-     KeyBinding("Reset Sim",       "F5",       "Reset full simulation (signal/material/fluid)",   KEYBINDING_GLOBAL,[this](){ resetSim(false);       }),
-     KeyBinding("Reset Signals",   "F6",       "Reset signals, leaving materials intact",         KEYBINDING_GLOBAL,[this](){ resetSignals(false);   }),
-     KeyBinding("Reset Materials", "F7",       "Reset materials, leaving signals intact",         KEYBINDING_GLOBAL,[this](){ resetMaterials(false); }),
-     KeyBinding("Reset Fluid",     "F8",       "Reset fluid variables",                           KEYBINDING_GLOBAL,[this](){ resetFluid(false);     }),
-     KeyBinding("Prev Setting Tab", "Ctrl+PgUp", "Switch to previous setting tab",                KEYBINDING_GLOBAL,[this](){ mSideTabs->prev(); }),
-     KeyBinding("Next Setting Tab", "Ctrl+PgDn", "Switch to previous setting tab",                KEYBINDING_GLOBAL,[this](){ mSideTabs->next(); }),
+     KeyBinding("Quit",            "Ctrl+Esc", "Quit program",                                    KEYBINDING_GLOBAL, [this](){ quit();                }),
+     KeyBinding("Reset Views",     "F1",       "Reset viewports (align field in each view)",      KEYBINDING_GLOBAL, [this](){ resetViews(false);     }),
+     KeyBinding("Reset Sim",       "F5",       "Reset full simulation (signal/material/fluid)",   KEYBINDING_GLOBAL, [this](){ resetSim(false);       }),
+     KeyBinding("Reset Signals",   "F6",       "Reset signals, leaving materials intact",         KEYBINDING_GLOBAL, [this](){ resetSignals(false);   }),
+     KeyBinding("Reset Materials", "F7",       "Reset materials, leaving signals intact",         KEYBINDING_GLOBAL, [this](){ resetMaterials(false); }),
+     KeyBinding("Reset Fluid",     "F8",       "Reset fluid variables",                           KEYBINDING_GLOBAL, [this](){ resetFluid(false);     }),
+     KeyBinding("Prev Setting Tab", "Ctrl+PgUp", "Switch to previous setting tab",                KEYBINDING_GLOBAL, [this](){ mSideTabs->prev(); }),
+     KeyBinding("Next Setting Tab", "Ctrl+PgDn", "Switch to previous setting tab",                KEYBINDING_GLOBAL, [this](){ mSideTabs->next(); }),
 
-     KeyBinding("Toggle Physics",  "Space",    "Start/stop simulation physics",              KEYBINDING_EXTRA_MODS, [this](){ togglePause(); }),
-     KeyBinding("Step Forward",    "Up",       "Single physics step (+dt)", (KEYBINDING_REPEAT|KEYBINDING_MOD_MULT),[this](CFT mult){singleStepField(mult);}),
-     KeyBinding("Step Backward",   "Down",     "Single physics step (-dt)", (KEYBINDING_REPEAT|KEYBINDING_MOD_MULT),[this](CFT mult){singleStepField(-mult);}),
+     KeyBinding("Toggle Physics",  "Space",    "Start/stop simulation physics",              KEYBINDING_EXTRA_MODS,  [this](){ togglePause(); }),
+     KeyBinding("Step Forward",    "Up",       "Single physics step (+dt)", (KEYBINDING_REPEAT|KEYBINDING_MOD_MULT), [this](CFT mult){singleStepField(mult);}),
+     KeyBinding("Step Backward",   "Down",     "Single physics step (-dt)", (KEYBINDING_REPEAT|KEYBINDING_MOD_MULT), [this](CFT mult){singleStepField(-mult);}),
 
-     KeyBinding("Toggle Debug",    "Alt+D",    "Toggle debug mode",                              KEYBINDING_GLOBAL, [this](){ toggleDebug(); }),
-     KeyBinding("Toggle Verbose",  "Alt+V",    "Toggle verbose mode",                            KEYBINDING_GLOBAL, [this](){ toggleVerbose(); }),
-     KeyBinding("Key Bindings",    "Alt+K",    "Open Key Bindings window (view/edit bindings)",  KEYBINDING_GLOBAL, [this](){ mKeyManager->togglePopup(); }),
-     KeyBinding("ImGui Demo",   "Alt+Shift+D", "Toggle ImGui demo window (examples/tools)",        KEYBINDING_NONE, [this](){ toggleImGuiDemo(); }),
-     KeyBinding("Font Demo",    "Alt+Shift+F", "Toggle Font demo window",                          KEYBINDING_NONE, [this](){ toggleFontDemo(); }),
-     
-     // signal pen hotkeys
-     KeyBinding("Signal Pen 1",    "Ctrl+1",  "Select signal pen 1",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(0); } }),
-     KeyBinding("Signal Pen 2",    "Ctrl+2",  "Select signal pen 2",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(1); } }),
-     KeyBinding("Signal Pen 3",    "Ctrl+3",  "Select signal pen 3",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(2); } }),
-     KeyBinding("Signal Pen 4",    "Ctrl+4",  "Select signal pen 4",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(3); } }),
-     KeyBinding("Signal Pen 5",    "Ctrl+5",  "Select signal pen 5",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(4); } }),
-     KeyBinding("Signal Pen 6",    "Ctrl+6",  "Select signal pen 6",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(5); } }),
-     KeyBinding("Signal Pen 7",    "Ctrl+7",  "Select signal pen 7",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(6); } }),
-     KeyBinding("Signal Pen 8",    "Ctrl+8",  "Select signal pen 8",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(7); } }),
-     KeyBinding("Signal Pen 9",    "Ctrl+9",  "Select signal pen 9",   KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(8); } }),
-     KeyBinding("Signal Pen 10",   "Ctrl+0",  "Select signal pen 10",  KEYBINDING_NONE, [this](){ if(mSigPenBar) { mSigPenBar->select(9); } }),
-     // material pen hotkeys
-     KeyBinding("Material Pen 1",   "Alt+1", "Select material pen 1",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(0); } }),
-     KeyBinding("Material Pen 2",   "Alt+2", "Select material pen 2",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(1); } }),
-     KeyBinding("Material Pen 3",   "Alt+3", "Select material pen 3",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(2); } }),
-     KeyBinding("Material Pen 4",   "Alt+4", "Select material pen 4",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(3); } }),
-     KeyBinding("Material Pen 5",   "Alt+5", "Select material pen 5",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(4); } }),
-     KeyBinding("Material Pen 6",   "Alt+6", "Select material pen 6",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(5); } }),
-     KeyBinding("Material Pen 7",   "Alt+7", "Select material pen 7",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(6); } }),
-     KeyBinding("Material Pen 8",   "Alt+8", "Select material pen 8",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(7); } }),
-     KeyBinding("Material Pen 9",   "Alt+9", "Select material pen 9",  KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(8); } }),
-     KeyBinding("Material Pen 10",  "Alt+0", "Select material pen 10", KEYBINDING_NONE, [this](){ if(mMatPenBar) { mMatPenBar->select(9); } }),
-    };
-
- 
+     KeyBinding("Toggle Debug",    "Alt+D",    "Toggle debug mode",                              KEYBINDING_GLOBAL,  [this](){ toggleDebug(); }),
+     KeyBinding("Toggle Verbose",  "Alt+V",    "Toggle verbose mode",                            KEYBINDING_GLOBAL,  [this](){ toggleVerbose(); }),
+     KeyBinding("Key Bindings",    "Alt+K",    "Open Key Bindings window (view/edit bindings)",  KEYBINDING_GLOBAL,  [this](){ mKeyManager->togglePopup(); }),
+     KeyBinding("ImGui Demo",   "Alt+Shift+D", "Toggle ImGui demo window (examples/tools)",        KEYBINDING_NONE,  [this](){ toggleImGuiDemo(); }),
+     KeyBinding("Font Demo",    "Alt+Shift+F", "Toggle Font demo window",                          KEYBINDING_NONE,  [this](){ toggleFontDemo(); }),
+     // pen selection
+     KeyBinding("Signal Pen",      "Ctrl+<#>", "Select signal pen",   KEYBINDING_GLOBAL|KEYBINDING_NUMERIC,
+                [this](int n){ if(mSigPenBar) { mSigPenBar->select(n == 0 ? 10 : n-1); } }, true),
+     KeyBinding("Material Pen",     "Alt+<#>", "Select material pen", KEYBINDING_GLOBAL|KEYBINDING_NUMERIC,
+                [this](int n){ if(mMatPenBar) { mMatPenBar->select(n == 0 ? 10 : n-1); } }, true),
+    }; 
 
   // NOTE: Any bindings not added to a group will be added to a "misc" group
   std::vector<KeyBindingGroup> keyGroups =
@@ -109,10 +91,7 @@ SimWindow::SimWindow(GLFWwindow *window)
      {"System",         {"Quit", "Prev Setting Tab", "Next Setting Tab"}},
      {"Sim Control",    {"Reset Sim", "Reset Signals", "Reset Materials","Reset Fluid", "Reset Views", "Toggle Physics", "Step Forward", "Step Backward"}},
      {"Modes/Popups",   {"Toggle Debug", "Toggle Verbose", "Key Bindings", "ImGui Demo", "Font Demo"}},
-     {"Pen Selection",  {"Signal Pen 1",   "Signal Pen 2",   "Signal Pen 3",   "Signal Pen 4",   "Signal Pen 5",
-                         "Signal Pen 6",   "Signal Pen 7",   "Signal Pen 8",   "Signal Pen 9",   "Signal Pen 10",
-                         "Material Pen 1", "Material Pen 2", "Material Pen 3", "Material Pen 4", "Material Pen 5",
-                         "Material Pen 6", "Material Pen 7", "Material Pen 8", "Material Pen 9", "Material Pen 10"}},
+     {"Pen Selection",  {"Signal Pen", "Material Pen"}},
     };
 
   mKeyManager = new KeyManager(this, keyBindings, keyGroups);
@@ -147,13 +126,12 @@ bool SimWindow::init()
                                      ImGuiFreeTypeBuilderFlags_Bitmap);
       fontBuilder.AddText("ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω");
       fontBuilder.AddText("₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹");
-      fontBuilder.AddText("°∥"); // NOTE: '∥' not working?
+      fontBuilder.AddText("°∥∇‖"); // NOTE: '∥' not working?
       fontBuilder.AddRanges(io.Fonts->GetGlyphRangesDefault());  // Add one of the default ranges
-      fontBuilder.AddChar(0x2207);                               // Add a specific character
-      fontBuilder.AddChar(0x2225);                               // Add a specific character
+      fontBuilder.AddChar(0x2207);                               // ∇ (del/nambla)
+      fontBuilder.AddChar(0x2016);                               // ‖ (vector norm)
       fontBuilder.BuildRanges(&fontRanges);                      // Build the final result (ordered ranges with all the unique characters submitted)
       fontConfig->GlyphRanges = fontRanges.Data;
-
       fontConfig->SizePixels  = MAIN_FONT_HEIGHT;
       mainFont   = io.Fonts->AddFontFromFileTTF(FONT_PATH_REGULAR.string().c_str(),      MAIN_FONT_HEIGHT,  fontConfig); // main font
       mainFontB  = io.Fonts->AddFontFromFileTTF(FONT_PATH_BOLD.string().c_str(),         MAIN_FONT_HEIGHT,  fontConfig);
@@ -210,7 +188,6 @@ bool SimWindow::init()
       auto *sDBG  = new Setting<bool> ("Debug",   "debug",   &mParams.debug);   sDBG->setHelp("Show debug overlay");
       auto *sVRB  = new Setting<bool> ("Verbose", "verbose", &mParams.verbose); sVRB->setHelp("Print out more info");
       SettingGroup *infoGroup = new SettingGroup("Info", "infoGroup", { sDBG, sVRB }); mOtherUI->add(infoGroup);
-      //infoGroup->setColumns(2);
       // camera flags
       auto *sCFOV = new Setting<CFT>("FOV (°)",  "fov",  &mCamera.fov);  sCFOV->setFormat(0.1f, 1.0f, "%5f"); sCFOV->setHelp("Show debug overlay");
       auto *sCN   = new Setting<CFT>("Near",     "near", &mCamera.near); sCN->setFormat(0.01f, 0.1f, "%4f");  sCN->setHelp("Print out more info");
@@ -218,9 +195,8 @@ bool SimWindow::init()
       auto *sCV = new MatrixSetting<CFT,4>("View Matrix", "viewMat", &mCamera.view);
       auto *sCP = new MatrixSetting<CFT,4>("Projection Matrix", "projMat", &mCamera.proj);
       SettingGroup *camGroup = new SettingGroup("3D Camera", "cam3D", { sCFOV, sCN, sCF, sCV, sCP }); mOtherUI->add(camGroup);
-      //camGroup->setColumns(3);
       // misc flags
-      SettingGroup *etcGroup = new SettingGroup("Etc.", "etcGroup", { }); mOtherUI->add(etcGroup);
+      SettingGroup *etcGroup = new SettingGroup("Etc.", "etcGroup"); mOtherUI->add(etcGroup);
       auto *sVS   = new Setting<bool> ("VSync",   "vsync",   &mParams.vsync); etcGroup->add(sVS);
       sVS->setUpdateCallback([&](){ glfwSwapInterval(mParams.vsync ? 1 : 0); });
       sVS->setHelp("Toggle Vertical Sync -- syncs FPS to ratio of monitor framerate (stabilizes FPS)");
@@ -231,7 +207,6 @@ bool SimWindow::init()
       sLRF->setToggle(&mParams.limitRenderFps);  sLRF->setFormat(1.0f, 10.0f, "%0.2f");
       sLRF->setHelp("(experimental) Cap CUDA render framerate");
 
-      
       mKeyFrameUI = new KeyFrameWidget();
 
       // create pen toolbar
@@ -265,7 +240,7 @@ bool SimWindow::init()
       });
       mSigPenBar->setHorizontal(true);
       mSigPenBar->setTitle("Signals  ", titleFont);
-      mSigPenBar->setWidth(69);
+      mSigPenBar->setWidth(48);
       addSigPen(new SignalPen<CFT>());
       mSigPenBar->select(0);
 
@@ -299,7 +274,7 @@ bool SimWindow::init()
       });
       mMatPenBar->setHorizontal(true);
       mMatPenBar->setTitle("Materials", titleFont);
-      mMatPenBar->setWidth(69);
+      mMatPenBar->setWidth(48);
       addMatPen(new MaterialPen<CFT>());
       mMatPenBar->select(0);
 
@@ -403,20 +378,20 @@ void SimWindow::cleanup()
       if(mTempState) { mTempState->destroy(); delete mTempState; mTempState = nullptr; }
       
       std::cout << "==== Destroying input buffers...\n";
-      if(mInputV)   { mInputV->destroy();  delete mInputV;  mInputV  = nullptr; }
-      if(mInputP)   { mInputP->destroy();  delete mInputP;  mInputP  = nullptr; }
-      if(mInputQn)  { mInputQn->destroy(); delete mInputQn; mInputQn = nullptr; }
-      if(mInputQp)  { mInputQp->destroy(); delete mInputQp; mInputQp = nullptr; }
+      if(mInputV)   { mInputV->destroy();   delete mInputV;   mInputV   = nullptr; }
+      if(mInputP)   { mInputP->destroy();   delete mInputP;   mInputP   = nullptr; }
+      if(mInputQn)  { mInputQn->destroy();  delete mInputQn;  mInputQn  = nullptr; }
+      if(mInputQp)  { mInputQp->destroy();  delete mInputQp;  mInputQp  = nullptr; }
       if(mInputQnv) { mInputQnv->destroy(); delete mInputQnv; mInputQnv = nullptr; }
       if(mInputQpv) { mInputQpv->destroy(); delete mInputQpv; mInputQpv = nullptr; }
-      if(mInputE)   { mInputE->destroy();  delete mInputE;  mInputE  = nullptr; }
-      if(mInputB)   { mInputB->destroy();  delete mInputB;  mInputB  = nullptr; }
+      if(mInputE)   { mInputE->destroy();   delete mInputE;   mInputE   = nullptr; }
+      if(mInputB)   { mInputB->destroy();   delete mInputB;   mInputB   = nullptr; }
 
       std::cout << "==== Destroying CUDA textures...\n";
       mEMTex.destroy(); mMatTex.destroy(); m3DTex.destroy(); m3DGlTex.destroy();
 
-      // std::cout << "==== Destroying CUDA VBOs...\n";
-      // mVBuffer2D.destroy(); mVBuffer3D.destroy();
+      std::cout << "==== Destroying CUDA VBOs...\n";
+      mVBuffer2D.destroy(); mVBuffer3D.destroy();
       
       std::cout << "==== Destroying fonts...\n";
       if(ftDemo)      { delete ftDemo;      ftDemo      = nullptr; }
@@ -636,7 +611,7 @@ void SimWindow::resetSignals(bool cudaThread)
           fillField<CFV3>(f->Qnv, mFieldUI->initQnv.dExpr);
           fillField<CFV3>(f->Qpv, mFieldUI->initQpv.dExpr);
           fillField<CFV3>(f->E,  mFieldUI->initE.dExpr);  fillField<CFV3>(f->B,  mFieldUI->initB.dExpr);
-          f->divE.clear(); f->divB.clear();
+          f->Bp.clear(); f->divB.clear();
         }
       mTempState->Qn.clear(); mTempState->Qp.clear(); mTempState->Qnv.clear(); mTempState->Qpv.clear(); mTempState->E.clear();  mTempState->B.clear();
       mInputQn->clear(); mInputQp->clear(); mInputQnv->clear(); mInputQpv->clear(); mInputE->clear(); mInputB->clear(); // clear remaining inputs
@@ -842,7 +817,7 @@ void SimWindow::update()
   mUpdateFps.update();
   auto t = CLOCK_T::now();
   bool newFramePhysics = mPhysicsFps.update(mParams.limitPhysicsFps ? mParams.maxPhysicsFps : -1.0f, t);
-  bool newFrameRender  = mRenderFps.update(mParams.limitRenderFps ? mParams.maxRenderFps : -1.0f, t);
+  bool newFrameRender  = mRenderFps.update (mParams.limitRenderFps  ? mParams.maxRenderFps  : -1.0f, t);
 
   mParams.cp.t = mInfo.t; cpCopy = mParams.cp; cpCopy.u = mUnits;
   if(mParams.cp.fs.x > 0 && mParams.cp.fs.y > 0 && mParams.cp.fs.z > 0)
@@ -860,7 +835,7 @@ void SimWindow::update()
           if(mNeedResetSim)           { resetSim(true); }
           else
             {
-              if(mNewResize > 0) { resizeFields(mNewResize, true); }
+              if(mNewResize > Vec3i(0,0,0)) { resizeFields(mNewResize, true); }
               if(mNeedResetSignals)   { resetSignals(true); }
               if(mNeedResetMaterials) { resetMaterials(true); }
               if(mNeedResetFluid)     { resetFluid(true); }
@@ -872,6 +847,7 @@ void SimWindow::update()
           FluidField<CFT> *temp = reinterpret_cast<FluidField<CFT>*>(mTempState);      // temp intermediate state
 
           // apply external forces from user (TODO: handle input separately)
+          bool newInput = false;
           CFV3 mposSim = CFV3{NAN, NAN, NAN};
           if     (mEMView.hovered)  { mposSim = to_cuda(mEMView.mposSim);  }
           else if(mMatView.hovered) { mposSim = to_cuda(mMatView.mposSim); }
@@ -884,7 +860,7 @@ void SimWindow::update()
           MaterialPen<CFT> *matPen = activeMatPen();
           
           // draw signal
-          mParams.rp.sigPenHighlight = false;
+          mParams.rp.sigPenHighlight = false; mEMView.rp.sigPenHighlight = false; mMatView.rp.sigPenHighlight = false;
           CFV3 mposLast = mSigMPos;
           mSigMPos = CFV3{NAN, NAN, NAN};
           bool active = false;
@@ -910,9 +886,9 @@ void SimWindow::update()
                 {
                   mSigMPos = p;
                   sigPen->mouseSpeed = length(mSigMPos - mposLast);
-                  mParams.rp.penPos = p;
-                  mParams.rp.sigPenHighlight = true;
-                  mParams.rp.sigPen = *sigPen;
+                  mParams.rp.penPos          = p;       mEMView.rp.penPos          = p;
+                  mParams.rp.sigPenHighlight = true;    mEMView.rp.sigPenHighlight = true;
+                  mParams.rp.sigPen          = *sigPen; mEMView.rp.sigPen          = *sigPen;
 
                   if(apply && !isnan(mSigMPos))
                     { // draw signal to intermediate E/B fields (needs to be blended to avoid peristent blobs)
@@ -922,33 +898,24 @@ void SimWindow::update()
 
                       if((mFieldUI->running || singleStep) && !mForcePause && mFieldUI->inputDecay)
                         { // add to intermediary source fields
-                          addSignal(p, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB,
-                                    *sigPen, cpCopy, cpCopy.u.dt);
+                          addSignal(p, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB, *sigPen, cpCopy, cpCopy.u.dt);
                         }
                       else
-                        {
-                          addSignal(p, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB,
-                                    *sigPen, cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputV,   src->v,   cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputP,   src->p,   cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputQn,  src->Qn,  cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputQp,  src->Qp,  cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputQnv, src->Qnv, cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputQpv, src->Qpv, cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputE,   src->E,   cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputB,   src->B,   cpCopy, cpCopy.u.dt);
+                        { // add directly to field
+                          addSignal(p, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB, *sigPen, cpCopy, cpCopy.u.dt);
+                          addSignal(*mInputV,   src->v,   cpCopy, cpCopy.u.dt); addSignal(*mInputP,   src->p,   cpCopy, cpCopy.u.dt);
+                          addSignal(*mInputQn,  src->Qn,  cpCopy, cpCopy.u.dt); addSignal(*mInputQp,  src->Qp,  cpCopy, cpCopy.u.dt);
+                          addSignal(*mInputQnv, src->Qnv, cpCopy, cpCopy.u.dt); addSignal(*mInputQpv, src->Qpv, cpCopy, cpCopy.u.dt);
+                          addSignal(*mInputE,   src->E,   cpCopy, cpCopy.u.dt); addSignal(*mInputB,   src->B,   cpCopy, cpCopy.u.dt);
                           if(mFieldUI->inputDecay)
                             {
-                              decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
-                              decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
-                              decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy);
-                              decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy);
+                              decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
+                              decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
                             }
                           else
                             {
-                              mInputV->clear();  mInputP->clear();
-                              mInputQn->clear(); mInputQp->clear(); mInputQnv->clear(); mInputQpv->clear();
-                              mInputE->clear();  mInputB->clear();
+                              mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
+                              mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
                             }
                         }
                       mNewSimFrame = true; // new frame even if paused
@@ -967,36 +934,29 @@ void SimWindow::update()
                             s.pen, cpCopy, cpCopy.u.dt);
                 }
               else
-                {
-                  addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB,
-                            s.pen, cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputV,   src->v,   cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputP,   src->p,   cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputQn,  src->Qn,  cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputQp,  src->Qp,  cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputQnv, src->Qnv, cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputQpv, src->Qpv, cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputE,   src->E,   cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputB,   src->B,   cpCopy, cpCopy.u.dt);
+                { // add directly to field
+                  addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB, s.pen, cpCopy, cpCopy.u.dt);
+                  addSignal(*mInputV,   src->v,   cpCopy, cpCopy.u.dt); addSignal(*mInputP,   src->p,   cpCopy, cpCopy.u.dt);
+                  addSignal(*mInputQn,  src->Qn,  cpCopy, cpCopy.u.dt); addSignal(*mInputQp,  src->Qp,  cpCopy, cpCopy.u.dt);
+                  addSignal(*mInputQnv, src->Qnv, cpCopy, cpCopy.u.dt); addSignal(*mInputQpv, src->Qpv, cpCopy, cpCopy.u.dt);
+                  addSignal(*mInputE,   src->E,   cpCopy, cpCopy.u.dt); addSignal(*mInputB,   src->B,   cpCopy, cpCopy.u.dt);
                   if(mFieldUI->inputDecay)
                     {
-                      decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
-                      decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
-                      decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy);
-                      decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy);
+                      decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
+                      decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
                     }
                   else
                     {
-                      mInputV->clear();  mInputP->clear();
-                      mInputQn->clear(); mInputQp->clear(); mInputQnv->clear(); mInputQpv->clear();
-                      mInputE->clear();  mInputB->clear();
+                      mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
+                      mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
                     }
                 }
             }
 
           // add material
-          mParams.rp.matPenHighlight = false;
+          mParams.rp.matPenHighlight = false; mMatView.rp.sigPenHighlight = false;
           mMatMPos = CFV3{NAN, NAN, NAN};
+          active = false;
           if(!mParams.op.lockViews && !mForcePause && io.KeyAlt)
             {
               bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
@@ -1018,12 +978,13 @@ void SimWindow::update()
               if(hover)
                 {
                   mMatMPos = p;
-                  mParams.rp.penPos = p;
-                  mParams.rp.matPenHighlight = true;
-                  mParams.rp.matPen = *matPen;
-                  if(apply && !isnan(mMatMPos)) { addMaterial(p, *src, *matPen, cpCopy); mNewSimFrame = true;  } // new frame even if paused
+                  mParams.rp.penPos          = p;       mMatView.rp.penPos          = p;
+                  mParams.rp.matPenHighlight = true;    mMatView.rp.sigPenHighlight = true;
+                  mParams.rp.matPen          = *matPen; mMatView.rp.sigPen          = *sigPen;
+                  if(apply && !isnan(mMatMPos)) { addMaterial(p, *src, *matPen, cpCopy); mNewSimFrame = true; active = true; } // new frame even if paused
                 }
             }
+          if(!active) { mMatMPos = CFV3{NAN, NAN, NAN}; }
 
           // add keyframe materials to field
           std::vector<MaterialPlaced> &placed = mKeyFrameUI->placed();
@@ -1050,48 +1011,26 @@ void SimWindow::update()
               addSignal(*mInputE,   temp->E,   cpCopy, cpCopy.u.dt); // add E input signal
               addSignal(*mInputB,   temp->B,   cpCopy, cpCopy.u.dt); // add B input signal
 
-              //// FLUID STEP (V/P)
-              if(mFieldUI->updateFluid) // V, P
-                {
-                  if(mFieldUI->updateP1)     { fluidPressure (*temp, *dst, cpCopy, cpCopy.pIter1); std::swap(temp, dst); } // PRESSURE SOLVE (1)
-                  if(mFieldUI->updateAdvect) { fluidAdvect   (*temp, *dst, cpCopy);                std::swap(temp, dst); } // ADVECT
-                  if(mFieldUI->updateVisc)   { fluidViscosity(*temp, *dst, cpCopy, cpCopy.vIter);  std::swap(temp, dst); } // VISCOSITY SOLVE
-                  if(mFieldUI->applyGravity) { fluidExternalForces(*temp, cpCopy); }                                       // EXTERNAL FORCES (in-place)
-                  if(mFieldUI->updateP2)     { fluidPressure (*temp, *dst, cpCopy, cpCopy.pIter2); std::swap(temp, dst); } // PRESSURE SOLVE (2)
-                }
               //// EM STEP (Q/Qv/E/B)
               if(mFieldUI->updateEM)
                 {
-                  if(mFieldUI->updateCoulomb) { updateCoulomb(*temp, *dst, cpCopy);  std::swap(temp, dst); } // Coulomb forces
-                  
-                  if(mFieldUI->updateQ)       { updateCharge(*temp, *dst, cpCopy);   std::swap(temp, dst); } // Q
-                  if(mFieldUI->updateE)       { updateElectric(*temp, *dst, cpCopy); std::swap(temp, dst); } // E
-                  //cpCopy.t += cpCopy.u.dt/2.0f; // increment first half time step
-                  if(mFieldUI->updateB)       { updateMagnetic(*temp, *dst, cpCopy); std::swap(temp, dst); } // B
-                  //cpCopy.t += cpCopy.u.dt/2.0f; // increment second half time step
+                  if(mFieldUI->updateCoulomb) { updateCoulomb(*temp, *dst, cpCopy);                   std::swap(temp, dst); } // ∇·E = Q/ε₀
+                  if(mFieldUI->updateQ)       { updateCharge  (*temp, *dst, cpCopy);                  std::swap(temp, dst); } // Q,Qv --> Q (advect Q within fluid)
+                  if(mFieldUI->updateE)       { updateElectric(*temp, *dst, cpCopy);                  std::swap(temp, dst); } // δE/δt = (∇×B - J)
+                  if(mFieldUI->updateB)       { updateMagnetic(*temp, *dst, cpCopy);                  std::swap(temp, dst); } // δB/δt = -(∇×E)
+                  if(mFieldUI->updateDivB)    { updateDivB    (*temp, *dst, cpCopy, cpCopy.divBIter); std::swap(temp, dst); } // ∇·B = 0
                 }
-              cpCopy.t += cpCopy.u.dt;
-  
-              // decay input signals (blend over time)
-              if(mFieldUI->inputDecay) // ?
-              {
-                addSignal(*mInputE,  temp->E,  cpCopy, -cpCopy.u.dt); // remove added E  input signal
-                addSignal(*mInputB,  temp->B,  cpCopy, -cpCopy.u.dt); // remove added B  input signal
-              }
-              
-              if(mFieldUI->inputDecay)
+              //// FLUID STEP (V/P)
+              if(mFieldUI->updateFluid) // V, P
                 {
-                  decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
-                  decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
-                  decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy);
-                  decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy);
+                  if(mFieldUI->updateP1)      { fluidPressure (*temp, *dst, cpCopy, cpCopy.pIter1);   std::swap(temp, dst); } // PRESSURE SOLVE (1)
+                  if(mFieldUI->updateAdvect)  { fluidAdvect   (*temp, *dst, cpCopy);                  std::swap(temp, dst); } // ADVECT
+                  if(mFieldUI->updateVisc)    { fluidViscosity(*temp, *dst, cpCopy, cpCopy.vIter);    std::swap(temp, dst); } // VISCOSITY SOLVE
+                  if(mFieldUI->applyGravity)  { fluidExternalForces(*temp, cpCopy); }                                         // EXTERNAL FORCES (in-place)
+                  if(mFieldUI->updateP2)      { fluidPressure (*temp, *dst, cpCopy, cpCopy.pIter2);   std::swap(temp, dst); } // PRESSURE SOLVE (2)
                 }
-              else
-               {
-                 mInputV->clear();  mInputP->clear();
-                 mInputQn->clear(); mInputQp->clear(); mInputQnv->clear(); mInputQpv->clear();
-                 mInputE->clear();  mInputB->clear();
-               }
+  
+              // decay input signals (blend over tim)e
               
               std::swap(temp, dst); // (un-)swap final result back into dst
               if(!DESTROY_LAST_STATE) { std::swap(mTempState, temp); } // use other state as new temp (pointer changes if number of steps is odd)}
@@ -1106,8 +1045,38 @@ void SimWindow::update()
             }
           else
             {
-              mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
-              mInputQnv->clear(); mInputQpv->clear(); mInputE->clear(); mInputB->clear();
+              // mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
+              // mInputQnv->clear(); mInputQpv->clear(); mInputE->clear(); mInputB->clear();
+              
+              if(!mForcePause && mFieldUI->inputDecay)
+              //   { // add to intermediary source fields
+              //     addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB,
+              //               s.pen, cpCopy, cpCopy.u.dt);
+              //   }
+              // else
+                {
+                  // (NOTE: remove added sources to avoid persistent lumps building up)
+                  // fluid input
+                  addSignal(*mInputV,   temp->v,   cpCopy, cpCopy.u.dt); // add V input signal
+                  addSignal(*mInputP,   temp->p,   cpCopy, cpCopy.u.dt); // add P input signal
+                  // EM input
+                  addSignal(*mInputQn,  temp->Qn,  cpCopy, cpCopy.u.dt); // add Qn input signal
+                  addSignal(*mInputQp,  temp->Qp,  cpCopy, cpCopy.u.dt); // add Qp input signal
+                  addSignal(*mInputQnv, temp->Qnv, cpCopy, cpCopy.u.dt); // add Qnv input signal
+                  addSignal(*mInputQpv, temp->Qpv, cpCopy, cpCopy.u.dt); // add Qpv input signal
+                  addSignal(*mInputE,   temp->E,   cpCopy, cpCopy.u.dt); // add E input signal
+                  addSignal(*mInputB,   temp->B,   cpCopy, cpCopy.u.dt); // add B input signal
+                  if(mFieldUI->inputDecay)
+                    {
+                      decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
+                      decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
+                    }
+                  else
+                    {
+                      mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
+                      mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
+                    }
+                }
             }
         }
       if(newFrameRender) { cudaRender(cpCopy); }
@@ -1117,10 +1086,10 @@ void SimWindow::update()
 void SimWindow::cudaRender(FluidParams<CFT> &cp)
 {
   //// render field
-  FluidField<CFT> *renderSrc = reinterpret_cast<FluidField<CFT>*>(mStates.back());
+  FluidField<CFT> *src = reinterpret_cast<FluidField<CFT>*>(mStates.back());
   // render 2D EM views
-  if(mDisplayUI->showEMView)  { mEMTex.clear();  renderFieldEM  (*renderSrc,     mEMTex,  mParams.rp, mParams.cp); }
-  if(mDisplayUI->showMatView) { mMatTex.clear(); renderFieldMat (renderSrc->mat, mMatTex, mParams.rp, mParams.cp); }
+  if(mDisplayUI->showEMView)  { mEMTex.clear();  renderFieldEM (*src, mEMTex,   mEMView.rp,  mParams.cp); } // mParams.rp, mParams.cp); }
+  if(mDisplayUI->showMatView) { mMatTex.clear(); renderFieldEM (*src, mMatTex,  mMatView.rp, mParams.cp); } // mParams.rp, mParams.cp); }
   // render 3D EM view
   if(mDisplayUI->show3DView)
     {
@@ -1128,9 +1097,9 @@ void SimWindow::cudaRender(FluidParams<CFT> &cp)
         { // render file output separately (likely different aspect ratio)
           mGlCamera = mCamera;
           mGlCamera.aspect = m3DGlView.r.aspect();
-          m3DGlTex.clear(); raytraceFieldEM(*renderSrc, m3DGlTex, mGlCamera, mParams.rp, cp);
+          m3DGlTex.clear(); raytraceFieldEM(*src, m3DGlTex, mGlCamera, mParams.rp, cp);
         }
-      m3DTex.clear(); raytraceFieldEM(*renderSrc, m3DTex, mCamera, mParams.rp, cp);
+      m3DTex.clear(); raytraceFieldEM(*src, m3DTex, mCamera, mParams.rp, cp);
     }
   if(mNewSimFrame) { mNewFrameOut = true; }
   mNewSimFrame = false;
@@ -1548,7 +1517,7 @@ void SimWindow::handleInput(const Vec2f &frameSize)
     }
   else
     {
-      if(mParams.verbose) { std::cout << "====> (SimWindow::handleInput) SIG NOT ACTIVE\n"; }
+      // if(mParams.verbose) { std::cout << "====> (SimWindow::handleInput) SIG NOT ACTIVE\n"; }
       if(sigPen->startTime >= 0.0) // signal stopped
         {
           std::cout << "====> (SimWindow::handleInput) NEW SIG REMOVE EVENT\n";
@@ -1801,7 +1770,7 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view, const Rect<CFT> &simVie
               if(lw > 0.001f && Vcol.w >= 0.001f)
                 {
                   float tipW = std::max(3.0f*lw, 10.0f);
-                  drawVector(mFieldDrawList, sp, dpV, Vcol, lw, tipW, tan(M_PI/3.0));
+                  drawVector2D(mFieldDrawList, sp, dpV, Vcol, lw, tipW, tan(M_PI/3.0));
                 }
             }
           if(mParams.vp.drawQnv)
@@ -1812,7 +1781,7 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view, const Rect<CFT> &simVie
               if(lw > 0.001f && Qnvcol.w >= 0.001f)
                 {
                   float tipW = std::max(3.0f*lw, 10.0f);
-                  drawVector(mFieldDrawList, sp, dpQnv, Qnvcol, lw, tipW, tan(M_PI/3.0));
+                  drawVector2D(mFieldDrawList, sp, dpQnv, Qnvcol, lw, tipW, tan(M_PI/3.0));
                 }
             }
           if(mParams.vp.drawQpv)
@@ -1823,7 +1792,7 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view, const Rect<CFT> &simVie
               if(lw > 0.001f && Qpvcol.w >= 0.001f)
                 {
                   float tipW = std::max(3.0f*lw, 10.0f);
-                  drawVector(mFieldDrawList, sp, dpQpv, Qpvcol, lw, tipW, tan(M_PI/3.0));
+                  drawVector2D(mFieldDrawList, sp, dpQpv, Qpvcol, lw, tipW, tan(M_PI/3.0));
                 }
             }
           if(mParams.vp.drawE)
@@ -1833,10 +1802,9 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view, const Rect<CFT> &simVie
               float lw   = std::min(lw0*mParams.vp.lwE, length(dpE));
               if(lw > 0.001f && Ecol.w >= 0.001f)
                 {
-                  Vec2f spE  = view.simToScreen2D((v.sp // - 0.5f
-                                                   )*mUnits.dL, simView);
+                  Vec2f spE  = view.simToScreen2D((v.sp - 0.5f)*mUnits.dL, simView);
                   float tipW = std::max(3.0f*lw, 10.0f);
-                  drawVector(mFieldDrawList, spE, dpE, Ecol, lw, tipW, tan(M_PI/3.0));
+                  drawVector2D(mFieldDrawList, spE, dpE, Ecol, lw, tipW, tan(M_PI/3.0));
                 }
             }
           if(mParams.vp.drawB)
@@ -1846,9 +1814,9 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view, const Rect<CFT> &simVie
               float lw   = std::min(lw0*mParams.vp.lwB, length(dpB));
               if(lw > 0.001f && Bcol.w >= 0.001f)
                 {
-                  Vec2f spB  = view.simToScreen2D((v.sp + 0.5f)*mUnits.dL, simView);
+                  Vec2f spB  = view.simToScreen2D((v.sp)*mUnits.dL, simView);
                   float tipW = std::max(3.0f*lw, 10.0f);
-                  drawVector(mFieldDrawList, spB, dpB, Bcol, lw, tipW, tan(M_PI/3.0));
+                  drawVector2D(mFieldDrawList, spB, dpB, Bcol, lw, tipW, tan(M_PI/3.0));
                 }
             }
         }
@@ -1856,164 +1824,20 @@ void SimWindow::drawVectorField2D(ScreenView<CFT> &view, const Rect<CFT> &simVie
 }
 
 // overlay for 2D sim views
-void SimWindow::draw2DOverlay(const ScreenView<CFT> &view, const Rect<CFT> &simView)
+void SimWindow::draw2DOverlay(const ScreenView<CFT> &view, const Rect<CFT> &rSim)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   // draw axes at origin
   if(mDisplayUI->drawAxes)
-    {
-      float scale  = max(mParams.cp.fs)*mUnits.dL*0.25f;
-      float zScale = std::max(mParams.cp.fs.z*mUnits.dL*0.15f, scale/3.0f);
-      Vec2f tSize = ImGui::CalcTextSize("X");
-      float pad = 5.0f;
-      float zW0 = 1.0f; float zW1 = 10.0f; // width of visible z layer bar at min and max 
-      // X/Y
-      Vec2f WO0 = Vec2f(0,0); // origin
-      Vec2f So  = view.simToScreen2D(WO0, simView);
-      Vec2f Spx = view.simToScreen2D(WO0 + Vec2f(scale, 0), simView);
-      Vec2f Spy = view.simToScreen2D(WO0 + Vec2f(0, scale), simView);
-      drawList->AddLine(So, Spx, ImColor(X_COLOR), 2.0f);
-      drawList->AddLine(So, Spy, ImColor(Y_COLOR), 2.0f);
-      ImGui::PushFont(titleFontB);
-      drawList->AddText((Spx+So)/2.0f - Vec2f(tSize.x/2.0f, 0) + Vec2f(0, pad), ImColor(X_COLOR), "X");
-      drawList->AddText((Spy+So)/2.0f - Vec2f(tSize.x, tSize.y/2.0f) - Vec2f(2.0f*pad, 0), ImColor(Y_COLOR), "Y");
-
-      // Z
-      if(mParams.cp.fs.z > 1)
-        {
-          float zAngle = M_PI*4.0f/3.0f;
-          Vec2f zVec   = Vec2f(cos(zAngle), sin(zAngle));
-          Vec2f zVNorm = Vec2f(zVec.y, zVec.x);
-          Vec2f Spz    = view.simToScreen2D(WO0 + zScale*zVec, simView);
-          float zMin = mParams.rp.zRange.x/(float)(mParams.cp.fs.z-1);
-          float zMax = mParams.rp.zRange.y/(float)(mParams.cp.fs.z-1);
-          Vec2f SpzMin = view.simToScreen2D(WO0 + zScale*zVec*zMin, simView);
-          Vec2f SpzMax = view.simToScreen2D(WO0 + zScale*zVec*zMax, simView);
-          float zMinW = zW0*(1-zMin) + zW1*zMin;
-          float zMaxW = zW0*(1-zMax) + zW1*zMax;
-
-          drawList->AddLine(So, Spz, ImColor(Vec4f(1,1,1,0.5)), 1.0f); // grey line bg
-          drawList->AddLine(SpzMin, SpzMax, ImColor(Z_COLOR), 2.0f);        // colored over view range
-
-          // visible z range markers
-          drawList->AddLine(SpzMin + Vec2f(zMinW,0), SpzMin - Vec2f(zMinW,0), ImColor(Z_COLOR), 2.0f);
-          drawList->AddLine(SpzMax + Vec2f(zMaxW,0), SpzMax - Vec2f(zMaxW,0), ImColor(Z_COLOR), 2.0f);
-          std::stringstream ss;   ss << mParams.rp.zRange.x; std::string zMinStr = ss.str();
-          ss.str(""); ss.clear(); ss << mParams.rp.zRange.y; std::string zMaxStr = ss.str();
-          if(zMin != zMax) { drawList->AddText(SpzMin + Vec2f(zMinW+pad, 0), ImColor(Z_COLOR), zMinStr.c_str()); }
-          drawList->AddText(SpzMax + Vec2f(zMaxW+pad, 0), ImColor(Z_COLOR), zMaxStr.c_str());
-          drawList->AddText((Spz + So)/2.0f - tSize - Vec2f(pad,pad), ImColor(Z_COLOR), "Z");
-
-        }
-      ImGui::PopFont();
-    }
-
+    { ImGui::PushFont(titleFontB); drawAxes2D(view, rSim, mParams); ImGui::PopFont(); }
   // draw outline around field
   if(mDisplayUI->drawOutline)
-    {
-      Vec3f Wfp0 = Vec3f(mParams.cp.fp.x, mParams.cp.fp.y, mParams.cp.fp.z) * mUnits.dL;
-      Vec3f Wfs  = Vec3f(mParams.cp.fs.x, mParams.cp.fs.y, mParams.cp.fs.z) * mUnits.dL;
-      drawRect2D(view, mSimView2D, Vec2f(Wfp0.x, Wfp0.y), Vec2f(Wfp0.x+Wfs.x, Wfp0.y+Wfs.y), RADIUS_COLOR);
-    }
-
-  // draw positional axes of active signal pen
-  if(!isnan(mSigMPos) && !mParams.op.lockViews && !mForcePause)
-    {
-      Vec3f W01n  = Vec3f(mParams.cp.fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W01p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W10p  = Vec3f(mSigMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W10n  = Vec3f(mSigMPos.x, mParams.cp.fp.y, mSigMPos.z)*mUnits.dL;
-      // transform to screen space
-      Vec2f S01n = view.simToScreen2D(W01n, simView);
-      Vec2f S01p = view.simToScreen2D(W01p, simView);
-      Vec2f S10n = view.simToScreen2D(W10n, simView);
-      Vec2f S10p = view.simToScreen2D(W10p, simView);
-      // X guides
-      drawList->AddLine(S01n, S01p, ImColor(GUIDE_COLOR), 2.0f);
-      drawList->AddCircleFilled(S01n, 3, ImColor(X_COLOR), 6);
-      drawList->AddCircleFilled(S01p, 3, ImColor(X_COLOR), 6);
-      // Y guides
-      drawList->AddLine(S10n, S10p, ImColor(GUIDE_COLOR), 2.0f);
-      drawList->AddCircleFilled(S10n, 3, ImColor(Y_COLOR), 6);
-      drawList->AddCircleFilled(S10p, 3, ImColor(Y_COLOR), 6);
-
-      // draw intersected radii (lenses)
-      SignalPen<CFT> *sigPen = activeSigPen();
-      Vec3f WR0 = ((sigPen->cellAlign ? floor(mSigMPos) : mSigMPos)
-                   + sigPen->rDist*sigPen->sizeMult*sigPen->xyzMult/2.0f)*mUnits.dL;
-      Vec3f WR1 = ((sigPen->cellAlign ? floor(mSigMPos) : mSigMPos)
-                   - sigPen->rDist*sigPen->sizeMult*sigPen->xyzMult/2.0f)*mUnits.dL;
-      Vec2f SR0 = Vec2f(WR0.x, WR0.y);
-      Vec2f SR1 = Vec2f(WR1.x, WR1.y);
-
-      // centers
-      drawList->AddCircleFilled(view.simToScreen2D(SR0, simView), 3, ImColor(RADIUS_COLOR), 6);
-      drawList->AddCircleFilled(view.simToScreen2D(SR1, simView), 3, ImColor(RADIUS_COLOR), 6);
-
-      // outlines
-      Vec3f r0_3 = sigPen->radius0 * mUnits.dL * sigPen->sizeMult*sigPen->xyzMult;
-      Vec3f r1_3 = sigPen->radius1 * mUnits.dL * sigPen->sizeMult*sigPen->xyzMult;
-      Vec2f r0 = Vec2f(r0_3.x, r0_3.y); Vec2f r1 = Vec2f(r1_3.x, r1_3.y);
-      if(sigPen->square)
-        {
-          drawRect2D(view, mSimView2D, SR0-r0, SR0+r0, RADIUS_COLOR);
-          drawRect2D(view, mSimView2D, SR1-r1, SR1+r1, RADIUS_COLOR);
-        }
-      else
-        {
-          drawEllipse2D(view, mSimView2D, SR0, r0, RADIUS_COLOR);
-          drawEllipse2D(view, mSimView2D, SR1, r1, RADIUS_COLOR);
-        }
-    }
-
-  // draw positional axes of active material pen
-  if(!isnan(mMatMPos) && !mParams.op.lockViews && !mForcePause)
-    { // world points
-      Vec3f W01n  = Vec3f(mParams.cp.fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W01p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W10p  = Vec3f(mMatMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W10n  = Vec3f(mMatMPos.x, mParams.cp.fp.y, mMatMPos.z)*mUnits.dL;
-      // transform to screen space
-      Vec2f S01n = view.simToScreen2D(W01n, simView);
-      Vec2f S01p = view.simToScreen2D(W01p, simView);
-      Vec2f S10n = view.simToScreen2D(W10n, simView);
-      Vec2f S10p = view.simToScreen2D(W10p, simView);
-      // X guides
-      drawList->AddLine(S01n, S01p, ImColor(GUIDE_COLOR), 2.0f);
-      drawList->AddCircleFilled(S01n, 3, ImColor(X_COLOR), 6);
-      drawList->AddCircleFilled(S01p, 3, ImColor(X_COLOR), 6);
-      // Y guides
-      drawList->AddLine(S10n, S10p, ImColor(GUIDE_COLOR), 2.0f);
-      drawList->AddCircleFilled(S10n, 3, ImColor(Y_COLOR), 6);
-      drawList->AddCircleFilled(S10p, 3, ImColor(Y_COLOR), 6);
-
-      // draw intersected radii (lenses)
-      MaterialPen<CFT> *matPen = activeMatPen();
-      Vec3f WR0 = ((matPen->cellAlign ? floor(mMatMPos) : mMatMPos)
-                   + matPen->rDist*matPen->sizeMult*matPen->xyzMult/2.0f)*mUnits.dL;
-      Vec3f WR1 = ((matPen->cellAlign ? floor(mMatMPos) : mMatMPos)
-                   - matPen->rDist*matPen->sizeMult*matPen->xyzMult/2.0f)*mUnits.dL;
-      Vec2f SR0 = Vec2f(WR0.x, WR0.y);
-      Vec2f SR1 = Vec2f(WR1.x, WR1.y);
-
-      // centers
-      drawList->AddCircleFilled(view.simToScreen2D(SR0, simView), 3, ImColor(RADIUS_COLOR), 6);
-      drawList->AddCircleFilled(view.simToScreen2D(SR1, simView), 3, ImColor(RADIUS_COLOR), 6);
-
-      // outlines
-      Vec3f r0_3 = matPen->radius0 * mUnits.dL * matPen->sizeMult*matPen->xyzMult;
-      Vec3f r1_3 = matPen->radius1 * mUnits.dL * matPen->sizeMult*matPen->xyzMult;
-      Vec2f r0 = Vec2f(r0_3.x, r0_3.y); Vec2f r1 = Vec2f(r1_3.x, r1_3.y);
-      if(matPen->square)
-        {
-          drawRect2D(view, mSimView2D, SR0-r0, SR0+r0, RADIUS_COLOR);
-          drawRect2D(view, mSimView2D, SR1-r1, SR1+r1, RADIUS_COLOR);
-        }
-      else
-        {
-          drawEllipse2D(view, mSimView2D, SR0, r0, RADIUS_COLOR);
-          drawEllipse2D(view, mSimView2D, SR1, r1, RADIUS_COLOR);
-        }
+    { drawFieldOutline2D(view, rSim, mParams); }
+  if(!mParams.op.lockViews && !mForcePause)
+    { // draw positional axes/outline of active signal pen
+      drawPenOutline2D(view, rSim, mParams, activeSigPen(), mSigMPos);
+      // draw positional axes/outline of active material pen
+      drawPenOutline2D(view, rSim, mParams, activeMatPen(), mMatMPos);
     }
 }
 
@@ -2021,158 +1845,19 @@ void SimWindow::draw2DOverlay(const ScreenView<CFT> &view, const Rect<CFT> &simV
 void SimWindow::draw3DOverlay(const ScreenView<CFT> &view, const Camera<CFT> &simView)
 {
   ImDrawList *drawList = ImGui::GetWindowDrawList();
-  Vec2f mpos = ImGui::GetMousePos();
-  // Vec2f aspect = Vec2f(view.r.aspect(), 1.0);
-  // Vec2f vSize = view.r.size();
-  // Vec2f aOffset = Vec2f(vSize.x/aspect.x - vSize.x, vSize.y/aspect.y - vSize.y)/2.0f;
-
   mCamera.aspect = view.r.aspect();
   mCamera.calculate();
-
   // draw X/Y/Z axes at origin (R/G/B)
   if(mDisplayUI->drawAxes)
-    {
-      float scale = max(mParams.cp.fs)*mUnits.dL*0.25f;
-      Vec3f WO0 = Vec3f(0,0,0); // origin
-      Vec3f Wpx = WO0 + Vec3f(scale, 0, 0);
-      Vec3f Wpy = WO0 + Vec3f(0, scale, 0);
-      Vec3f Wpz = WO0 + Vec3f(0, 0, scale);
-      // transform to screen space
-      bool oClipped = false; bool xClipped = false; bool yClipped = false; bool zClipped = false;
-      Vec4f So  = mCamera.worldToView(WO0, &oClipped); Vec4f Spx = mCamera.worldToView(Wpx, &xClipped);
-      Vec4f Spy = mCamera.worldToView(Wpy, &yClipped); Vec4f Spz = mCamera.worldToView(Wpz, &zClipped);
-      // draw axes
-      if(!oClipped || !xClipped) { drawList->AddLine(view.toScreen(mCamera.nearClip(So, Spx)), view.toScreen(mCamera.nearClip(Spx, So)), ImColor(X_COLOR), 2.0f); }
-      if(!oClipped || !yClipped) { drawList->AddLine(view.toScreen(mCamera.nearClip(So, Spy)), view.toScreen(mCamera.nearClip(Spy, So)), ImColor(Y_COLOR), 2.0f); }
-      if(!oClipped || !zClipped) { drawList->AddLine(view.toScreen(mCamera.nearClip(So, Spz)), view.toScreen(mCamera.nearClip(Spz, So)), ImColor(Z_COLOR), 2.0f); }
-    }
-
+    { drawAxes3D(view, mCamera, mParams); }
   // draw outline around field
   if(mDisplayUI->drawOutline)
-    {
-      Vec3f Wp = Vec3f(mParams.cp.fp.x, mParams.cp.fp.y, mParams.cp.fp.z) * mUnits.dL;
-      Vec3f Ws = Vec3f(mParams.cp.fs.x, mParams.cp.fs.y, mParams.cp.fs.z) * mUnits.dL;
-      drawRect3D(view, mCamera, Wp, Wp+Ws, OUTLINE_COLOR);
-    }
-
-  // draw positional axes of active signal pen
-  if(!isnan(mSigMPos) && !mParams.op.lockViews && !mForcePause)
-    {
-      Vec3f W001n  = Vec3f(mParams.cp.fp.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W001p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mSigMPos.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W010p  = Vec3f(mSigMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W010n  = Vec3f(mSigMPos.x, mParams.cp.fp.y, mSigMPos.z)*mUnits.dL;
-      Vec3f W100n  = Vec3f(mSigMPos.x, mSigMPos.y, mParams.cp.fp.x)*mUnits.dL;
-      Vec3f W100p  = Vec3f(mSigMPos.x, mSigMPos.y, mParams.cp.fp.z + mParams.cp.fs.z)*mUnits.dL;
-      // transform to screen space
-      bool C001n = false; bool C001p = false; bool C010n = false; bool C010p = false; bool C100n = false; bool C100p = false;
-      Vec4f S001n = mCamera.worldToView(W001n, &C001n); Vec4f S001p = mCamera.worldToView(W001p, &C001p);
-      Vec4f S010n = mCamera.worldToView(W010n, &C010n); Vec4f S010p = mCamera.worldToView(W010p, &C010p);
-      Vec4f S100n = mCamera.worldToView(W100n, &C100n); Vec4f S100p = mCamera.worldToView(W100p, &C100p);
-      if(!C001n || !C001p)
-        { // X guides
-          drawList->AddLine(view.toScreen(mCamera.nearClip(S001n, S001p)), view.toScreen(mCamera.nearClip(S001p, S001n)), ImColor(GUIDE_COLOR), 2.0f);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S001n)), 3, ImColor(X_COLOR), 6);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S001p)), 3, ImColor(X_COLOR), 6);
-        }
-      if(!C010n || !C010p)
-        { // Y guides
-          drawList->AddLine(view.toScreen(mCamera.nearClip(S010n, S010p)), view.toScreen(mCamera.nearClip(S010p, S010n)), ImColor(GUIDE_COLOR), 2.0f);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S010n)), 3, ImColor(Y_COLOR), 6);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S010p)), 3, ImColor(Y_COLOR), 6);
-        }
-      if(!C100n || !C100p)
-        { // Z guides
-          drawList->AddLine(view.toScreen(mCamera.nearClip(S100n, S100p)), view.toScreen(mCamera.nearClip(S100p, S100n)), ImColor(GUIDE_COLOR), 2.0f);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S100n)), 3, ImColor(Z_COLOR), 6);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S100p)), 3, ImColor(Z_COLOR), 6);
-        }
-
-      // draw intersected radii (lenses)
-      SignalPen<CFT> *sigPen = activeSigPen();
-      float S = 2.0*tan(mCamera.fov/2.0f*M_PI/180.0f);
-      Vec3f WR0 = ((sigPen->cellAlign ? floor(mSigMPos) : mSigMPos)
-                   + sigPen->rDist*sigPen->sizeMult*sigPen->xyzMult/2.0f)*mUnits.dL;
-      Vec3f WR1 = ((sigPen->cellAlign ? floor(mSigMPos) : mSigMPos)
-                   - sigPen->rDist*sigPen->sizeMult*sigPen->xyzMult/2.0f)*mUnits.dL;
-      bool CR0 = false; bool CR1 = false;
-      Vec4f SR0 = mCamera.worldToView(WR0, &CR0); Vec4f SR1 = mCamera.worldToView(WR1, &CR1);
-      // centers
-      drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(SR0)), 3, ImColor(RADIUS_COLOR), 6);
-      drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(SR1)), 3, ImColor(RADIUS_COLOR), 6);
-
-      Vec3f r0 = Vec3f(S,S,1)*sigPen->radius0 * mUnits.dL * sigPen->sizeMult*sigPen->xyzMult;
-      Vec3f r1 = Vec3f(S,S,1)*sigPen->radius1 * mUnits.dL * sigPen->sizeMult*sigPen->xyzMult;
-      if(sigPen->square)
-        {
-          drawRect3D(view, mCamera, WR0-r0, WR0+r0, RADIUS_COLOR);
-          drawRect3D(view, mCamera, WR1-r1, WR1+r1, RADIUS_COLOR);
-        }
-      else
-        {
-          drawEllipse3D(view, mCamera, WR0, r0, RADIUS_COLOR);
-          drawEllipse3D(view, mCamera, WR1, r1, RADIUS_COLOR);
-        }
-    }
-
-  // draw positional axes of active material pen
-  if(!isnan(mMatMPos) && !mParams.op.lockViews && !mForcePause)
-    {
-      Vec3f W001n  = Vec3f(mParams.cp.fp.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W010n  = Vec3f(mMatMPos.x, mParams.cp.fp.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W100n  = Vec3f(mMatMPos.x, mMatMPos.y, mParams.cp.fp.z)*mUnits.dL;
-      Vec3f W001p  = Vec3f(mParams.cp.fp.x + mParams.cp.fs.x, mMatMPos.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W010p  = Vec3f(mMatMPos.x, mParams.cp.fp.y + mParams.cp.fs.y, mMatMPos.z)*mUnits.dL;
-      Vec3f W100p  = Vec3f(mMatMPos.x, mMatMPos.y, mParams.cp.fp.z + mParams.cp.fs.z)*mUnits.dL;
-      // transform to screen space
-      bool C001n = false; bool C010n = false; bool C100n = false; bool C001p = false; bool C010p = false; bool C100p = false;
-      Vec4f S001n = mCamera.worldToView(W001n, &C001n); Vec4f S010n = mCamera.worldToView(W010n, &C010n);
-      Vec4f S100n = mCamera.worldToView(W100n, &C100n); Vec4f S001p = mCamera.worldToView(W001p, &C001p);
-      Vec4f S010p = mCamera.worldToView(W010p, &C010p); Vec4f S100p = mCamera.worldToView(W100p, &C100p);
-      if(!C001n || !C001p)
-        {
-          drawList->AddLine(view.toScreen(mCamera.nearClip(S001n, S001p)), view.toScreen(mCamera.nearClip(S001p, S001n)), ImColor(GUIDE_COLOR), 2.0f);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S001n)), 3, ImColor(X_COLOR), 6);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S001p)), 3, ImColor(X_COLOR), 6);
-        }
-      if(!C010n || !C010p)
-        {
-          drawList->AddLine(view.toScreen(mCamera.nearClip(S010n, S010p)), view.toScreen(mCamera.nearClip(S010p, S010n)), ImColor(GUIDE_COLOR), 2.0f);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S010n)), 3, ImColor(Y_COLOR), 6);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S010p)), 3, ImColor(Y_COLOR), 6);
-        }
-      if(!C100n || !C100p)
-        {
-          drawList->AddLine(view.toScreen(mCamera.nearClip(S100n, S100p)), view.toScreen(mCamera.nearClip(S100p, S100n)), ImColor(GUIDE_COLOR), 2.0f);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S100n)), 3, ImColor(Z_COLOR), 6);
-          drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(S100p)), 3, ImColor(Z_COLOR), 6);
-        }
-
-      // draw intersected radii (lenses)
-      MaterialPen<CFT> *matPen = activeMatPen();
-      float S = 2.0*tan(mCamera.fov/2.0f*M_PI/180.0f);
-      Vec3f WR0 = ((matPen->cellAlign ? floor(mMatMPos) : mMatMPos)
-                   + matPen->rDist*matPen->sizeMult*matPen->xyzMult/2.0f)*mUnits.dL;
-      Vec3f WR1 = ((matPen->cellAlign ? floor(mMatMPos) : mMatMPos)
-                   - matPen->rDist*matPen->sizeMult*matPen->xyzMult/2.0f)*mUnits.dL;
-      bool CR0 = false; bool CR1 = false;
-      Vec4f SR0 = mCamera.worldToView(WR0, &CR0); Vec4f SR1 = mCamera.worldToView(WR1, &CR1);
-      // centers
-      drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(SR0)), 3, ImColor(RADIUS_COLOR), 6);
-      drawList->AddCircleFilled(view.toScreen(mCamera.vNormalize(SR1)), 3, ImColor(RADIUS_COLOR), 6);
-
-      Vec3f r0 = Vec3f(S,S,1)*matPen->radius0 * mUnits.dL * matPen->sizeMult*matPen->xyzMult;
-      Vec3f r1 = Vec3f(S,S,1)*matPen->radius1 * mUnits.dL * matPen->sizeMult*matPen->xyzMult;
-      if(matPen->square)
-        {
-          drawRect3D(view, mCamera, WR0-r0, WR0+r0, RADIUS_COLOR);
-          drawRect3D(view, mCamera, WR1-r1, WR1+r1, RADIUS_COLOR);
-        }
-      else
-        {
-          drawEllipse3D(view, mCamera, WR0, r0, RADIUS_COLOR);
-          drawEllipse3D(view, mCamera, WR1, r1, RADIUS_COLOR);
-        }
+    { drawFieldOutline3D(view, mCamera, mParams); }
+  if(!mParams.op.lockViews && !mForcePause)
+    { // draw guide/outline for active signal pen
+      drawPenOutline3D(view, mCamera, mParams, activeSigPen(), mSigMPos);
+      // draw guide/outline for active material pen
+      drawPenOutline3D(view, mCamera, mParams, activeMatPen(), mMatMPos);
     }
 }
 
@@ -2227,11 +1912,11 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
   // adjust aspect ratios if window size has changed (double precision used due to noticeable floating point error while resizing continuously (?))
   //   TODO: improve
   double aRatio  = (double)mEMView.r.aspect()/(double)mSimView2D.aspect();
-  Rect2d newSimView = mSimView2D; // Rect2d(Vec2d(mSimView2D.p1), Vec2d(mSimView2D.p2));
+  Rect2d newSimView = mSimView2D;
   double fAspect =  (double)mParams.cp.fs.x/(double)mParams.cp.fs.y;
   if(mEMView.r.aspect() > fAspect) { newSimView.scaleX(aRatio); }
-  else                         { newSimView.scaleY(1.0/aRatio); }
-  mSimView2D = newSimView; //Rect<CFT>(Vector<CFT,2>(newSimView.p1), Vector<CFT,2>(newSimView.p2));
+  else                             { newSimView.scaleY(1.0/aRatio); }
+  mSimView2D = newSimView;
   
   // update 3D texture sizes
   int2 vSize3D = int2{(int)view3D->r.size().x, (int)view3D->r.size().y};
@@ -2248,110 +1933,115 @@ void SimWindow::render(const Vec2f &frameSize, const std::string &id)
                              ImGuiWindowFlags_NoScrollbar     | ImGuiWindowFlags_NoScrollWithMouse |
                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus );
   if(ImGui::BeginChild(("##simView-"+id).c_str(), frameSize, false, wFlags))
-  {
-    // EM view
-    if(mDisplayUI->showEMView)
-      {
-        ImGui::SetCursorScreenPos(mEMView.r.p1);
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, SIM_BG_COLOR);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
-        if(ImGui::BeginChild("##emView", mEMView.r.size(), true, wFlags))
+    {
+      // EM view
+      if(mDisplayUI->showEMView)
         {
-          ImGui::SetCursorPos(Vec2f(10,10));
-          ImGui::PushFont(titleFontB);
-          ImGui::TextUnformatted("E/M");
-          ImGui::PopFont();
+          ImGui::SetCursorScreenPos(mEMView.r.p1);
+          ImGui::PushStyleColor(ImGuiCol_ChildBg, SIM_BG_COLOR);
+          ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
+          if(ImGui::BeginChild("##emView", mEMView.r.size(), true, wFlags))
+            {
+              ImGui::SetCursorPos(Vec2f(10,10));
+              ImGui::PushFont(titleFontB); ImGui::TextUnformatted("E/M"); ImGui::PopFont();
 
-          mFieldDrawList = ImGui::GetWindowDrawList();
-          Vec2f fp = Vec2f(mParams.cp.fp.x, mParams.cp.fp.y);
-          Vec2f fScreenPos  = mEMView.simToScreen2D(fp, mSimView2D);
-          Vec2f fCursorPos  = mEMView.simToScreen2D(fp + Vec2f(0.0f, mParams.cp.fs.y*mUnits.dL), mSimView2D);
-          Vec2f fScreenSize = mEMView.simToScreen2D(makeV<CFV3>(mParams.cp.fs)*mUnits.dL, mSimView2D, true);
-          Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
-          mEMTex.bind();
-          ImGui::SetCursorScreenPos(fCursorPos);
-          ImGui::Image(reinterpret_cast<ImTextureID>(mEMTex.texId()), fScreenSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
-          mEMTex.release();
+              mFieldDrawList = ImGui::GetWindowDrawList();
+              Vec2f fp = Vec2f(mParams.cp.fp.x, mParams.cp.fp.y);
+              Vec2f fScreenPos  = mEMView.simToScreen2D(fp, mSimView2D);
+              Vec2f fCursorPos  = mEMView.simToScreen2D(fp + Vec2f(0.0f, mParams.cp.fs.y*mUnits.dL), mSimView2D);
+              Vec2f fScreenSize = mEMView.simToScreen2D(makeV<CFV3>(mParams.cp.fs)*mUnits.dL, mSimView2D, true);
+              Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
+              mEMTex.bind();
+              ImGui::SetCursorScreenPos(fCursorPos);
+              ImGui::Image(reinterpret_cast<ImTextureID>(mEMTex.texId()), fScreenSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
+              mEMTex.release();
+              
+              if(!mParams.op.lockViews && !mForcePause && (mEMView.hovered || !mParams.vp.mouseRadius)) { drawVectorField2D(mEMView, mSimView2D); }
+              draw2DOverlay(mEMView, mSimView2D);
 
-          if(!mParams.op.lockViews && !mForcePause && (mEMView.hovered || !mParams.vp.mouseRadius)) { drawVectorField2D(mEMView, mSimView2D); }
-          draw2DOverlay(mEMView, mSimView2D);
+              ImGui::SetCursorPos(mEMView.r.size() - 100);
+              mEMView.drawMenu();
+
+            }
+          
+          ImGui::EndChild();
+          ImGui::PopStyleVar();
+          ImGui::PopStyleColor();
         }
-        ImGui::EndChild();
-        ImGui::PopStyleVar();
-        ImGui::PopStyleColor();
-      }
+    
 
-    // Material view
-    if(mDisplayUI->showMatView)
-      {
-        ImGui::SetCursorScreenPos(mMatView.r.p1);
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, SIM_BG_COLOR);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
-        if(ImGui::BeginChild("##matView", mMatView.r.size(), true, wFlags))
+      // Material view
+      if(mDisplayUI->showMatView)
         {
-          ImGui::SetCursorPos(Vec2f(10,10));
-          ImGui::PushFont(titleFontB);
-          ImGui::TextUnformatted("Material");
-          ImGui::PopFont();
+          ImGui::SetCursorScreenPos(mMatView.r.p1);
+          ImGui::PushStyleColor(ImGuiCol_ChildBg, SIM_BG_COLOR);
+          ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
+          if(ImGui::BeginChild("##matView", mMatView.r.size(), true, wFlags))
+            {
+              ImGui::SetCursorPos(Vec2f(10,10));
+              ImGui::PushFont(titleFontB); ImGui::TextUnformatted("Material"); ImGui::PopFont();
 
-          mFieldDrawList = ImGui::GetWindowDrawList();
-          Vec2f fp = Vec2f(mParams.cp.fp.x, mParams.cp.fp.y);
-          Vec2f fScreenPos  = mMatView.simToScreen2D(fp, mSimView2D);
-          Vec2f fCursorPos  = mMatView.simToScreen2D(fp + Vec2f(0.0f, mParams.cp.fs.y*mUnits.dL), mSimView2D);
-          Vec2f fScreenSize = mMatView.simToScreen2D(makeV<CFV3>(mParams.cp.fs)*mUnits.dL, mSimView2D, true);
-          Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
-          mMatTex.bind();
-          ImGui::SetCursorScreenPos(fCursorPos);
-          ImGui::Image(reinterpret_cast<ImTextureID>(mMatTex.texId()), fScreenSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
-          mMatTex.release();
+              mFieldDrawList = ImGui::GetWindowDrawList();
+              Vec2f fp = Vec2f(mParams.cp.fp.x, mParams.cp.fp.y);
+              Vec2f fScreenPos  = mMatView.simToScreen2D(fp, mSimView2D);
+              Vec2f fCursorPos  = mMatView.simToScreen2D(fp + Vec2f(0.0f, mParams.cp.fs.y*mUnits.dL), mSimView2D);
+              Vec2f fScreenSize = mMatView.simToScreen2D(makeV<CFV3>(mParams.cp.fs)*mUnits.dL, mSimView2D, true);
+              Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
+              mMatTex.bind();
+              ImGui::SetCursorScreenPos(fCursorPos);
+              ImGui::Image(reinterpret_cast<ImTextureID>(mMatTex.texId()), fScreenSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
+              mMatTex.release();
+              
+              if(!mParams.op.lockViews && !mForcePause && mMatView.hovered) { drawVectorField2D(mMatView, mSimView2D); }
+              draw2DOverlay(mMatView, mSimView2D);
 
-          if(!mParams.op.lockViews && !mForcePause && mMatView.hovered) { drawVectorField2D(mMatView, mSimView2D); }
-          draw2DOverlay(mMatView, mSimView2D);
+              ImGui::SetCursorPos(mMatView.r.size() - 100);
+              mMatView.drawMenu();
+            }
+          ImGui::EndChild();
+          ImGui::PopStyleVar();
+          ImGui::PopStyleColor();
         }
-        ImGui::EndChild();
-        ImGui::PopStyleVar();
-        ImGui::PopStyleColor();
-      }
 
-    // Raytraced 3D view
-    if(mDisplayUI->show3DView)
-      {
-        ImGui::SetCursorScreenPos(view3D->r.p1);
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, SIM_BG_COLOR);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
-        if(ImGui::BeginChild("##3DView", view3D->r.size(), true, wFlags))
+      // Raytraced 3D view
+      if(mDisplayUI->show3DView)
         {
-          Vec2f aspect = Vec2f(1.0f, 1.0f);
-          // // TODO: show output frames in interactive view instead of rendering twice?
-          // if(mParams.op.active && id == "main")
-          //   {
-          //     aspect.x = 1.0f/(tex3D->size.x/(float)tex3D->size.y);
-          //     tex3D = &m3DGlTex;
-          //     aspect.x *= tex3D->size.x/(float)tex3D->size.y;
-          //   }
-          mFieldDrawList = ImGui::GetWindowDrawList();
-          Vec2f vSize = view3D->r.size()*aspect;
-          Vec2f diff = (view3D->r.size() - vSize);
+          ImGui::SetCursorScreenPos(view3D->r.p1);
+          ImGui::PushStyleColor(ImGuiCol_ChildBg, SIM_BG_COLOR);
+          ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Vec2f(0, 0));
+          if(ImGui::BeginChild("##3DView", view3D->r.size(), true, wFlags))
+            {
+              Vec2f aspect = Vec2f(1.0f, 1.0f);
+              // // TODO: show output frames in interactive view instead of rendering twice?
+              // if(mParams.op.active && id == "main")
+              //   {
+              //     aspect.x = 1.0f/(tex3D->size.x/(float)tex3D->size.y);
+              //     tex3D = &m3DGlTex;
+              //     aspect.x *= tex3D->size.x/(float)tex3D->size.y;
+              //   }
+              mFieldDrawList = ImGui::GetWindowDrawList();
+              Vec2f vSize = view3D->r.size()*aspect;
+              Vec2f diff = (view3D->r.size() - vSize);
 
-          Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
-          tex3D->bind();
-          ImGui::SetCursorScreenPos(view3D->r.p1 + diff/2.0f);
-          ImGui::Image(reinterpret_cast<ImTextureID>(tex3D->texId()), vSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
-          tex3D->release();
+              Vec2f t0(0.0f, 1.0f); Vec2f t1(1.0f, 0.0f);
+              tex3D->bind();
+              ImGui::SetCursorScreenPos(view3D->r.p1 + diff/2.0f);
+              ImGui::Image(reinterpret_cast<ImTextureID>(tex3D->texId()), vSize, t0, t1, ImColor(Vec4f(1,1,1,1)));
+              tex3D->release();
 
-          // makeVectorField3D(); // rendered separately (after ImGui frame)
-          draw3DOverlay(*view3D, mCamera);
+              // makeVectorField3D(); // rendered separately (after ImGui frame)
+              draw3DOverlay(*view3D, mCamera);
 
-          ImGui::SetCursorScreenPos(view3D->r.p1+Vec2f(10,10));
-          ImGui::PushFont(titleFontB);
-          ImGui::TextUnformatted("3D");
-          ImGui::PopFont();
+              ImGui::SetCursorScreenPos(view3D->r.p1+Vec2f(10,10));
+              ImGui::PushFont(titleFontB);
+              ImGui::TextUnformatted("3D");
+              ImGui::PopFont();
+            }
+          ImGui::EndChild();
+          ImGui::PopStyleVar();
+          ImGui::PopStyleColor();
         }
-        ImGui::EndChild();
-        ImGui::PopStyleVar();
-        ImGui::PopStyleColor();
-      }
-  }
+    }
   ImGui::EndChild();
 }
 
@@ -2421,12 +2111,9 @@ void SimWindow::draw(const Vec2f &frameSize)
     Vec2f bottomBarSize = mBottomTabs->getSize();
     Vec2f sigPenBarSize  = mSigPenBar->getSize();
     Vec2f matPenBarSize  = mMatPenBar->getSize();
-    Vec2f displaySize = (mFrameSize - //Vec2f(style.WindowPadding) -
-                         // Vec2f((mSideTabs->selected() >= 0 ? style.ItemSpacing.x : 0.0f),
-                         //       (mBottomTabs->selected() >= 0 ? style.ItemSpacing.y : 0.0f)) -
-                         style.ItemSpacing -
-                         Vec2f(sideBarSize.x + style.ItemSpacing.x,
-                               menuBarSize.y + sigPenBarSize.y + matPenBarSize.y + bottomBarSize.y + 3.0f*style.ItemSpacing.y));
+    Vec2f displaySize = (mFrameSize - style.ItemSpacing - Vec2f(sideBarSize.x + style.ItemSpacing.x,
+                                                                menuBarSize.y + sigPenBarSize.y + matPenBarSize.y + bottomBarSize.y +
+                                                                3.0f*style.ItemSpacing.y));
 
     mSigPenBar->setLength(displaySize.x);
     mMatPenBar->setLength(displaySize.x);
@@ -2472,7 +2159,7 @@ void SimWindow::draw(const Vec2f &frameSize)
         ImGui::PushClipRect(Vec2f(0,0), mFrameSize, false);
         ImGui::SetCursorPos(Vec2f(10.0f, 10.0f + menuBarSize.y));
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Vec4f(0.0f, 0.0f, 0.0f, 0.0f));
-        if(ImGui::BeginChild("##debugOverlay", displaySize, false, wFlags))
+        if(ImGui::BeginChild("##debugOverlay", displaySize, false, wFlags | ImGuiWindowFlags_NoInputs))
         {
           ImGui::Indent();
           ImGui::PushFont(titleFontB);
@@ -2525,12 +2212,12 @@ void SimWindow::draw(const Vec2f &frameSize)
 
 void SimWindow::postRender() // (CudaVbo vectors)
 {
-  // if(mVBuffer3D.allocated())
-  //   {
-  //     glDisable(GL_DEPTH_TEST);
-  //     mVBuffer3D.glShader->setUniform("VP", mCamera.glVP);
-  //     mVBuffer3D.draw();
-  //   }
+  if(mVBuffer3D.allocated())
+    {
+      // glDisable(GL_DEPTH_TEST);
+      // mVBuffer3D.glShader->setUniform("VP", mCamera.glVP);
+      // mVBuffer3D.draw();
+    }
 }
 
 
@@ -2620,7 +2307,7 @@ void SimWindow::renderToFile()
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,  0);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,  Vec2f(0, 0));
         ImGui::PushStyleColor(ImGuiCol_WindowBg, Vec4f(0.0f, 0.0f, 0.0f, 1.0f));
-        if(ImGui::Begin("##renderView", nullptr, wFlags)); // ImGui window covering full application window
+        if(ImGui::Begin("##renderView", nullptr, wFlags | ImGuiWindowFlags_NoInputs)); // ImGui window covering full application window
         {
           ImGui::SetCursorScreenPos(Vec2f(0.0f, 0.0f));
           ImGui::BeginGroup();

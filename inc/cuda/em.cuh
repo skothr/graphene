@@ -15,6 +15,18 @@
 #include "draw.cuh"
 
 
+
+template<typename T>
+struct EMParams : public FieldParams<T>
+{
+  int  rCoulomb     = 11;          // effective radius of Coulomb force
+  T    coulombMult  = 1.0;         // Coulomb force multiplier
+  T    coulombBlend = 0.5;         // blend D/E
+  int  divBIter     = 11;          // magnetic "pressure" iterations (to remove divergence)
+  
+  IntegrationType qIntegration = INTEGRATION_RK4; // charge velocity integration
+};
+
 //// EM FIELD ////
 template<typename T>
 class EMField : public FieldBase
@@ -28,14 +40,11 @@ public:
   Field<VT3> E;   // electric field
   Field<VT3> B;   // magnetic field
   Field<Material<T>> mat; // material
-
-  Field<VT3> gradQ; // gradient of Q
-  Field<T>   divE;  // divergence of E
-  Field<T>   divB;  // divergence of B
-  Field<T>   Ep;    // E presure (?)
-  Field<T>   Bp;    // B pressure (to remove divergence) --> ?
   
-  std::vector<FieldBase*> FIELDS {{&Qp, &Qn, &Qnv, &Qpv, &E, &B, &mat, &gradQ, &divE, &divB, &Bp}};
+  Field<T>   divB;  // divergence of B
+  Field<T>   Bp;    // B pressure (to remove divergence)
+  
+  std::vector<FieldBase*> FIELDS {{&Qp, &Qn, &Qnv, &Qpv, &E, &B, &mat, &divB, &Bp}};
   
   virtual bool create(int3 sz) override;
   virtual void destroy() override;
@@ -108,7 +117,7 @@ template<typename T> void updateCoulomb  (FluidField<T> &src, FluidField<T> &dst
 // calculate E from divergence of charge
 template<typename T> void chargePotential(FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp, int iter);
 // remove divergence from magnetic field
-template<typename T> void magneticCurl   (FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp, int iter);
+template<typename T> void updateDivB     (FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp, int iter);
 
 
 

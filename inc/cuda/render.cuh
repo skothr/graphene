@@ -226,25 +226,25 @@ struct RenderParams
                                        VT4{0.0, 0.0, 1.0, 1.0}, VT4{0.0, 0.0, 1.0, 1.0}, VT4{0.0, 0.0, 1.0, 1.0},                          // BN
                                        VT4{1.0, 0.0, 0.0, 1.0}, VT4{0.0, 1.0, 0.0, 1.0}, VT4{0.0, 0.0, 0.0, 1.0}, VT4{0.0, 0.0, 1.0, 1.0}, // ε,μ,σ,mat.n()
   };
-  T    rMults[RENDER_FLAG_COUNT]   = { 1.0,   1.0,  1.0,   1.0, // V,VX,VY,VZ
-                                       1.0,   1.0,  1.0,        // VMAG
-                                       1.0,   1.0,  1.0,        // VP
-                                       1.0,   1.0,  1.0,        // VN
-                                       1.0,   1.0,  1.0,   1.0, // P,PMAG,PP,PN
-                                       1.0,   1.0,  10.0, 10.0, // Q,QMAG,QP,QN
-                                       1.0,   1.0,  1.0,   1.0, // QV,QVX,QVY,QVZ
-                                       1.0,   1.0,  1.0,        // QVMAG
-                                       1.0,   1.0,  1.0,        // QVP
-                                       1.0,   1.0,  1.0,        // QVN
-                                       1.0,   1.0,  1.0,   1.0, // E,EX,EY,EZ
-                                       1.0,   1.0,  1.0,        // EMAG
-                                       1.0,   1.0,  1.0,        // EP
-                                       1.0,   1.0,  1.0,        // EN
-                                       1.0,   1.0,  1.0,   1.0, // B,BX,BY,BZ
-                                       1.0,   1.0,  1.0,        // BMAG
-                                       1.0,   1.0,  1.0,        // BP
-                                       1.0,   1.0,  1.0,        // BN
-                                       1.0,   1.0,  1.0,   1.0  // ε,μ,σ,mat.n()
+  T    rMults[RENDER_FLAG_COUNT]   = { 1.0, 1.0,  1.0,  1.0, // V,VX,VY,VZ
+                                       1.0, 1.0,  1.0,       // VMAG
+                                       1.0, 1.0,  1.0,       // VP
+                                       1.0, 1.0,  1.0,       // VN
+                                       1.0, 1.0,  1.0,  1.0, // P,PMAG,PP,PN
+                                       1.0, 1.0, 10.0, 10.0, // Q,QMAG,QP,QN
+                                       1.0, 1.0,  1.0,  1.0, // QV,QVX,QVY,QVZ
+                                       1.0, 1.0,  1.0,       // QVMAG
+                                       1.0, 1.0,  1.0,       // QVP
+                                       1.0, 1.0,  1.0,       // QVN
+                                       1.0, 1.0,  1.0,  1.0, // E,EX,EY,EZ
+                                       1.0, 1.0,  1.0,       // EMAG
+                                       1.0, 1.0,  1.0,       // EP
+                                       1.0, 1.0,  1.0,       // EN
+                                       1.0, 1.0,  1.0,  1.0, // B,BX,BY,BZ
+                                       1.0, 1.0,  1.0,       // BMAG
+                                       1.0, 1.0,  1.0,       // BP
+                                       1.0, 1.0,  1.0,       // BN
+                                       1.0, 1.0,  1.0,  1.0  // ε,μ,σ,mat.n()
   };
   bool rToggles[RENDER_FLAG_COUNT] = { false, false, false, false, // V,VX,VY,VZ
                                        false, false, false,        // VMAG
@@ -336,7 +336,7 @@ __device__ typename DimType<T, 4>::VEC_T renderCellAll(FluidField<T> &src, unsig
   const T   p   = src.p[i];
   const T   Qn  = src.Qn[i];
   const T   Qp  = src.Qp[i];
-  const VT3 Qv  = src.Qpv[i]+src.Qnv[i];
+  const VT3 Qv  = src.Qpv[i] - src.Qnv[i];
   const VT3 E   = src.E[i];
   const VT3 B   = src.B[i];
 

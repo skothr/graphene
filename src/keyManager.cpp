@@ -309,7 +309,7 @@ void KeyManager::drawKeyBinding(KeyBinding &kb, const KeyBinding &defaultKb)
   ImGuiStyle &style = ImGui::GetStyle();
   ImGui::BeginGroup();
   {
-    char info[256];
+    char info[256]; // (no "%*s" support in ImGui?)
     sprintf(info, "%*s   %*s   ", -mMaxNameLength, kb.name.c_str(), -mMaxKeyLength, kb.toString().c_str());
 
     // find maximum binding width (approximated for monospace font)
@@ -342,5 +342,8 @@ void KeyManager::drawKeyBinding(KeyBinding &kb, const KeyBinding &defaultKb)
   }
   ImGui::EndGroup();
   if(ImGui::IsItemHovered())
-    { ImGui::SetTooltip("%s", kb.description.c_str()); }
+    {
+     ImGui::SetTooltip("%s%s", kb.description.c_str(),
+                       (kb.flags & KEYBINDING_NUMERIC ? "\n --> Use the backslash key \\ to denote a numeric key [0-9]" : ""));
+    }
 }

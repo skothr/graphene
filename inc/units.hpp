@@ -19,7 +19,7 @@ struct UnitsInterface : public SettingForm
   UnitsInterface(Units<T> *u=nullptr, ImFont *sfont=nullptr)
     : units(u), superFont(sfont)
   {
-    auto *g = new SettingGroup("Units", "units", { }); add(g);
+    auto *g = new SettingGroup("Units", "units"); add(g);
     
     auto sDT = new Setting<T>("dt", "dt", &units->dt); g->add(sDT);
     sDT->setHelp("dt --> simulation timestep");

@@ -4,6 +4,8 @@
 #include "tools.hpp"
 #include "vector.hpp"
 #include "rect.hpp"
+#include "settingForm.hpp"
+#include "render.cuh"
 
 // simple flag type for mouse buttons 
 enum MouseButton
@@ -20,12 +22,20 @@ template<typename T>
 struct ScreenView
 {
   Rect2f r;
+  Rect2f rSim;
   bool         hovered  = false;
   MouseButton  clicked  = MOUSEBTN_NONE; // mouse buttons that were clicked
   int          mods     = 0;             // modifier keys that were held when clicked (GLFW_MOD_XXXX)
   Vec2f        clickPos;                 // screen position of click
   Vector<T, 3> mposSim;                  // sim position of click
   Vector<T, 3> mposFace;                 // face of cube mouse is over (e.g. <1,0,0> for +X face)
+  
+  RenderParams<T> rp;
+  SettingForm     renderSettings;
+  bool            settingsOpen = false;
+  std::string     name;
+
+  ScreenView();
   
   MouseButton clickBtns(MouseButton mask=MOUSEBTN_ALL) const { return (clicked & mask); }
   int         clickMods(int mask=0)                    const { return (mods    & mask); }
@@ -42,7 +52,89 @@ struct ScreenView
   Vec2f simToScreen2D(const Vec3f &pSim,    const Rect2f &simView, bool vector=false) const;
   Vec2f screenToSim2D(const Vec3f &pScreen, const Rect2f &simView, bool vector=false) const;
 
+  bool drawMenu();
+  
 };
+
+
+template<typename T>
+ScreenView<T>::ScreenView()
+{
+  // visualized render data
+  auto *sRSMP = new Setting<bool> ("Simple", "simple", &rp.simple); renderSettings.add(sRSMP);
+  sRSMP->setHelp("Hide extra options for a more compact interface and slightly faster performance");
+  
+  auto *sRCOF  = new Setting<float> ("Opacity",    "fOpacity",       &rp.fOpacity);      sRCOF->setFormat (MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCBRF = new Setting<float> ("Brightness", "fBrightness",    &rp.fBrightness);   sRCBRF->setFormat(MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCOS  = new Setting<float> ("Opacity",     "emOpacity",     &rp.emOpacity);     sRCOS->setFormat (MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCBRS = new Setting<float> ("Brightness",  "emBrightness",  &rp.emBrightness);  sRCBRS->setFormat(MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCOM  = new Setting<float> ("Opacity",     "matOpacity",    &rp.matOpacity);    sRCOM->setFormat (MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  auto *sRCBRM = new Setting<float> ("Brightness",  "matBrightness", &rp.matBrightness); sRCBRM->setFormat(MULT_SMALLSTEP, MULT_BIGSTEP, MULT_FORMAT);
+  SettingGroup *fDGroup   = new SettingGroup("Fluid",    "fRender",   { sRCBRF, sRCOF }); renderSettings.add(fDGroup);
+  fDGroup->setColumns(1);   fDGroup->setCollapsible(true);
+  SettingGroup *emDGroup  = new SettingGroup("EM",       "emRender",  { sRCBRS, sRCOS }); renderSettings.add(emDGroup);
+  emDGroup->setColumns(1);  emDGroup->setCollapsible(true);
+  SettingGroup *matDGroup = new SettingGroup("Material", "matRender", { sRCBRM, sRCOM }); renderSettings.add(matDGroup);
+  matDGroup->setColumns(1); matDGroup->setCollapsible(true);
+  
+  auto *g = fDGroup;
+  SettingGroup *subgroup = nullptr;
+  for(long long i = 0LL; i < RENDER_FLAG_COUNT; i++)
+    {
+      RenderFlags f = (RenderFlags)(1LL << i);
+      float4     *c = rp.getColor(f);
+      T          *m = rp.getMult(f);
+      
+      if     (f == FLUID_RENDER_EMOFFSET)  { g = emDGroup;  subgroup = nullptr; }
+      else if(f == FLUID_RENDER_MATOFFSET) { g = matDGroup; subgroup = nullptr; }
+      if(!c || !m) { std::cout << "====> WARNING: DisplayInterface skipping RenderFlag " << renderFlagName(f) << " (2^" << i << ")\n"; continue; }
+      
+      std::string name  = renderFlagName(f);
+      std::string id    = name + "(2^"+std::to_string(i)+")";
+      std::string idC   = id + "-color";
+      std::string idM   = id + "-mult";
+      
+      std::string gName = renderFlagGroupName(f);
+      if(gName.find("INVALID") == std::string::npos) // create new tree group (TODO --> tree)
+        { subgroup = new SettingGroup(gName, gName); g->add(subgroup); }
+      
+      auto sRFC = new ColorSetting("", idC, c); sRFC->setFormat(COLOR_SMALLSTEP, COLOR_BIGSTEP, COLOR_FORMAT);
+      auto sRFM = new Setting<T>  ("", idM, m); sRFM->setFormat(MULT_SMALLSTEP,  MULT_BIGSTEP,  MULT_FORMAT);
+      
+      SettingGroup *rfg = new SettingGroup(name, id, { sRFC, sRFM });
+      rfg->setHorizontal(true); rfg->setColumns(2); rfg->setToggle(rp.getToggle(f));
+      rfg->setVisibleCallback([f, this]() -> bool { return ((RenderParams<T>::MAIN & f) || !rp.simple); });
+      (subgroup ? subgroup : g)->add(rfg);
+    }
+}
+
+template<typename T>
+bool ScreenView<T>::drawMenu()
+{
+  bool changed = false;
+
+  std::string menuName = "##popup-" + name;
+  if(ImGui::Button(("Settings##"+name).c_str()))
+    {
+      ImGui::OpenPopup(menuName.c_str());
+      ImGui::SetNextWindowPos(ImGui::GetMousePos());
+      ImGui::SetNextWindowSize(renderSettings.getSize());
+    }
+
+  ImGuiWindowFlags popupFlags = (ImGuiWindowFlags_NoDecoration |
+                                 ImGuiWindowFlags_NoCollapse   |
+                                 ImGuiWindowFlags_NoMove);
+  if(ImGui::BeginPopup(menuName.c_str(), popupFlags))
+    {
+      changed |renderSettings.draw();
+      settingsOpen = true;
+      ImGui::EndPopup();
+    }
+  else { settingsOpen = false; }
+  
+  return changed;
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // Conversion between screen space and sim space

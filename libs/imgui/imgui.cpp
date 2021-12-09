@@ -3936,8 +3936,8 @@ void ImGui::UpdateMouseWheel()
     // (we avoid doing it on OSX as it the OS input layer handles this already)
     
     ////// NOTE: CUSTOM (changed horizontal scroll to use ALT, or vwheel by default if not scrolling vertically)
-    const bool swap_axis = ((g.IO.KeyAlt || (window->ScrollMax.y == 0.0f)) && !g.IO.KeyShift && !g.IO.ConfigMacOSXBehaviors); // [MODIFIED]
-    // const bool swap_axis = (g.IO.KeyShift && !g.IO.ConfigMacOSXBehaviors; // [ORIGINAL]
+    const bool swap_axis = ((g.IO.KeyAlt || g.IO.KeyShift || window->ScrollMax.y == 0.0f) && !g.IO.ConfigMacOSXBehaviors); // [MODIFIED]
+    // const bool swap_axis = (g.IO.KeyShift && !g.IO.ConfigMacOSXBehaviors); // [ORIGINAL]
     const float wheel_y = swap_axis ? 0.0f : g.IO.MouseWheel;
     const float wheel_x = swap_axis ? g.IO.MouseWheel : g.IO.MouseWheelH;
 

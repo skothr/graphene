@@ -84,7 +84,7 @@ DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParam
   if(!vp) { vp = new VectorFieldParams<T>(); vpDelete = true; }
   
   // render params
-  SettingGroup *rGroup = new SettingGroup("Render Data",  "renderData", { }); add(rGroup);
+  SettingGroup *rGroup = new SettingGroup("Render Data",  "renderData"); add(rGroup);
   auto *sRZL   = new SliderSetting<int>("Z Range", "zRange", &rp->zRange, nullptr, zSize); rGroup->add(sRZL);
   auto *sRCS  = new Setting<bool> ("Surfaces", "surfaces", &rp->surfaces); rGroup->add(sRCS);
   sRCS->setHelp ("Interesting ray marching option that solidifies wavefront surfaces \n"
@@ -92,7 +92,7 @@ DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParam
                  "  on --> Ray marching breaks if R, G, B, or A is >= 1");
 
   // vector draw params
-  SettingGroup *vGroup = new SettingGroup("Vector Field", "vecField", { }); add(vGroup);
+  SettingGroup *vGroup = new SettingGroup("Vector Field", "vecField"); add(vGroup);
   auto *sVE    = new Setting<bool> ("Enable",        "vEnable",     &vp->drawVectors);   vGroup->add(sVE);
   sVE->setHelp ("Enable vector field overlay over 2D view (NOTE: may be slow with a lot of vectors)");
   auto *sVR    = new Setting<bool> ("Mouse Radius",  "mouseRadius", &vp->mouseRadius);   vGroup->add(sVR);
@@ -154,7 +154,7 @@ DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParam
   auto *sVBG   = new SettingGroup("B",  "vB",  {sVLCB,  sVLAB,  sVLMB,  sVLWB});  sVBG->setToggle(&vp->drawB); sVBG->setColumns(4);  sVBG->setHorizontal(true);
   sVBG->setHelp("B (magnetic) field vector parameters");
   
-  auto *vvGroup = new SettingGroup("Fields", "vV",  {sVVG, sVQnvG, sVQpvG, sVEG, sVBG}); vGroup->add(vvGroup); // vvGroup->setToggle(&vp->drawVectors);
+  auto *vvGroup = new SettingGroup("Fields", "vV",  {sVVG, sVQnvG, sVQpvG, sVEG, sVBG}); vGroup->add(vvGroup); // vGroup->setToggle(&vp->drawVectors);
 
   // visualized render data
   auto *sRSMP = new Setting<bool> ("Simple", "simple", &rp->simple);
@@ -191,7 +191,7 @@ DisplayInterface<T>::DisplayInterface(RenderParams<T> *rParams, VectorFieldParam
       std::string gName = renderFlagGroupName(f);
       if(gName.find("INVALID") == std::string::npos)
         { // create new tree group (TODO --> tree)
-          subgroup = new SettingGroup(gName, gName, { }); g->add(subgroup);
+          subgroup = new SettingGroup(gName, gName); g->add(subgroup);
         }
       
       auto sRFC = new ColorSetting("", idC, c); sRFC->setFormat(COLOR_SMALLSTEP, COLOR_BIGSTEP, COLOR_FORMAT);

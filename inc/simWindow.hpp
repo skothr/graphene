@@ -40,7 +40,7 @@ namespace fs = std::filesystem;
 #define CFV3 typename DimType<CFT, 3>::VEC_T
 #define CFV4 typename DimType<CFT, 4>::VEC_T
 #define STATE_BUFFER_SIZE  2
-#define DESTROY_LAST_STATE true //(STATE_BUFFER_SIZE <= 1)
+#define DESTROY_LAST_STATE false //(STATE_BUFFER_SIZE <= 1)
 
 // font settings
 #define MAIN_FONT_HEIGHT  14.0f
@@ -65,14 +65,6 @@ namespace fs = std::filesystem;
 // colors
 #define SIM_BG_COLOR  Vec4f(0.08, 0.08, 0.08, 1.0) // color of background behind field
 
-// overlay colors
-#define X_COLOR Vec4f(0.0f, 1.0f, 0.0f, 0.5f)
-#define Y_COLOR Vec4f(1.0f, 0.0f, 0.0f, 0.5f)
-#define Z_COLOR Vec4f(0.1f, 0.1f, 1.0f, 0.8f) // (slightly brighter -- hard to see pure blue over dark background)
-#define OUTLINE_COLOR Vec4f(1,1,1,0.5f) // field outline
-#define GUIDE_COLOR   Vec4f(1,1,1,0.3f) // pen input guides
-#define RADIUS_COLOR  Vec4f(1,1,1,0.4f) // intersecting radii ghosts
-
 // forward declarations
 struct ImFont;
 struct ImFontConfig;
@@ -83,6 +75,7 @@ class  SettingForm;
 class  TabMenu;
 class  Toolbar;
 class  FrameWriter;
+class  Simulation;
 template<typename T> class DrawInterface;
 template<typename T> class DisplayInterface;
 
@@ -336,12 +329,12 @@ public:
   ImVector<ImWchar>        fontRanges;
   ImFontGlyphRangesBuilder fontBuilder;
   ImFontConfig            *fontConfig = nullptr;
-  ImFont *mainFont   = nullptr; ImFont *mainFontB   = nullptr; ImFont *mainFontI  = nullptr; ImFont *mainFontBI  = nullptr;
-  ImFont *smallFont  = nullptr; ImFont *smallFontB  = nullptr; ImFont *smallFontI = nullptr; ImFont *smallFontBI = nullptr;
-  ImFont *titleFont  = nullptr; ImFont *titleFontB  = nullptr; ImFont *titleFontI = nullptr; ImFont *titleFontBI = nullptr;
-  ImFont *superFont  = nullptr; ImFont *superFontB  = nullptr; ImFont *superFontI = nullptr; ImFont *superFontBI = nullptr;
-  ImFont *tinyFont   = nullptr; ImFont *tinyFontB   = nullptr; ImFont *tinyFontI  = nullptr; ImFont *tinyFontBI  = nullptr;
-  FreeTypeTest *ftDemo = nullptr;
+  FreeTypeTest            *ftDemo     = nullptr;
+  ImFont *mainFont  = nullptr; ImFont *mainFontB  = nullptr; ImFont *mainFontI  = nullptr; ImFont *mainFontBI  = nullptr;
+  ImFont *smallFont = nullptr; ImFont *smallFontB = nullptr; ImFont *smallFontI = nullptr; ImFont *smallFontBI = nullptr;
+  ImFont *titleFont = nullptr; ImFont *titleFontB = nullptr; ImFont *titleFontI = nullptr; ImFont *titleFontBI = nullptr;
+  ImFont *superFont = nullptr; ImFont *superFontB = nullptr; ImFont *superFontI = nullptr; ImFont *superFontBI = nullptr;
+  ImFont *tinyFont  = nullptr; ImFont *tinyFontB  = nullptr; ImFont *tinyFontI  = nullptr; ImFont *tinyFontBI  = nullptr;
   
   void keyPress(int mods, int key, int action);
   
@@ -377,19 +370,6 @@ public:
   bool fileRendering() const { return mParams.op.active; }
   void renderToFile();
 };
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////
-////
-////   1-SCREEN <--  <view rect>  <-- 2-SIM(0.0, 1.0) <-- 3-PHYSICAL(relative to some point + basis vector)
-////                                         |
-////                                        vvv
-////                                 2.5-FIELD(0,fSize)
-////
-/////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 
 #endif // SIM_WINDOW_HPP

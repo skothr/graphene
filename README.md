@@ -69,11 +69,11 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 
 # Usage
-##### NOTE: Currently only supports Ubuntu(20.04), but may build on other systems with minor modifications
+##### NOTE: Currently only supports Ubuntu(20.04), but will likely build on other systems with minor modifications (mainly CMakeLists.txt)
 
 ## Basic dependencies
-    $ sudo apt install build-essential cmake libglew-dev libfreetype6-dev xorg-dev 
-        
+    $ sudo apt install build-essential cmake libglew-dev libfreetype6-dev xorg-dev
+
 &nbsp; 
 &nbsp;
 

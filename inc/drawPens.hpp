@@ -53,6 +53,8 @@ struct Pen
 };
 
 
+#define SIG_PARAM_COUNT 6
+
 // derived -- signal
 template<typename T>
 struct SigFieldParams
@@ -65,13 +67,14 @@ struct SigFieldParams
       bool multR;   // multiplies signal by 1/r
       bool multR_2; // multiplies signal by 1/r^2
       bool multT;   // multiplies signal by theta
-      // bool multT_2; // multiplies signal by theta^2
+      bool multT_2; // multiplies signal by theta^2
       bool multSin; // multiplies signal by sin(2*pi*f*t) [t => simTime, f => frequency]
       bool multCos; // multiplies signal by cos(2*pi*f*t) [t => simTime, f => frequency]
     };
-    bool mods[5] = { false };
-#ifndef __NVCC__ // (std::array not compatible with CUDA kernels)
-    std::array<bool, 5> modArr;
+    bool mods[SIG_PARAM_COUNT] = { false };
+    
+#ifndef __NVCC__ // NOTE: std::array not compatible with CUDA kernels
+    std::array<bool, SIG_PARAM_COUNT> modArr;
 #endif // __NVCC__
   };
   

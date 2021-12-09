@@ -10,6 +10,7 @@
 #include "vector-operators.h"
 #include "cuda-tools.cuh"
 #include "mathParser.hpp"
+#include "types.hpp"
 
 #define BLOCKDIM_X 8
 #define BLOCKDIM_Y 8
@@ -54,12 +55,12 @@ __global__ void addSignal_k(EMField<T> signal, EMField<T> dst, FieldParams<T> cp
   if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
     {
       int i = dst.idx(ix, iy, iz);
-      dst.Qn[i] += signal.Qn[i] * mult;
-      dst.Qp[i] += signal.Qp[i] * mult;
+      dst.Qn[i]  += signal.Qn[i] * mult;
+      dst.Qp[i]  += signal.Qp[i] * mult;
       dst.Qnv[i] += signal.Qnv[i] * mult;
       dst.Qpv[i] += signal.Qpv[i] * mult;
-      dst.E[i]  += signal.E[i]  * mult;
-      dst.B[i]  += signal.B[i]  * mult;
+      dst.E[i]   += signal.E[i]  * mult;
+      dst.B[i]   += signal.B[i]  * mult;
     }
 }
 // add field containing signals
@@ -99,15 +100,16 @@ __global__ void addSignal_k(VT3 mpos, EMField<T> dst, SignalPen<T> pen, FieldPar
       T overlap = penOverlap3(pCell, mpos, diff, dist2, &pen, cp, 0.0f);
       if(overlap > 0.0f)
         {
-          T dist2Mag = length(diff);    dist2Mag = (dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag;
-          T distMag  = sqrt(dist2Mag);  distMag  = (distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag;
-          VT3 n      = normalize(diff); n        = ((isnan(n) || isinf(n)) ? VT3{1.0f, 1.0f, 1.0f} : n);
+          VT3 r = pCell - mpos;
+          T   dist2Mag = length2(r);      dist2Mag = ((dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag);
+          T   distMag  = sqrt(dist2Mag);  distMag  = ((distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag);
+          VT3 n        = normalize(r);    n        = (isvalid(n) ? n : VT3{1.0f, 1.0f, 1.0f});
           
           const VT3 radialMult = (pen.radial ? n : VT3{1,1,1});
           // VT3 radialMult = (pen.radial ? n*distMag : VT3{1,1,1});
           const T gaussMult = 1.0f; //exp(-dist2Mag/(dot(pen.radius0,pen.radius0)*2.0)); // TODO: gaussian multiplier?
           
-          const T rMult   = (distMag  > 0.0f ? 1.0f/distMag  : 1.0f);
+          const T rMult   = (distMag  > 1.0f ? 1.0f/distMag  : 1.0f);
           const T r2Mult  = (dist2Mag > 1.0f ? 1.0f/dist2Mag : 1.0f);
           const T cosMult = cos(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
           const T sinMult = sin(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
@@ -130,12 +132,12 @@ __global__ void addSignal_k(VT3 mpos, EMField<T> dst, SignalPen<T> pen, FieldPar
                              (pen.pB.multCos   ? cosMult : 1)*(pen.pB.multSin   ? sinMult : 1));
 
           unsigned long i = dst.idx(ix, iy, iz);
-          dst.Qn[i]  += mult * pen.mult * pen.pQn.base  * QnMult  * overlap * speedMult * gaussMult;
-          dst.Qp[i]  += mult * pen.mult * pen.pQp.base  * QpMult  * overlap * speedMult * gaussMult;
-          dst.Qnv[i] += mult * pen.mult * pen.pQnv.base * QnvMult * overlap * speedMult * gaussMult * radialMult;
-          dst.Qpv[i] += mult * pen.mult * pen.pQpv.base * QpvMult * overlap * speedMult * gaussMult * radialMult;
-          dst.E[i]   += mult * pen.mult * pen.pE.base   * EMult   * overlap * speedMult * gaussMult * radialMult;
-          dst.B[i]   += mult * pen.mult * pen.pB.base   * BMult   * overlap * speedMult * gaussMult * radialMult;
+          dst.Qn[i]  += mult * pen.mult * pen.pQn.base  * QnMult  * speedMult * gaussMult;
+          dst.Qp[i]  += mult * pen.mult * pen.pQp.base  * QpMult  * speedMult * gaussMult;
+          dst.Qnv[i] += mult * pen.mult * pen.pQnv.base * QnvMult * speedMult * gaussMult * radialMult;
+          dst.Qpv[i] += mult * pen.mult * pen.pQpv.base * QpvMult * speedMult * gaussMult * radialMult;
+          dst.E[i]   += mult * pen.mult * pen.pE.base   * EMult   * speedMult * gaussMult * radialMult;
+          dst.B[i]   += mult * pen.mult * pen.pB.base   * BMult   * speedMult * gaussMult * radialMult;
         }
     }
 }
@@ -154,15 +156,16 @@ __global__ void addSignal_k(VT3 mpos, FluidField<T> dst, SignalPen<T> pen, Fluid
       T overlap = penOverlap3(pCell, mpos, diff, dist2, &pen, cp, 0.0f);
       if(overlap > 0.0f)
         {
-          T   dist2Mag = length(diff);    dist2Mag = ((dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag);
+          VT3 r = pCell - mpos;
+          T   dist2Mag = length2(r);      dist2Mag = ((dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag);
           T   distMag  = sqrt(dist2Mag);  distMag  = ((distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag);
-          VT3 n        = normalize(diff); n        = ((isnan(n) || isinf(n)) ? VT3{1.0f, 1.0f, 1.0f} : n);
+          VT3 n        = normalize(r);    n        = (isvalid(n) ? n : VT3{1.0f, 1.0f, 1.0f});
           
           const VT3 radialMult = (pen.radial ? n : VT3{1,1,1});
           // VT3 radialMult = (pen.radial ? n*distMag : VT3{1,1,1});
           const T gaussMult = 1.0f; //exp(-dist2Mag/(dot(pen.radius0,pen.radius0)*2.0)); // TODO: gaussian?
 
-          const T rMult   = (distMag  > 0.0f ? 1.0f/distMag  : 1.0f);
+          const T rMult   = (distMag  > 1.0f ? 1.0f/distMag  : 1.0f);
           const T r2Mult  = (dist2Mag > 1.0f ? 1.0f/dist2Mag : 1.0f);
           const T cosMult = cos(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
           const T sinMult = sin(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
@@ -189,17 +192,21 @@ __global__ void addSignal_k(VT3 mpos, FluidField<T> dst, SignalPen<T> pen, Fluid
                              (pen.pB.multCos   ? cosMult : 1)*(pen.pB.multSin   ? sinMult : 1));
           
           unsigned long i = dst.idx(ix, iy, iz);
-          dst.v[i]   += mult * pen.mult * pen.pV.base   * VMult   * overlap * speedMult * gaussMult * radialMult;
-          dst.p[i]   += mult * pen.mult * pen.pP.base   * PMult   * overlap * speedMult * gaussMult;
-          dst.Qn[i]  += mult * pen.mult * pen.pQn.base  * QnMult  * overlap * speedMult * gaussMult;
-          dst.Qp[i]  += mult * pen.mult * pen.pQp.base  * QpMult  * overlap * speedMult * gaussMult;
-          dst.Qnv[i] += mult * pen.mult * pen.pQnv.base * QnvMult * overlap * speedMult * gaussMult * radialMult;
-          dst.Qpv[i] += mult * pen.mult * pen.pQpv.base * QpvMult * overlap * speedMult * gaussMult * radialMult;
-          dst.E[i]   += mult * pen.mult * pen.pE.base   * EMult   * overlap * speedMult * gaussMult * radialMult;
-          dst.B[i]   += mult * pen.mult * pen.pB.base   * BMult   * overlap * speedMult * gaussMult * radialMult;
+          dst.v[i]   += mult * pen.mult * pen.pV.base   * VMult   * speedMult * gaussMult * radialMult;
+          dst.p[i]   += mult * pen.mult * pen.pP.base   * PMult   * speedMult * gaussMult;
+          dst.Qn[i]  += mult * pen.mult * pen.pQn.base  * QnMult  * speedMult * gaussMult;
+          dst.Qp[i]  += mult * pen.mult * pen.pQp.base  * QpMult  * speedMult * gaussMult;
+          dst.Qnv[i] += mult * pen.mult * pen.pQnv.base * QnvMult * speedMult * gaussMult * radialMult;
+          dst.Qpv[i] += mult * pen.mult * pen.pQpv.base * QpvMult * speedMult * gaussMult * radialMult;
+          dst.E[i]   += mult * pen.mult * pen.pE.base   * EMult   * speedMult * gaussMult * radialMult;
+          dst.B[i]   += mult * pen.mult * pen.pB.base   * BMult   * speedMult * gaussMult * radialMult;
         }
     }
 }
+
+// template<typename T>
+// __device__ T sigParamMult(const SigFieldParams &p)
+// { return ((pen.p.multR ? rMult : 1)*(pen.p.multR_2 ? r2Mult : 1)*(pen.p.multR_2 ? tMult : 1) * (pen.p.multCos ? cosMult : 1)*(pen.p.multSin ? sinMult : 1)); }
 
 // draw in signals based on pen location and parameters
 template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
@@ -217,15 +224,16 @@ __global__ void addSignal_k(VT3 mpos, Field<VT3> dstV, Field<T> dstP, Field<T> d
       T overlap = penOverlap3(pCell, mpos, diff, dist2, &pen, cp, 0.0f);
       if(overlap > 0.0f)
         {
-          T   dist2Mag = length(diff);    dist2Mag = (dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag;
-          T   distMag  = sqrt(dist2Mag);  distMag  = (distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag;
-          VT3 n        = normalize(diff); n        = ((isnan(n) || isinf(n)) ? VT3{1.0f, 1.0f, 1.0f} : n);
+          VT3 r = pCell - mpos;
+          T   dist2Mag = length2(r);      dist2Mag = ((dist2Mag == 0.0f || isnan(dist2Mag)) ? 1.0f : dist2Mag);
+          T   distMag  = sqrt(dist2Mag);  distMag  = ((distMag  == 0.0f || isnan(distMag))  ? 1.0f : distMag);
+          VT3 n        = normalize(r);    n        = (isvalid(n) ? n : VT3{1.0f, 1.0f, 1.0f});
           
           const VT3 radialMult = (pen.radial ? n : VT3{1,1,1});
           // VT3 radialMult = (pen.radial ? n*distMag : VT3{1,1,1});
           const T gaussMult = 1.0f; //exp(-dist2Mag/(dot(pen.radius0,pen.radius0)*2.0)); // TODO: gaussian?
 
-          const T rMult   = (distMag  > 0.0f ? 1.0f/distMag  : 1.0f);
+          const T rMult   = (distMag  > 1.0f ? 1.0f/distMag  : 1.0f);
           const T r2Mult  = (dist2Mag > 1.0f ? 1.0f/dist2Mag : 1.0f);
           const T cosMult = cos(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
           const T sinMult = sin(2.0f*M_PI*pen.frequency*(cp.t-pen.startTime));
@@ -252,14 +260,14 @@ __global__ void addSignal_k(VT3 mpos, Field<VT3> dstV, Field<T> dstP, Field<T> d
                              (pen.pB.multCos   ? cosMult : 1)*(pen.pB.multSin   ? sinMult : 1));
           
           unsigned long i = dstE.idx(ix, iy, iz);
-          dstV[i]   += mult * pen.mult * pen.pV.base   * VMult   * overlap * speedMult * gaussMult * radialMult;
-          dstP[i]   += mult * pen.mult * pen.pP.base   * PMult   * overlap * speedMult * gaussMult;
-          dstQn[i]  += mult * pen.mult * pen.pQn.base  * QnMult  * overlap * speedMult * gaussMult;
-          dstQp[i]  += mult * pen.mult * pen.pQp.base  * QpMult  * overlap * speedMult * gaussMult;
-          dstQnv[i] += mult * pen.mult * pen.pQnv.base * QnvMult * overlap * speedMult * gaussMult * radialMult;
-          dstQpv[i] += mult * pen.mult * pen.pQpv.base * QpvMult * overlap * speedMult * gaussMult * radialMult;
-          dstE[i]   += mult * pen.mult * pen.pE.base   * EMult   * overlap * speedMult * gaussMult * radialMult;
-          dstB[i]   += mult * pen.mult * pen.pB.base   * BMult   * overlap * speedMult * gaussMult * radialMult;
+          dstV[i]   += mult * pen.mult * pen.pV.base   * VMult   * speedMult * gaussMult * radialMult;
+          dstP[i]   += mult * pen.mult * pen.pP.base   * PMult   * speedMult * gaussMult;
+          dstQn[i]  += mult * pen.mult * pen.pQn.base  * QnMult  * speedMult * gaussMult;
+          dstQp[i]  += mult * pen.mult * pen.pQp.base  * QpMult  * speedMult * gaussMult;
+          dstQnv[i] += mult * pen.mult * pen.pQnv.base * QnvMult * speedMult * gaussMult * radialMult;
+          dstQpv[i] += mult * pen.mult * pen.pQpv.base * QpvMult * speedMult * gaussMult * radialMult;
+          dstE[i]   += mult * pen.mult * pen.pE.base   * EMult   * speedMult * gaussMult * radialMult;
+          dstB[i]   += mult * pen.mult * pen.pB.base   * BMult   * speedMult * gaussMult * radialMult;
         }
     }
 }
@@ -278,8 +286,10 @@ void addSignal(Field<VT3> &signal, Field<VT3> &dst, const FieldParams<T> &cp, T 
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       addSignal_k<<<grid, threads>>>(signal, dst, cp, mult);
     }
-  else { std::cout << "====> WARNING: skipped addSignal(source Field<VT3>) (" << signal.size << " / " << dst.size << ")\n"; }
+  else { std::cout << "====> WARNING: skipped addSignal(source Field<" << getTypeName<VT3>() << ">) (" << signal.size << " / " << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+", "+getTypeName<VT3>()+">()").c_str());
 }
+
 template<typename T, typename VT3>
 void addSignal(Field<VT3> &signal, Field<VT3> &dst, const FluidParams<T> &cp, T mult)
 {
@@ -291,7 +301,8 @@ void addSignal(Field<VT3> &signal, Field<VT3> &dst, const FluidParams<T> &cp, T 
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       addSignal_k<<<grid, threads>>>(signal, dst, FieldParams<T>(cp), mult);
     }
-  else { std::cout << "====> WARNING: skipped addSignal(source Field<VT3>) (" << signal.size << " / " << dst.size << ")\n"; }
+  else { std::cout << "====> WARNING: skipped addSignal(source Field<" << getTypeName<VT3>() << ">) (" << signal.size << " / " << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+", "+getTypeName<VT3>()+">()").c_str());
 }
 
 // Field<T>
@@ -305,8 +316,10 @@ template<typename T> void addSignal(Field<T> &signal, Field<T> &dst, const Field
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       addSignal_k<<<grid, threads>>>(signal, dst, cp, mult);
     }
-  else { std::cout << "====> WARNING: skipped addSignal(source Field<VT3>) (" << signal.size << " / " << dst.size << ")\n"; }
+  else { std::cout << "====> WARNING: skipped addSignal(source Field<" << getTypeName<T>() << ">) (" << signal.size << " / " << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+">()").c_str());
 }
+
 template<typename T> void addSignal(Field<T> &signal, Field<T> &dst, const FluidParams<T> &cp, T mult)
 {
   if(dst.size.x > 0 && dst.size.y > 0 && dst.size.z > 0 && signal.size == dst.size)
@@ -317,7 +330,8 @@ template<typename T> void addSignal(Field<T> &signal, Field<T> &dst, const Fluid
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       addSignal_k<<<grid, threads>>>(signal, dst, FieldParams<T>(cp), mult);
     }
-  else { std::cout << "====> WARNING: skipped addSignal(source Field<VT3>) (" << signal.size << " / " << dst.size << ")\n"; }
+  else { std::cout << "====> WARNING: skipped addSignal(source Field<" << getTypeName<T>() << ">) (" << signal.size << " / " << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+">()").c_str());
 }
 
 
@@ -332,8 +346,10 @@ template<typename T> void addSignal(EMField<T> &signal, EMField<T> &dst, const F
                 (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
       addSignal_k<<<grid, threads>>>(signal, dst, cp, mult);
     }
-  else { std::cout << "====> WARNING: skipped addSignal(source EMField) (" << signal.size << " / " << dst.size << ")\n"; }
+  else { std::cout << "====> WARNING: skipped addSignal(source EMField<" << getTypeName<T>() << ">) (" << signal.size << " / " << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+">(EMField<"+getTypeName<T>()+">)").c_str());
 }
+
 // FluidField
 template<typename T> void addSignal(FluidField<T> &signal, FluidField<T> &dst, const FluidParams<T> &cp, T mult)
 {
@@ -346,6 +362,7 @@ template<typename T> void addSignal(FluidField<T> &signal, FluidField<T> &dst, c
       addSignal_k<<<grid, threads>>>(signal, dst, cp, mult);
     }
   else { std::cout << "====> WARNING: skipped addSignal(source FluidField) (" << signal.size << " / " << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+">(FluidField<"+getTypeName<T>()+">>)").c_str());
 }
 
 // Field<VT3>
@@ -362,7 +379,9 @@ void addSignal(const VT3 &mpos, Field<VT3> &dstV, Field<T> &dstP, Field<T> &dstQ
                 (int)ceil(dstE.size.z/(float)BLOCKDIM_Z));
       addSignal_k<<<grid, threads>>>(mpos, dstV, dstP, dstQn, dstQp, dstQnv, dstQpv, dstE, dstB, pen, cp, mult);
     }
-  else { std::cout << "====> WARNING: skipped addSignal(source point Field<VT3>) (E: " << dstE.size << " / B: " << dstB.size << ")\n"; }
+  else { std::cout << "====> WARNING: skipped addSignal(source point Field<" << getTypeName<T>() << ">) (E: " << dstE.size << " / B: " << dstB.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+", "+getTypeName<VT3>()+">("+getTypeName<VT3>()+"mpos, SignalPen<"+getTypeName<T>()+
+                    ">) [V,P,Qn,Qp,Qnv,Qpv,E,B separate]").c_str());
 }
 
 // EMField
@@ -378,6 +397,8 @@ void addSignal(const VT3 &mpos, EMField<T> &dst, const SignalPen<T> &pen, const 
       addSignal_k<<<grid, threads>>>(mpos, dst, pen, cp, mult);
     }
   else { std::cout << "====> WARNING: skipped addSignal(source point) (" << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+", "+getTypeName<VT3>()+">("+getTypeName<VT3>()+"mpos, SignalPen<"+getTypeName<T>()+
+                    ">) ==> [EMField<"+getTypeName<T>()+">]").c_str());
 }
 
 // FluidField
@@ -393,6 +414,8 @@ void addSignal(const VT3 &mpos, FluidField<T> &dst, const SignalPen<T> &pen, con
       addSignal_k<<<grid, threads>>>(mpos, dst, pen, cp, mult);
     }
   else { std::cout << "====> WARNING: skipped addSignal(source point) (" << dst.size << ")\n"; }
+  getLastCudaError(("addSignal<"+getTypeName<T>()+", "+getTypeName<VT3>()+">("+getTypeName<VT3>()+"mpos, SignalPen<"+getTypeName<T>()+
+                    ">) ==> [FluidField<"+getTypeName<T>()+">]").c_str());
 }
 
 // template instantiation
@@ -408,6 +431,54 @@ template void addSignal<float>(const float3 &mpos,   Field<float3> &dstV,  Field
                                const SignalPen<float> &pen, const FluidParams<float> &cp, float mult);
 template void addSignal<float>(const float3 &mpos, EMField   <float> &dst, const SignalPen<float> &pen, const FieldParams<float> &cp, float mult);
 template void addSignal<float>(const float3 &mpos, FluidField<float> &dst, const SignalPen<float> &pen, const FluidParams<float> &cp, float mult);
+
+
+
+
+
+//// ADD MATERIAL ////
+template<typename T, typename VT3>
+__global__ void addMaterial_k(VT3 mpos, EMField<T> dst, MaterialPen<T> pen, FieldParams<T> cp)
+{
+  int ix = blockIdx.x*blockDim.x + threadIdx.x;
+  int iy = blockIdx.y*blockDim.y + threadIdx.y;
+  int iz = blockIdx.z*blockDim.z + threadIdx.z;
+  if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
+    {
+      VT3 pCell = VT3{(T)ix+0.5f, (T)iy+0.5f, (T)iz+0.5f};
+      VT3 diff; VT3 dist2; // output by penOverlaps()
+      T overlap = penOverlap3(pCell, mpos, diff, dist2, &pen, cp, 0.0f);
+      if(overlap > 0.0f) //if(penOverlaps(pCell, mpos, diff, dist2, &pen, cp, 0.0f))
+        {
+          int i = dst.idx(ix, iy, iz);
+          dst.mat[i] = Material<T>(pen.mult*pen.mat.permittivity,
+                                   pen.mult*pen.mat.permeability,
+                                   pen.mult*pen.mat.conductivity,
+                                   pen.mat.vacuum());
+        }
+    }
+}
+
+// wrapper functions
+template<typename T, typename VT3>
+void addMaterial(const VT3 &mpos, EMField<T> &dst, const MaterialPen<T> &pen, const FieldParams<T> &cp)
+{
+  if(dst.size.x > 0 && dst.size.y > 0 && dst.size.z > 0)
+    {
+      dim3 threads(BLOCKDIM_X, BLOCKDIM_Y, BLOCKDIM_Z);
+      dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
+                (int)ceil(dst.size.y/(float)BLOCKDIM_Y),
+                (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
+      addMaterial_k<<<grid, threads>>>(mpos, dst, pen, cp);
+    }
+  else { std::cout << "====> WARNING: skipped addMaterial(srcPoint) (" << dst.size << ")\n"; }
+  getLastCudaError(("addMaterial<"+getTypeName<T>()+", "+getTypeName<VT3>()+">()").c_str());
+}
+
+// template instantiation
+template void addMaterial<float>(const float3 &mpos, EMField<float> &dst, const MaterialPen<float> &pen, const FieldParams<float> &cp);
+
+
 
 
 
@@ -456,6 +527,7 @@ void decaySignal(Field<T> &src, FieldParams<T> &cp)
       decaySignal_k<<<grid, threads>>>(src, cp);
     }
   else { std::cout << "====> WARNING: skipped decaySignal (" << src.size << ")\n"; }
+  getLastCudaError(("decaySignal<"+getTypeName<T>()+">()").c_str());
 }
 template<typename T, typename VT3>
 void decaySignal(Field<VT3> &src, FieldParams<T> &cp)
@@ -469,57 +541,10 @@ void decaySignal(Field<VT3> &src, FieldParams<T> &cp)
       decaySignal_k<<<grid, threads>>>(src, cp);
     }
   else { std::cout << "====> WARNING: skipped decaySignal (" << src.size << ")\n"; }
+  getLastCudaError(("decaySignal<"+getTypeName<T>()+">()").c_str());
 }
 
 // template instantiation
 template void decaySignal<float>        (Field<float>  &src, FieldParams<float> &cp);
 template void decaySignal<float, float3>(Field<float3> &src, FieldParams<float> &cp);
-
-
-
-
-
-
-//// ADD MATERIAL ////
-template<typename T, typename VT3>
-__global__ void addMaterial_k(VT3 mpos, EMField<T> dst, MaterialPen<T> pen, FieldParams<T> cp)
-{
-  int ix = blockIdx.x*blockDim.x + threadIdx.x;
-  int iy = blockIdx.y*blockDim.y + threadIdx.y;
-  int iz = blockIdx.z*blockDim.z + threadIdx.z;
-  if(ix < dst.size.x && iy < dst.size.y && iz < dst.size.z)
-    {
-      VT3 pCell = VT3{(T)ix+0.5f, (T)iy+0.5f, (T)iz+0.5f};
-      VT3 diff; VT3 dist2; // output by penOverlaps()
-      T overlap = penOverlap3(pCell, mpos, diff, dist2, &pen, cp, 0.0f);
-      if(overlap > 0.0f) //if(penOverlaps(pCell, mpos, diff, dist2, &pen, cp, 0.0f))
-        {
-          int i = dst.idx(ix, iy, iz);
-          dst.mat[i] = Material<T>(pen.mult*pen.mat.permittivity,
-                                   pen.mult*pen.mat.permeability,
-                                   pen.mult*pen.mat.conductivity,
-                                   pen.mat.vacuum());
-        }
-    }
-}
-
-// wrapper functions
-template<typename T, typename VT3>
-void addMaterial(const VT3 &mpos, EMField<T> &dst, const MaterialPen<T> &pen, const FieldParams<T> &cp)
-{
-  if(dst.size.x > 0 && dst.size.y > 0 && dst.size.z > 0)
-    {
-      dim3 threads(BLOCKDIM_X, BLOCKDIM_Y, BLOCKDIM_Z);
-      dim3 grid((int)ceil(dst.size.x/(float)BLOCKDIM_X),
-                (int)ceil(dst.size.y/(float)BLOCKDIM_Y),
-                (int)ceil(dst.size.z/(float)BLOCKDIM_Z));
-      addMaterial_k<<<grid, threads>>>(mpos, dst, pen, cp);
-    }
-  else { std::cout << "====> WARNING: skipped addMaterial(srcPoint) (" << dst.size << ")\n"; }
-}
-
-
-
-// template instantiation
-template void addMaterial<float>(const float3 &mpos, EMField<float> &dst, const MaterialPen<float> &pen, const FieldParams<float> &cp);
 

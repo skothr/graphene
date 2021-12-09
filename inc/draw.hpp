@@ -49,7 +49,7 @@ void DrawInterface<T>::makeSettings()
       std::cout << "====== (DrawUI) --> Creating signal pen settings...\n";
       
       // signal pen
-      SettingGroup *sigGroup = new SettingGroup("Add Signal (Ctrl+Click)",  "sigPen", { }); add(sigGroup);
+      SettingGroup *sigGroup = new SettingGroup("Add Signal (Ctrl+Click)",  "sigPen"); add(sigGroup);
   
       auto *sSPA   = new Setting<bool> ("Active",          "sigPenActive",   &sigPen->active);    sigGroup->add(sSPA);
       auto *sSPR0  = new Setting<VT3>  ("Radius 0",        "sigPenRad0",     &sigPen->radius0);   sigGroup->add(sSPR0);
@@ -97,18 +97,19 @@ void DrawInterface<T>::makeSettings()
       auto *sSPB  = new Setting<float3>("B",  "sigPenBBase",  &sigPen->pB.base);    sigGroup->add(sSPB);
       sSPB->setFormat( float3{0.01f, 0.01f, 0.01f}, float3{0.1f, 0.1f, 0.1f}, "%0.4f");
   
-      auto sSPMods = makeSettingGrid<bool, 5>("Modifiers", "spMods",
-                                              { &sigPen->pV.modArr,   &sigPen->pP.modArr,   &sigPen->pQn.modArr, &sigPen->pQp.modArr,
-                                                &sigPen->pQnv.modArr, &sigPen->pQpv.modArr, &sigPen->pE.modArr,  &sigPen->pB.modArr },
-                                              {"V", "P", "Q-", "Q+", "Qv-", "Qv+", "E", "B"}); sigGroup->add(sSPMods);
+      auto sSPMods = makeSettingGrid<bool, SIG_PARAM_COUNT>
+        ("Modifiers", "spMods",
+         { &sigPen->pV.modArr,   &sigPen->pP.modArr,   &sigPen->pQn.modArr, &sigPen->pQp.modArr,
+           &sigPen->pQnv.modArr, &sigPen->pQpv.modArr, &sigPen->pE.modArr,  &sigPen->pB.modArr },
+         {"V", "P", "Q-", "Q+", "Qv-", "Qv+", "E", "B"}); sigGroup->add(sSPMods);
       sSPMods->setCenter(true);
-      sSPMods->setColumnLabels(std::vector<std::string>{"R", "R^2", "θ", "sin(t)", "cos(t)"});
+      sSPMods->setColumnLabels(std::vector<std::string>{"R", "R>^(2)", "θ", "θ>^(2)", "sin(t)", "cos(t)"});
     }
   if(matPen)
     {
       std::cout << "====== (DrawUI) --> Creating material pen settings...\n";
       // material pen
-      SettingGroup *matGroup = new SettingGroup("Add Material (Alt+Click)", "matPen", { }); add(matGroup);
+      SettingGroup *matGroup = new SettingGroup("Add Material (Alt+Click)", "matPen"); add(matGroup);
   
       auto *sMPA  = new Setting<bool> ("Active",          "mPenActive",   &matPen->active);    matGroup->add(sMPA);
       auto *sMPR0 = new Setting<VT3>  ("Radius 0",        "mPenRad0",     &matPen->radius0);   matGroup->add(sMPR0);

@@ -46,7 +46,7 @@ inline std::ostream& operator<<(std::ostream &os, const KeyEventType t)
 {
   switch(t)
     {
-    case KEYEVENT_INVALID:       os << "<INVALID>";                break; 
+    case KEYEVENT_INVALID:       os << "<INVALID>";                break;
     case KEYEVENT_SIGNAL_ADD:    os << "<KEYEVENT_SIGNAL_ADD>";    break;
     case KEYEVENT_SIGNAL_REMOVE: os << "<KEYEVENT_SIGNAL_REMOVE>"; break;
     case KEYEVENT_SIGNAL_MOVE:   os << "<KEYEVENT_SIGNAL_MOVE>";   break;

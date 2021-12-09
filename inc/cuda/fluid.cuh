@@ -3,32 +3,15 @@
 
 #include "em.cuh"
 
-enum EdgeType  // boundary conditions
-  {
-    EDGE_IGNORE = -1,
-    EDGE_WRAP   =  0, // boundaries wrap to opposite side (2D --> torus?)
-    EDGE_VOID,        // forces and material properties pass through boundary (lost)
-    EDGE_FREESLIP,    // layer of material at boundary can move parallel to boundary edge
-    EDGE_NOSLIP,      // layer of material at boundary sticks to surface (vNormal = 0)
-  };
-
-enum IntegrationType  // integration for advection
-  {
-    INTEGRATION_INVALID = -1,
-    INTEGRATION_FORWARD_EULER = 0,
-    INTEGRATION_REVERSE_EULER = 1,
-    // TODO: RK4 (, etc.?)
-  };
-
-
 template<typename T>
-struct FluidParams : public FieldParams<T>
+struct FluidParams : public EMParams<T>
 {
-  EdgeType edgeNX = EDGE_FREESLIP; EdgeType edgePX = EDGE_FREESLIP; // edge behavior
-  EdgeType edgeNY = EDGE_WRAP; EdgeType edgePY = EDGE_WRAP;
-  EdgeType edgeNZ = EDGE_WRAP; EdgeType edgePZ = EDGE_WRAP;
+  // boundary conditions for each edge of field
+  EdgeType edgeNX = EDGE_WRAP;     EdgeType edgePX = EDGE_WRAP;
+  EdgeType edgeNY = EDGE_FREESLIP; EdgeType edgePY = EDGE_FREESLIP;
+  EdgeType edgeNZ = EDGE_FREESLIP; EdgeType edgePZ = EDGE_FREESLIP;
   
-  IntegrationType vIntegration = INTEGRATION_FORWARD_EULER; // velocity integration
+  IntegrationType vIntegration = INTEGRATION_RK4; // fluid velocity integration
   
   T density   = 1.5; // fluid density   (constant)
   T viscosity = 1.0; // fluid viscosity (constant)
