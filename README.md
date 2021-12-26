@@ -30,12 +30,6 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 &nbsp;
 &nbsp;
-| ![reflection](images/maxwells-equations-materials4.png) |
-|:--:|
-| *External reflection* |
-
-&nbsp;
-&nbsp;
 | ![now with twice the slits!](images/double-slit-experiment-improved.png) |
 |:--:|
 | *Double Slit experiment* |
@@ -44,13 +38,13 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 &nbsp;
 | ![(e.g. shape of a photon)](images/vector-field-photon4.png) |
 |:--:|
-| *Emergent patterns with similarities to physical phenomena* |
+| *Emergent patterns with similarities to physical phenomena (1)* |
 
 &nbsp;
 &nbsp;
 | ![(e.g. fusion tokomak / magnetic dynamo?)](images/interesting-pattern.png) |
 |:--:|
-| *Emergent patterns with similarities to physical phenomena* |
+| *Emergent patterns with similarities to physical phenomena (2)* |
 
 &nbsp;
 &nbsp;
