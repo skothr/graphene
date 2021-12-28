@@ -12,61 +12,61 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 &nbsp;
 &nbsp;
-| ![(signals drawn in with Ctrl+Click)](images/simple-interference.png) |
+| ![images/simple-interference.png](images/simple-interference.png "(signals drawn in with Ctrl+Click)") |
 |:--:|
 | *Simple 2D wave interference* |
 
 &nbsp;
 &nbsp;
-| ![refraction](images/convex-lens-3d-1.png) |
+| ![images/convex-lens-3d-1.png](images/convex-lens-3d-1.png "refraction") |
 |:--:|
 | *Refraction through a convex lens with a higher index of refraction* |
 
 &nbsp;
 &nbsp;
-| ![reflection](images/maxwells-equations-materials4.png) |
+| ![images/maxwells-equations-materials4.png](images/maxwells-equations-materials4.png "reflection") |
 |:--:|
 | *External reflection* |
 
 &nbsp;
 &nbsp;
-| ![now with twice the slits!](images/double-slit-experiment-improved.png) |
+| ![images/double-slit-experiment-improved.png](images/double-slit-experiment-improved.png "now with twice the slits!") |
 |:--:|
 | *Double Slit experiment* |
 
 &nbsp;
 &nbsp;
-| ![(e.g. shape of a photon)](images/vector-field-photon4.png) |
+| ![images/vector-field-photon4.png](images/vector-field-photon4.png "(e.g. shape of a photon)") |
 |:--:|
 | *Emergent patterns with similarities to physical phenomena (1)* |
 
 &nbsp;
 &nbsp;
-| ![(e.g. fusion tokomak / magnetic dynamo?)](images/interesting-pattern.png) |
+| ![images/interesting-pattern.png](images/interesting-pattern.png "(e.g. fusion tokomak/dynamo?)") |
 |:--:|
 | *Emergent patterns with similarities to physical phenomena (2)* |
 
 &nbsp;
 &nbsp;
-| ![complex structures](images/composite-render4.png) |
+| ![images/composite-render4.png](images/composite-render4.png "complex structures") |
 |:--:|
 | *Complex evolution of 3D structures* |
 
 &nbsp;
 &nbsp;
-| ![cell blending for ray traversal](images/composite-render6.png) |
+| ![images/composite-render6.png](images/composite-render6.png "cell blending for ray traversal") |
 |:--:|
 | *Adjustable blending parameters can create interesting effects* |
 
 &nbsp;
 &nbsp;
-| ![try: sin(len(r)^2/222)](images/maxwells-equations-test1.png) |
+| ![images/maxwells-equations-test1.png](images/maxwells-equations-test1.png "try: sin(len(r)^2/222)") |
 |:--:|
 | *Parametric initial conditions* |
 
 &nbsp;
 &nbsp;
-| ![broccoli³](images/hex-qub.png) |
+| ![images/hex-qub.png](images/hex-qub.png "broccoli³") |
 |:--:|
 | *...?* |
 
