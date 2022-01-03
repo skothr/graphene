@@ -69,7 +69,7 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 
 # Usage
-##### NOTE: Currently only supports Ubuntu(20.04), but will likely build on other systems with minor modifications (mainly CMakeLists.txt)
+##### NOTE: Currently only Ubuntu(20.04) is directly supported, but code will likely build on other systems with minor modifications (mainly CMakeLists.txt)
 
 ## Basic dependencies
     $ sudo apt install build-essential cmake libglew-dev libfreetype6-dev xorg-dev
@@ -79,11 +79,12 @@ Most parameters are configurable in the settings. With the right tuning, many pa
 
 ## CUDA
 ##### (requires a compatible NVIDIA graphics card)
+##### NOTE: may need to disable Secure Boot via BIOS on laptops
 #### Install NVIDIA driver
     $ sudo apt purge *nvidia*
     $ sudo apt autoremove
-    $ sudo apt install nvidia-driver-460
-#### Install CUDA (11.2)
+    $ sudo apt install nvidia-driver-470
+#### Install CUDA (11.4)
     $ sudo apt install nvidia-cuda-toolkit
     
 &nbsp;

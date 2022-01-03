@@ -20,83 +20,69 @@ __device__ inline unsigned long idx(const int3 &p, const int3 &sz) { return (IDX
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define MAX_VALUE 1e18
-template<typename T> __device__ bool isvalid(const T &v)
-{ return (!isnan(v) && !isinf(v) && v <= MAX_VALUE); }
-template<>           __device__ inline bool isvalid<float3>(const float3 &v)
-{ return (!isnan(v) && !isinf(v) && v.x <= MAX_VALUE && v.y <= MAX_VALUE && v.z <= MAX_VALUE); }
-
-template<typename T>
-__device__ bool slipPlane(const int3 &p, const FluidParams<T> &params)
-{
-  return (((params.edgePX == EDGE_FREESLIP || params.edgePX == EDGE_NOSLIP) && p.x == params.fs.x-1) ||
-          ((params.edgeNX == EDGE_FREESLIP || params.edgeNX == EDGE_NOSLIP) && p.x == 0) ||
-          ((params.edgePY == EDGE_FREESLIP || params.edgePY == EDGE_NOSLIP) && p.y == params.fs.y-1) ||
-          ((params.edgeNY == EDGE_FREESLIP || params.edgeNY == EDGE_NOSLIP) && p.y == 0) ||
-          ((params.edgePZ == EDGE_FREESLIP || params.edgePZ == EDGE_NOSLIP) && p.z == params.fs.z-1) ||
-          ((params.edgeNZ == EDGE_FREESLIP || params.edgeNZ == EDGE_NOSLIP) && p.z == 0));
-}
+template<typename T> __device__ bool isvalid(const T &v) { return (!isnan(v) && !isinf(v) && v <= MAX_VALUE); }
 
 // basic linear interpolation
 template<typename T>
 __device__ T lerp(T x0, T x1, float alpha) { return x1*alpha + x0*(1-alpha); }
 
 template<typename T=float>
-__device__ typename DimType<int, 3>::VEC_T applyBounds(typename DimType<int, 3>::VEC_T p, typename DimType<int, 3>::VEC_T s,
-                                                       const FluidParams<typename Dim<T>::BASE_T> &params)
+__device__ typename cuda_vec<int, 3>::VT applyBounds(typename cuda_vec<int, 3>::VT p, typename cuda_vec<int, 3>::VT s,
+                                                     const FluidParams<typename cuda_vec<T>::BASE> &params)
 {
   if(p.x < 0)
     {
-      if     (params.edgeNX == EDGE_WRAP)  { p.x = s.x - ((-p.x) % s.x); }
-      else if(params.edgeNX == EDGE_VOID)  { p.x = -1;  }
-      else if(params.edgeNX == EDGE_NOSLIP || params.edgeNX == EDGE_FREESLIP) { p.x = 0; }
+      if     (params.edgeNX == BOUND_WRAP)  { p.x = s.x - ((-p.x) % s.x); }             // wrap (modulo)
+      else if(params.edgeNX == BOUND_VOID)  { p.x = -1; }                               // invalidate
+      else if(params.edgeNX == BOUND_NOSLIP || params.edgeNX == BOUND_SLIP) { p.x = 0; } // clip to edge
     }
   if(p.y < 0)
     {
-      if     (params.edgeNY == EDGE_WRAP)  { p.y = s.y - ((-p.y) % s.y); }
-      else if(params.edgeNY == EDGE_VOID)  { p.y = -1; }
-      else if(params.edgeNY == EDGE_NOSLIP || params.edgeNY == EDGE_FREESLIP) { p.y = 0; }
+      if     (params.edgeNY == BOUND_WRAP)  { p.y = s.y - ((-p.y) % s.y); }             // wrap (modulo)
+      else if(params.edgeNY == BOUND_VOID)  { p.y = -1; }                               // invalidate
+      else if(params.edgeNY == BOUND_NOSLIP || params.edgeNY == BOUND_SLIP) { p.y = 0; } // clip to edge
     }
   if(p.z < 0)
     {
-      if     (params.edgeNZ == EDGE_WRAP)  { p.z = s.z - ((-p.z) % s.z); }
-      else if(params.edgeNZ == EDGE_VOID)  { p.z = -1; }
-      else if(params.edgeNZ == EDGE_NOSLIP || params.edgeNZ == EDGE_FREESLIP) { p.z = 0; }
+      if     (params.edgeNZ == BOUND_WRAP)  { p.z = s.z - ((-p.z) % s.z); }             // wrap (modulo)
+      else if(params.edgeNZ == BOUND_VOID)  { p.z = -1; }                               // invalidate
+      else if(params.edgeNZ == BOUND_NOSLIP || params.edgeNZ == BOUND_SLIP) { p.z = 0; } // clip to edge
     }
 
   if(p.x > s.x-1)
     {
-      if     (params.edgePX == EDGE_WRAP)  { p.x = (p.x % s.x); }
-      else if(params.edgePX == EDGE_VOID)  { p.x = -1; }
-      else if(params.edgePX == EDGE_NOSLIP || params.edgePX == EDGE_FREESLIP) { p.x = s.x-1; }
+      if     (params.edgePX == BOUND_WRAP)  { p.x = (p.x % s.x); }                          // wrap (modulo)
+      else if(params.edgePX == BOUND_VOID)  { p.x = -1; }                                   // invalidate
+      else if(params.edgePX == BOUND_NOSLIP || params.edgePX == BOUND_SLIP) { p.x = s.x-1; } // clip to edge
     }
   if(p.y > s.y-1)
     {
-      if     (params.edgePY == EDGE_WRAP)  { p.y = (p.y % s.y); }
-      else if(params.edgePY == EDGE_VOID)  { p.y = -1; }
-      else if(params.edgePY == EDGE_NOSLIP || params.edgePY == EDGE_FREESLIP) { p.y = s.y-1; }
+      if     (params.edgePY == BOUND_WRAP)  { p.y = (p.y % s.y); }                          // wrap (modulo)
+      else if(params.edgePY == BOUND_VOID)  { p.y = -1; }                                   // invalidate
+      else if(params.edgePY == BOUND_NOSLIP || params.edgePY == BOUND_SLIP) { p.y = s.y-1; } // clip to edge
     }
   if(p.z > s.z-1)
     {
-      if     (params.edgePZ == EDGE_WRAP)  { p.z = (p.z % s.z); }
-      else if(params.edgePZ == EDGE_VOID)  { p.z = -1; }
-      else if(params.edgePZ == EDGE_NOSLIP || params.edgePZ == EDGE_FREESLIP) { p.z = s.z-1; }
+      if     (params.edgePZ == BOUND_WRAP)  { p.z = (p.z % s.z); }                          // wrap (modulo)
+      else if(params.edgePZ == BOUND_VOID)  { p.z = -1; }                                   // invalidate
+      else if(params.edgePZ == BOUND_NOSLIP || params.edgePZ == BOUND_SLIP) { p.z = s.z-1; } // clip to edge
     }
   return p;
 }
 
 // get/put data at single integer index
 template<typename T>
-__device__ T texGet(T *tex, typename DimType<int, 3>::VEC_T p, typename DimType<int, 3>::VEC_T s, const FluidParams<typename Dim<T>::BASE_T> &params)
+__device__ T texGet(T *tex, typename cuda_vec<int, 3>::VT p, typename cuda_vec<int, 3>::VT s, const FluidParams<typename cuda_vec<T>::BASE> &params)
 {
-  typedef typename DimType<int, 3>::VEC_T IT;
+  typedef typename cuda_vec<int, 3>::VT IT;
   IT p0 = applyBounds(p, s, params);
   if(p0 >= 0) { return tex[idx(p0, s)]; }
   else        { return T(); }
 }
 template<typename T>
-__device__ void texPut(T *tex, T val, typename DimType<int, 3>::VEC_T p, const FluidParams<typename Dim<T>::BASE_T> &params)
+__device__ void texPut(T *tex, T val, typename cuda_vec<int, 3>::VT p, const FluidParams<typename cuda_vec<T>::BASE> &params)
 {
-  typedef typename DimType<int, 3>::VEC_T IT;  
+  typedef typename cuda_vec<int, 3>::VT IT;  
   IT s  = params.fs;
   IT p0 = applyBounds(p, s, params);
   if(p0 >= 0) { tex[idx(p0, s)] = val; }
@@ -104,7 +90,7 @@ __device__ void texPut(T *tex, T val, typename DimType<int, 3>::VEC_T p, const F
 
 
 
-template<typename T, typename BASE=typename Dim<T>::BASE_T, typename VT3=typename DimType<BASE, 3>::VEC_T, typename IT3=typename DimType<int, 3>::VEC_T>
+template<typename T, typename BASE=typename cuda_vec<T>::BASE, typename VT3=typename cuda_vec<BASE, 3>::VT, typename IT3=typename cuda_vec<int, 3>::VT>
 __device__ T tex2DD(T *tex, VT3 p, const FluidParams<BASE> &params)
 {
   IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.y))}; // integer position
@@ -133,14 +119,14 @@ __device__ T tex2DD(T *tex, VT3 p, const FluidParams<BASE> &params)
 
 
 // atomically get/put data at single integer index
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T>
+template<typename T, int N=3, typename IT3=typename cuda_vec<int, 3>::VT>
 __device__ inline void texAtomicAdd(float *tex, float val, const IT3 &p, const FluidParams<T> &params)
 {
   IT3 s  = params.fs;
   IT3 p0 = applyBounds(p, s, params);
   if(p0 >= 0 && p0 < s) { atomicAdd(&tex[idx(p0, s)], val); }
 }
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T>
+template<typename T, int N=3, typename IT3=typename cuda_vec<int, 3>::VT>
 __device__ inline void texAtomicAdd(float2 *tex, float2 val, const IT3 &p, const FluidParams<T> &params)
 {
   IT3 s  = params.fs;
@@ -148,7 +134,7 @@ __device__ inline void texAtomicAdd(float2 *tex, float2 val, const IT3 &p, const
   if(p0 >= 0 && p0 < s)
     { atomicAdd(&tex[idx(p0, s)].x, val.x); atomicAdd(&tex[idx(p0, s)].y, val.y); }
 }
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T>
+template<typename T, int N=3, typename IT3=typename cuda_vec<int, 3>::VT>
 __device__ inline void texAtomicAdd(float3 *tex, float3 val, const IT3 &p, const FluidParams<T> &params)
 {
   IT3 s  = params.fs;
@@ -156,7 +142,7 @@ __device__ inline void texAtomicAdd(float3 *tex, float3 val, const IT3 &p, const
   if(p0 >= 0 && p0 < s)
     { atomicAdd(&tex[idx(p0, s)].x, val.x); atomicAdd(&tex[idx(p0, s)].y, val.y); atomicAdd(&tex[idx(p0, s)].z, val.z); }
 }
-template<typename T, int N=3, typename IT3=typename DimType<int, 3>::VEC_T, typename ITN=typename DimType<int, N>::VEC_T>
+template<typename T, int N=3, typename IT3=typename cuda_vec<int, 3>::VT, typename ITN=typename cuda_vec<int, N>::VT>
 __device__ inline void texAtomicAdd(Material<T> *tex, const Material<T> &val, const ITN &p, const FluidParams<T> &params)
 {
   IT3 s  = params.fs;
@@ -172,7 +158,7 @@ __device__ inline void texAtomicAdd(Material<T> *tex, const Material<T> &val, co
 
 
 
-template<typename T, typename BASE=typename Dim<T>::BASE_T, typename IT3=typename Dim<T>::SIZE_T>
+template<typename T, typename BASE=typename cuda_vec<T>::BASE, typename IT3=typename cuda_vec<T>::IT>
 __device__ int4 texPutIX(T p, const FluidParams<BASE> &params)
 {
   IT3 s  = params.fs;
@@ -181,7 +167,7 @@ __device__ int4 texPutIX(T p, const FluidParams<BASE> &params)
   IT3 p111 = applyBounds(p0+1, s, params);
   return int4{ p000.x, p111.x, p000.x, p111.x }; // ORDER --> { X00, X10, X01, X11 }
 }
-template<typename T, typename BASE=typename Dim<T>::BASE_T, typename IT3=typename Dim<T>::SIZE_T>
+template<typename T, typename BASE=typename cuda_vec<T>::BASE, typename IT3=typename cuda_vec<T>::IT>
 __device__ int4 texPutIY(T p, const FluidParams<BASE> &params)
 {
   IT3 s  = params.fs;
@@ -190,7 +176,7 @@ __device__ int4 texPutIY(T p, const FluidParams<BASE> &params)
   IT3 p111 = applyBounds(p0+1, s, params);
   return int4{ p000.y, p000.y, p111.y, p111.y }; // ORDER --> { Y00, Y10,  Y01, Y11 }
 }
-template<typename T, typename BASE=typename Dim<T>::BASE_T, typename IT3=typename Dim<T>::SIZE_T>
+template<typename T, typename BASE=typename cuda_vec<T>::BASE, typename IT3=typename cuda_vec<T>::IT>
 __device__ int4 texPutIZ(T p, const FluidParams<BASE> &params)
 {
   IT3 s  = params.fs;
@@ -199,7 +185,7 @@ __device__ int4 texPutIZ(T p, const FluidParams<BASE> &params)
   IT3 p111 = applyBounds(p0+1, s, params);
   return int4{ p000.z, p000.z, p111.z, p111.z }; // ORDER --> { Z00, Z10,  Z01, Z11 }
 }
-template<typename T=float, typename VT3=typename DimType<T, 3>::VEC_T, typename IT3=typename Dim<VT3>::SIZE_T>
+template<typename T=float, typename VT3=typename cuda_vec<T, 3>::VT, typename IT3=typename cuda_vec<VT3>::IT>
 __device__ float4 texPutMults0(const VT3 &p)
 {
   IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.z))}; // integer position
@@ -211,7 +197,7 @@ __device__ float4 texPutMults0(const VT3 &p)
   return float4{ m00*(1.0f-fp.z), m10*(1.0f-fp.z), m01*(1.0f-fp.z), m11*(1.0f-fp.z) };
 }
 
-template<typename T=float, typename VT3=typename DimType<T, 3>::VEC_T, typename IT3=typename Dim<VT3>::SIZE_T>
+template<typename T=float, typename VT3=typename cuda_vec<T, 3>::VT, typename IT3=typename cuda_vec<VT3>::IT>
 __device__ float4 texPutMults1(const VT3 &p)
 {
   IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.z))};         // integer position
@@ -224,7 +210,7 @@ __device__ float4 texPutMults1(const VT3 &p)
 }
 
 // NOTE: atomic operation
-template<typename T, typename BASE=typename Dim<T>::BASE_T, typename VT3=typename DimType<BASE, 3>::VEC_T, typename IT3=typename Dim<VT3>::SIZE_T>
+template<typename T, typename BASE=typename cuda_vec<T>::BASE, typename VT3=typename cuda_vec<BASE, 3>::VT, typename IT3=typename cuda_vec<VT3>::IT>
 __device__ void putTex2DD(T *tex, T val, VT3 p, const FluidParams<BASE> &params)
 {
   IT3 p0 = IT3{int(floor(p.x)), int(floor(p.y)), int(floor(p.z))}; // integer position
@@ -271,7 +257,7 @@ __device__ VT integrateForwardEuler(VT *data, const VT &p, const VT &v, T dt)
 }
 
 //// RK4 ////
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=DimType<int, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=cuda_vec<int, 3>::VT>
 __device__ VT3 integrateRK4(const Field<VT3> &data, const VT3 &p, const FluidParams<T> &cp)
 {
   IT  ip0 = makeV<IT>(p);

@@ -9,14 +9,14 @@
 
 
 // ray type
-template<typename T, typename VT3=typename DimType<T,3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T,3>::VT>
 struct Ray { VT3 pos; VT3 dir; };
 
 
 
 //// helpers ////
 
-template<typename T, typename VT3=typename DimType<T,3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T,3>::VT>
 __host__  __device__ inline T planeIntersect(const VT3 &p, const VT3 &n, const Ray<T> &ray) 
 {
   T denom = dot(n, ray.dir);
@@ -27,8 +27,8 @@ __host__  __device__ inline T planeIntersect(const VT3 &p, const VT3 &n, const R
 //  - field assumed to be size (1,1,1) in 3D space
 //  - return value < 0 means ray missed, value == 0 means ray started inside cube
 // returns {tmin, tmax}
-template<typename T, typename VT2=typename DimType<T,2>::VEC_T, typename VT3=typename DimType<T,3>::VEC_T>
-__device__ inline typename DimType<T,2>::VEC_T cubeIntersect(const VT3 &pos, const VT3 &size, const Ray<T> &ray)
+template<typename T, typename VT2=typename cuda_vec<T,2>::VT, typename VT3=typename cuda_vec<T,3>::VT>
+__device__ inline typename cuda_vec<T,2>::VT cubeIntersect(const VT3 &pos, const VT3 &size, const Ray<T> &ray)
 {
   T tnx = (pos.x - ray.pos.x)          / ray.dir.x;
   T tpx = (pos.x - ray.pos.x + size.x) / ray.dir.x;
@@ -43,7 +43,7 @@ __device__ inline typename DimType<T,2>::VEC_T cubeIntersect(const VT3 &pos, con
 
 
 
-template<typename T, typename VT2=typename DimType<T,2>::VEC_T>
+template<typename T, typename VT2=typename cuda_vec<T,2>::VT>
 __host__ inline Vector<T,2> cubeIntersectHost(const Vector<T,3> &pos, const Vector<T,3> &size, const Ray<T> &ray)
 {
   T tnx = (pos.x - ray.pos.x)          / ray.dir.x;

@@ -5,7 +5,7 @@
 #include <helper_cuda.h>
 
 #include "cuda-tools.cuh"
-#include "field-operators.cuh"
+#include "vector-calc.cuh"
 #include "vector-operators.h"
 #include "physics.h"
 #include "fluid.cuh"
@@ -16,7 +16,7 @@
 #define BLOCKDIM_Z 8
 
 // update electric charge (Q)
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=typename Dim<VT3>::SIZE_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=typename cuda_vec<VT3>::IT>
 __global__ void updateCharge_k(FluidField<T> src, FluidField<T> dst, FluidParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -50,7 +50,7 @@ __global__ void updateCharge_k(FluidField<T> src, FluidField<T> dst, FluidParams
         }
       
       // calculate divergence of E --> ∇·E = q/ε₀
-      // IT ip = makeI<IT>(ix, iy, iz);
+      // IT ip = makeV<IT>(ix, iy, iz);
       // IT p0 = applyBounds(ip,   src.size, cp); // current cell
       // IT pN = applyBounds(ip-1, src.size, cp); // cell - (1,1)
       // IT pP = applyBounds(ip+1, src.size, cp); // cell + (1,1)
@@ -115,7 +115,7 @@ __global__ void updateCharge_k(FluidField<T> src, FluidField<T> dst, FluidParams
 //// - E and H are staggered -- E is measured at cell origins, and B/H at cell face centers
 
 // electric field E
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=typename Dim<VT3>::SIZE_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=typename cuda_vec<VT3>::IT>
 __global__ void updateElectric_k(FluidField<T> src, FluidField<T> dst, FluidParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -131,11 +131,11 @@ __global__ void updateElectric_k(FluidField<T> src, FluidField<T> dst, FluidPara
       //if(!cp.reflect)
         {
           const int bs = 1;
-          int xOffset = (((cp.edgeNX == EDGE_WRAP || cp.edgePX == EDGE_WRAP)) ? 0 :
+          int xOffset = (((cp.edgeNX == BOUND_WRAP || cp.edgePX == BOUND_WRAP)) ? 0 :
                          (src.size.x <= bs ? 0 : ((ip0.x < bs ? 1 : 0) + (ip0.x >= src.size.x-1-bs ? -1 : 0))));
-          int yOffset = (((cp.edgeNY == EDGE_WRAP || cp.edgePY == EDGE_WRAP)) ? 0 :
+          int yOffset = (((cp.edgeNY == BOUND_WRAP || cp.edgePY == BOUND_WRAP)) ? 0 :
                          (src.size.y <= bs ? 0 : ((ip0.y < bs ? 1 : 0) + (ip0.y >= src.size.y-1-bs ? -1 : 0))));
-          int zOffset = (((cp.edgeNZ == EDGE_WRAP || cp.edgePZ == EDGE_WRAP)) ? 0 :
+          int zOffset = (((cp.edgeNZ == BOUND_WRAP || cp.edgePZ == BOUND_WRAP)) ? 0 :
                          (src.size.z <= bs ? 0 : ((ip0.z < bs ? 1 : 0) + (ip0.z >= src.size.z-1-bs ? -1 : 0))));
           if(xOffset != 0 || yOffset != 0 || zOffset != 0)
             {
@@ -195,7 +195,7 @@ __global__ void updateElectric_k(FluidField<T> src, FluidField<T> dst, FluidPara
 }
 
 // magnetic field B
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=typename Dim<VT3>::SIZE_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=typename cuda_vec<VT3>::IT>
 __global__ void updateMagnetic_k(FluidField<T> src, FluidField<T> dst, FluidParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -257,7 +257,7 @@ __global__ void updateMagnetic_k(FluidField<T> src, FluidField<T> dst, FluidPara
 
 //// COULOMB FORCES --> [...] ////
 ////  discrete point charge model, calculated by applying Coulomb's law based on neighboring cells/distances (within effective radius)
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=typename Dim<VT3>::SIZE_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=typename cuda_vec<VT3>::IT>
 __global__ void updateCoulomb_k(FluidField<T> src, FluidField<T> dst, FluidParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -293,7 +293,7 @@ __global__ void updateCoulomb_k(FluidField<T> src, FluidField<T> dst, FluidParam
 
 //// REMOVE DIVERGENCE OF B --> ∇·B = 0 ////
 ////// NOTE: very similar to fluid pressure... ////
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=typename Dim<VT3>::SIZE_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=typename cuda_vec<VT3>::IT>
 __global__ void updateDivBPre_k(FluidField<T> src, FluidField<T> dst, FluidParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -301,7 +301,7 @@ __global__ void updateDivBPre_k(FluidField<T> src, FluidField<T> dst, FluidParam
   int iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < src.size.x && iy < src.size.y && iz < src.size.z)
     {
-      IT ip = makeI<IT>(ix, iy, iz);
+      IT ip = makeV<IT>(ix, iy, iz);
       int i = src.idx(ip);
       IT p0 = ip; // applyBounds(ip,   src.size, cp); // current cell
       IT pN = applyBounds(ip-1, src.size, cp); // cell - (1,1)
@@ -318,7 +318,7 @@ __global__ void updateDivBPre_k(FluidField<T> src, FluidField<T> dst, FluidParam
     }
 }
 
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=typename Dim<VT3>::SIZE_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=typename cuda_vec<VT3>::IT>
 __global__ void updateDivBIter_k(FluidField<T> src, FluidField<T> dst, FluidParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -326,7 +326,7 @@ __global__ void updateDivBIter_k(FluidField<T> src, FluidField<T> dst, FluidPara
   int iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < src.size.x && iy < src.size.y && iz < src.size.z)
     {
-      IT ip = makeI<IT>(ix, iy, iz);
+      IT ip = makeV<IT>(ix, iy, iz);
       int i = src.idx(ip);
       IT p0 = ip; // applyBounds(ip,   src.size, cp); // current cell
       IT pP = applyBounds(ip+1, src.size, cp); // cell + (1,1,1)
@@ -346,7 +346,7 @@ __global__ void updateDivBIter_k(FluidField<T> src, FluidField<T> dst, FluidPara
     }
 }
 
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T, typename IT=typename Dim<VT3>::SIZE_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT, typename IT=typename cuda_vec<VT3>::IT>
 __global__ void updateDivBPost_k(FluidField<T> src, FluidField<T> dst, FluidParams<T> cp)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -354,7 +354,7 @@ __global__ void updateDivBPost_k(FluidField<T> src, FluidField<T> dst, FluidPara
   int iz = blockIdx.z*blockDim.z + threadIdx.z;
   if(ix < src.size.x && iy < src.size.y && iz < src.size.z)
     {
-      IT ip = makeI<IT>(ix, iy, iz);
+      IT ip = makeV<IT>(ix, iy, iz);
       int i = src.idx(ip);
       IT p0 = ip; // applyBounds(ip,   src.size, cp); // current cell
       IT pP = applyBounds(ip+1, src.size, cp); // cell + (1,1,1)
@@ -382,7 +382,7 @@ __global__ void updateDivBPost_k(FluidField<T> src, FluidField<T> dst, FluidPara
 
 
 // wrappers
-template<typename T> void updateCharge(FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp)
+template<typename T> void updateCharge(FluidField<T> &src, FluidField<T> &dst, const FluidParams<T> &cp)
 {
   if(src.size.x > 0 && src.size.y > 0 && src.size.z > 0 && dst.size == src.size)
     {
@@ -413,7 +413,7 @@ template<typename T> void updateCharge(FluidField<T> &src, FluidField<T> &dst, F
   getLastCudaError("updateCharge()");
 }
 
-template<typename T> void updateElectric(FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp)
+template<typename T> void updateElectric(FluidField<T> &src, FluidField<T> &dst, const FluidParams<T> &cp)
 {
   if(src.size.x > 0 && src.size.y > 0 && src.size.z > 0 && dst.size == src.size)
     {
@@ -432,7 +432,7 @@ template<typename T> void updateElectric(FluidField<T> &src, FluidField<T> &dst,
   getLastCudaError("updateElectric()");
 }
 
-template<typename T> void updateMagnetic(FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp)
+template<typename T> void updateMagnetic(FluidField<T> &src, FluidField<T> &dst, const FluidParams<T> &cp)
 {
   if(src.size.x > 0 && src.size.y > 0 && src.size.z > 0 && dst.size == src.size)
     {
@@ -452,7 +452,7 @@ template<typename T> void updateMagnetic(FluidField<T> &src, FluidField<T> &dst,
   getLastCudaError("updateMagnetic()");
 }
 
-template<typename T> void updateCoulomb(FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp)
+template<typename T> void updateCoulomb(FluidField<T> &src, FluidField<T> &dst, const FluidParams<T> &cp)
 {
   if(src.size > 0 && dst.size == src.size)
     {
@@ -471,7 +471,7 @@ template<typename T> void updateCoulomb(FluidField<T> &src, FluidField<T> &dst, 
   getLastCudaError("updateCoulomb()");
 }
 
-template<typename T> void updateDivB(FluidField<T> &src, FluidField<T> &dst, FluidParams<T> &cp, int iter)
+template<typename T> void updateDivB(FluidField<T> &src, FluidField<T> &dst, const FluidParams<T> &cp, int iter)
 {
   if(src.size > 0 && dst.size == src.size)
     {
@@ -516,8 +516,8 @@ template<typename T> void updateDivB(FluidField<T> &src, FluidField<T> &dst, Flu
 
 
 // template instantiation
-template void updateCharge  <float>(FluidField<float> &src, FluidField<float> &dst, FluidParams<float> &cp);
-template void updateElectric<float>(FluidField<float> &src, FluidField<float> &dst, FluidParams<float> &cp);
-template void updateMagnetic<float>(FluidField<float> &src, FluidField<float> &dst, FluidParams<float> &cp);
-template void updateCoulomb <float>(FluidField<float> &src, FluidField<float> &dst, FluidParams<float> &cp);
-template void updateDivB    <float>(FluidField<float> &src, FluidField<float> &dst, FluidParams<float> &cp, int iter);
+template void updateCharge  <float>(FluidField<float> &src, FluidField<float> &dst, const FluidParams<float> &cp);
+template void updateElectric<float>(FluidField<float> &src, FluidField<float> &dst, const FluidParams<float> &cp);
+template void updateMagnetic<float>(FluidField<float> &src, FluidField<float> &dst, const FluidParams<float> &cp);
+template void updateCoulomb <float>(FluidField<float> &src, FluidField<float> &dst, const FluidParams<float> &cp);
+template void updateDivB    <float>(FluidField<float> &src, FluidField<float> &dst, const FluidParams<float> &cp, int iter);

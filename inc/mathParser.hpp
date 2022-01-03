@@ -49,6 +49,7 @@ enum MathOperator
   {
    MATHOP_BAD  = -1,
    MATHOP_NONE =  0,
+   //
    MATHOP_ADD,
    MATHOP_SUB,
    MATHOP_MUL,
@@ -57,7 +58,7 @@ enum MathOperator
    MATHOP_MOD,
    MATHOP_MIN,
    MATHOP_MAX,
-   
+   //
    MATHOP_COUNT
   };
 
@@ -76,8 +77,8 @@ __host__ __device__ inline T applyFunc(MathFunction f, T arg)
     case MATHFUNC_EXP:  return (T)exp(arg);
     case MATHFUNC_ABS:  return (T)abs(arg);
     case MATHFUNC_SQRT: return (T)sqrt(arg);
-    case MATHFUNC_POS:  return arg > (T)0 ? arg : (T)0; //(T)max((T)arg, (T)0);
-    case MATHFUNC_NEG:  return arg < (T)0 ? arg : (T)0; //(T)min((T)arg, (T)0);
+    case MATHFUNC_POS:  return (arg > 0 ? arg : (T)0);
+    case MATHFUNC_NEG:  return (arg < 0 ? arg : (T)0);
     default:            return arg;
     }
 }
@@ -109,8 +110,8 @@ __host__ __device__ inline T getConst(MathConstant c)
 {
   switch(c)                
     {
-    case MATHCONST_PI:  return makeV<T>((typename Dim<T>::BASE_T)(M_PI));
-    case MATHCONST_PHI: return makeV<T>((typename Dim<T>::BASE_T)(M_PHI));
+    case MATHCONST_PI:  return makeV<T>((typename cuda_vec<T>::BASE)(M_PI));
+    case MATHCONST_PHI: return makeV<T>((typename cuda_vec<T>::BASE)(M_PHI));
     default:            return T();
     }
 }
@@ -295,8 +296,8 @@ public:
       case '/':  result = leftVal / rightVal;      break;
       case '^':  result = pow(leftVal, rightVal);  break;
       case '%':  result = fmod(leftVal, rightVal); break;
-      case '>':  result = (leftVal > rightVal ? leftVal: rightVal); break;//max(leftVal, rightVal);  break;
-      case '<':  result = (leftVal < rightVal ? leftVal: rightVal); break; //min(leftVal, rightVal);  break;
+      case '>':  result = (leftVal > rightVal ? leftVal: rightVal); break;
+      case '<':  result = (leftVal < rightVal ? leftVal: rightVal); break;
       case '\0': result = (mLeft ? leftVal : (mRight ? rightVal : T())); break;
       default:  badOp = true;
       }
@@ -513,9 +514,9 @@ CudaExpression<T>* toCudaExpression(Expression<T> *expr, const std::vector<std::
       T result = T();
       if(std::isdigit(term->valStr[0]) || term->valStr[0] == '-') // check for explicit value (scalar)
         {
-          typename Dim<T>::BASE_T scalar = 0;
+          typename cuda_vec<T>::BASE scalar = 0;
           std::stringstream ss(term->valStr); ss >> scalar;
-          result = makeV<T>((typename Dim<T>::BASE_T)1)*scalar;
+          result = makeV<T>(1)*scalar;
         }
       else if(term->valStr[0] == '<')      // check for explicit value (scalar)
         { std::stringstream ss(term->valStr); ss >> result; }
@@ -653,7 +654,7 @@ CudaExpression<T>* toCudaExpression(Expression<T> *expr, const std::vector<std::
 //       case '*':  result = leftVal * rightVal;      break;
 //       case '/':  result = leftVal / rightVal;      break;
 //       case '^':  result = pow(leftVal, rightVal);  break;
-//       case '%':  result = fmod(leftVal, rightVal); break;
+//       case '%':  result = (leftVal % rightVal);    break;
 //       case '\0': result = (mLeft ? leftVal :
 //                            (mRight ? rightVal :
 //                             (0)));                 break;

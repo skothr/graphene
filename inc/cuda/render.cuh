@@ -26,7 +26,7 @@ enum RenderFlags : long long
    FLUID_RENDER_NONE  = 0,
 
    // fluid velocity
-   FLUID_RENDER_V     = (1LL<<0),  // ||v||
+   FLUID_RENDER_V     = (1LL<<0),  // ‖v‖
    FLUID_RENDER_VX    = (1LL<<1),  // v.x
    FLUID_RENDER_VY    = (1LL<<2),  // v.y
    FLUID_RENDER_VZ    = (1LL<<3),  // v.z
@@ -35,23 +35,22 @@ enum RenderFlags : long long
    FLUID_RENDER_VZMAG = (1LL<<6),  // abs(v.z)
    FLUID_RENDER_VXP   = (1LL<<7),  // max( v.x, 0)
    FLUID_RENDER_VYP   = (1LL<<8),  // max( v.y, 0)
-   FLUID_RENDER_VZP   = (1LL<<9), // max( v.z, 0)
+   FLUID_RENDER_VZP   = (1LL<<9),  // max( v.z, 0)
    FLUID_RENDER_VXN   = (1LL<<10), // max(-v.x, 0)
    FLUID_RENDER_VYN   = (1LL<<11), // max(-v.y, 0)
    FLUID_RENDER_VZN   = (1LL<<12), // max(-v.z, 0)
    // fluid pressure
    FLUID_RENDER_P     = (1LL<<13), // p
-   FLUID_RENDER_PMAG  = (1LL<<14), // ||p||
+   FLUID_RENDER_PMAG  = (1LL<<14), // ‖p‖
    FLUID_RENDER_PP    = (1LL<<15), // p+
    FLUID_RENDER_PN    = (1LL<<16), // p-
-
    // charge density
    FLUID_RENDER_Q     = (1LL<<17), // (Q+)-(Q-)
    FLUID_RENDER_QMAG  = (1LL<<18), // |Q|
    FLUID_RENDER_QP    = (1LL<<19), // Q+
    FLUID_RENDER_QN    = (1LL<<20), // Q-
    // charge velocity
-   FLUID_RENDER_QV    = (1LL<<21), // ||Qv||
+   FLUID_RENDER_QV    = (1LL<<21), // ‖Qv‖
    FLUID_RENDER_QVX   = (1LL<<22), // Qv.x
    FLUID_RENDER_QVY   = (1LL<<23), // Qv.y
    FLUID_RENDER_QVZ   = (1LL<<24), // Qv.z
@@ -65,7 +64,7 @@ enum RenderFlags : long long
    FLUID_RENDER_QVYN  = (1LL<<32), // max(-Qv.y, 0)
    FLUID_RENDER_QVZN  = (1LL<<33), // max(-Qv.z, 0)
    // E / B
-   FLUID_RENDER_E     = (1LL<<34), // ||E||
+   FLUID_RENDER_E     = (1LL<<34), // ‖E‖
    FLUID_RENDER_EX    = (1LL<<35), // E.x
    FLUID_RENDER_EY    = (1LL<<36), // E.y
    FLUID_RENDER_EZ    = (1LL<<37), // E.z
@@ -78,7 +77,7 @@ enum RenderFlags : long long
    FLUID_RENDER_EXN   = (1LL<<44), // max(-E.x, 0)
    FLUID_RENDER_EYN   = (1LL<<45), // max(-E.y, 0)
    FLUID_RENDER_EZN   = (1LL<<46), // max(-E.z, 0)
-   FLUID_RENDER_B     = (1LL<<47), // ||B||
+   FLUID_RENDER_B     = (1LL<<47), // ‖B‖
    FLUID_RENDER_BX    = (1LL<<48), // B.x
    FLUID_RENDER_BY    = (1LL<<49), // B.y
    FLUID_RENDER_BZ    = (1LL<<50), // B.z
@@ -108,7 +107,7 @@ ENUM_FLAG_OPERATORS_LL(RenderFlags)
 
 inline constexpr const char* renderFlagName(RenderFlags f)
 {
-  if     (f & FLUID_RENDER_V     ) { return "||V||"; }
+  if     (f & FLUID_RENDER_V     ) { return "‖V‖";   }
   else if(f & FLUID_RENDER_VX    ) { return  "Vx";   }
   else if(f & FLUID_RENDER_VY    ) { return  "Vy";   }
   else if(f & FLUID_RENDER_VZ    ) { return  "Vz";   }
@@ -132,7 +131,7 @@ inline constexpr const char* renderFlagName(RenderFlags f)
   else if(f & FLUID_RENDER_QP    ) { return  "Q+";   }
   else if(f & FLUID_RENDER_QN    ) { return  "Q-";   }
 
-  else if(f & FLUID_RENDER_QV    ) { return "||QV||";}
+  else if(f & FLUID_RENDER_QV    ) { return "‖QV‖"; }
   else if(f & FLUID_RENDER_QVX   ) { return  "QVx";  }
   else if(f & FLUID_RENDER_QVY   ) { return  "QVy";  }
   else if(f & FLUID_RENDER_QVZ   ) { return  "QVz";  }
@@ -146,7 +145,7 @@ inline constexpr const char* renderFlagName(RenderFlags f)
   else if(f & FLUID_RENDER_QVYN  ) { return "-QVy";  }
   else if(f & FLUID_RENDER_QVZN  ) { return "-QVz";  }
 
-  else if(f & FLUID_RENDER_E     ) { return "||E||"; }
+  else if(f & FLUID_RENDER_E     ) { return "‖E‖";   }
   else if(f & FLUID_RENDER_EX    ) { return  "Ex";   }
   else if(f & FLUID_RENDER_EY    ) { return  "Ey";   }
   else if(f & FLUID_RENDER_EZ    ) { return  "Ez";   }
@@ -160,7 +159,7 @@ inline constexpr const char* renderFlagName(RenderFlags f)
   else if(f & FLUID_RENDER_EYN   ) { return "-Ey";   }
   else if(f & FLUID_RENDER_EZN   ) { return "-Ez";   }
 
-  else if(f & FLUID_RENDER_B     ) { return "||B||"; }
+  else if(f & FLUID_RENDER_B     ) { return "‖B‖";   }
   else if(f & FLUID_RENDER_BX    ) { return  "Bx";   }
   else if(f & FLUID_RENDER_BY    ) { return  "By";   }
   else if(f & FLUID_RENDER_BZ    ) { return  "Bz";   }
@@ -197,8 +196,8 @@ inline constexpr const char* renderFlagGroupName(RenderFlags f)
 template<typename T>
 struct RenderParams
 {
-  typedef typename DimType<T,3>::VEC_T VT3;
-  typedef typename DimType<T,4>::VEC_T VT4;
+  typedef typename cuda_vec<T,3>::VT VT3;
+  typedef typename cuda_vec<T,4>::VT VT4;
 
   bool simple = true; // if true only handles main components for faster rendering -- v, p, Q, E, B, mat
   static const RenderFlags MAIN = (FLUID_RENDER_V  | FLUID_RENDER_P  |
@@ -303,9 +302,9 @@ struct RenderParams
 
 // render a single cell with simple main color options (for speed)
 template<typename T>
-__device__ typename DimType<T, 4>::VEC_T renderCellSimple(FluidField<T> &src, unsigned long i, const RenderParams<T> &rp, const FluidParams<T> &cp)
+__device__ typename cuda_vec<T, 4>::VT renderCellSimple(FluidField<T> &src, unsigned long i, const RenderParams<T> &rp, const FluidParams<T> &cp)
 {
-  typedef typename DimType<T,4>::VEC_T VT4;
+  typedef typename cuda_vec<T,4>::VT VT4;
 
   VT4 color = rp.fBrightness*rp.fOpacity*(length(src.v[i])      * rp.getFinalColor(FLUID_RENDER_V)   +
                                           src.p[i]              * rp.getFinalColor(FLUID_RENDER_P));
@@ -327,10 +326,10 @@ __device__ typename DimType<T, 4>::VEC_T renderCellSimple(FluidField<T> &src, un
 
 // render a single cell with extended options
 template<typename T>
-__device__ typename DimType<T, 4>::VEC_T renderCellAll(FluidField<T> &src, unsigned long i, const RenderParams<T> &rp, const FluidParams<T> &cp)
+__device__ typename cuda_vec<T, 4>::VT renderCellAll(FluidField<T> &src, unsigned long i, const RenderParams<T> &rp, const FluidParams<T> &cp)
 {
-  typedef typename DimType<T,3>::VEC_T VT3;
-  typedef typename DimType<T,4>::VEC_T VT4;
+  typedef typename cuda_vec<T,3>::VT VT3;
+  typedef typename cuda_vec<T,4>::VT VT4;
 
   const VT3 v   = src.v[i];
   const T   p   = src.p[i];
@@ -435,11 +434,11 @@ __device__ typename DimType<T, 4>::VEC_T renderCellAll(FluidField<T> &src, unsig
 
 // blend fluid colors from one cell to the next (along ray)
 template<typename T>
-__device__ inline typename DimType<T, 4>::VEC_T& fluidBlend(typename DimType<T, 4>::VEC_T &rayColor,
-                                                            const typename DimType<T, 4>::VEC_T &cellColor,
+__device__ inline typename cuda_vec<T, 4>::VT& fluidBlend(typename cuda_vec<T, 4>::VT &rayColor,
+                                                            const typename cuda_vec<T, 4>::VT &cellColor,
                                                             const RenderParams<T> &rp)
 {
-  typedef typename DimType<T, 4>::VEC_T VT4;
+  typedef typename cuda_vec<T, 4>::VT VT4;
   T a = rayColor.w;
   rayColor += VT4{cellColor.x, cellColor.y, cellColor.z, 0.0} * cellColor.w*(1-a)*rp.emBrightness;
   rayColor.w += cellColor.w*(1-rayColor.w)*(rp.emOpacity);

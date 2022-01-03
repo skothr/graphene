@@ -6,14 +6,12 @@
 #include "vector-operators.h"
 #include "raytrace.h"
 
-
-
 // lightweight camera description
 template<typename T>
 struct CameraDesc
 {
-  typedef typename DimType<T,2>::VEC_T VT2;
-  typedef typename DimType<T,3>::VEC_T VT3;
+  typedef typename cuda_vec<T,2>::VT VT2;
+  typedef typename cuda_vec<T,3>::VT VT3;
   
   VT3 pos   = VT3{0.0,  0.0,  0.0}; // world position
   VT3 dir   = VT3{0.0,  1.0,  0.0}; // orthonormal basis vectors

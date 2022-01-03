@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <limits>
 
-#include <vector_types.h>
+//#include <vector_types.h>
 #include <cuda_runtime.h>
 
 
@@ -43,11 +43,13 @@ typedef Vector<long double, 3> Vec3l;
 typedef Vector<long double, 4> Vec4l;
 
 // base template class
-template<typename T, int N>
+template<typename T, int N_>
 struct Vector
 {
+  typedef T type;
+  static constexpr int N = N_;
   std::array<T, N> data;
-  
+
   Vector()                              : data{{0}}          { }
   Vector(const Vector<T, N> &other)     : Vector(other.data) { }
   Vector(const std::array<T, N> &data_) : data(data_)        { }
@@ -74,7 +76,7 @@ struct Vector
 
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
-  
+
   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
   Vector<T, N>& operator=(const Vector<T, N> &other) { for(int i = 0; i < N; i++) { data[i] = other.data[i]; } return *this; }
   bool operator==(const Vector<T, N> &other) const
@@ -112,7 +114,7 @@ struct Vector
   Vector<T, N> operator%(const T &s) const                { Vector<T, N> result(*this); return (result %= s); }
   Vector<T, N> operator%(const Vector<T, N> &other) const { Vector<T, N> result(*this); return (result %= other); }
 #endif
-  
+
   void ceil()  { for(auto &d : data) { d = std::ceil(d);  } }
   void floor() { for(auto &d : data) { d = std::floor(d); } }
   Vector<T, N> getCeil() const  { Vector<T, N> v(*this); v.ceil(); return v; }
@@ -120,10 +122,10 @@ struct Vector
 
   T length2() const { T sqsum = T(); for(auto d : data) { sqsum += d*d; } return sqsum; }
   T length() const  { return sqrt(length2()); }
-  
+
   void normalize()                { (*this) /= length(); }
   Vector<T, N> normalized() const { return Vector<T, N>(*this) / length(); }
-  
+
   template<typename U>
   T dot(const Vector<U, N> &other) const
   {
@@ -156,6 +158,7 @@ std::istream& operator>>(std::istream &is, Vector<T, N> &v)
 template<typename T>
 struct Vector<T, 2>
 {
+  typedef T type;
   static constexpr int N = 2;
   union { struct { T x, y; }; std::array<T, N> data; };
 
@@ -184,10 +187,10 @@ struct Vector<T, 2>
   Vector<T, 2> yy() const { return Vector<T, 2>(y, y); }
   Vector<T, 2> xy() const { return Vector<T, 2>(x, y); }
   Vector<T, 2> yx() const { return Vector<T, 2>(y, x); }
-  
+
   std::string toString() const            { std::ostringstream ss;      ss << (*this); return ss.str(); }
   void fromString(const std::string &str) { std::istringstream ss(str); ss >> (*this); }
-  
+
   bool operator==(const Vector<T, N> &other) const
   {
     for(int i = 0; i < N; i++)
@@ -234,7 +237,7 @@ struct Vector<T, 2>
     for(int i = 0; i < N; i++) { result.data[i] /= other.data[i]; }
     return result;
   }
-  
+
   Vector<T, N>& operator*=(T scalar) { for(int i = 0; i < N; i++) { data[i] *= scalar; } return *this; }
   Vector<T, N>  operator* (T scalar) const
   {
@@ -264,18 +267,18 @@ struct Vector<T, 2>
   Vector<T, N> operator%(const T &s) const                { Vector<T, N> result(*this); return (result %= s); }
   Vector<T, N> operator%(const Vector<T, N> &other) const { Vector<T, N> result(*this); return (result %= other); }
 #endif
-  
+
   void ceil()  { for(auto &d : data) { d = std::ceil(d);  } }
   void floor() { for(auto &d : data) { d = std::floor(d); } }
   Vector<T, N> getCeil() const  { Vector<T, N> v(*this);  v.ceil();  return v; }
   Vector<T, N> getFloor() const { Vector<T, N> v = *this; v.floor(); return v; }
-  
+
   T length2() const { T sqsum = T(); for(auto d : data) { sqsum += d*d; } return sqsum; }
   T length()  const { return sqrt(length2()); }
-  
+
   void normalize()                { (*this) /= length(); }
   Vector<T, N> normalized() const { return Vector<T, N>(*this) / length(); }
-  
+
   template<typename U>
   T dot(const Vector<U, N> &other) const
   {
@@ -284,10 +287,11 @@ struct Vector<T, 2>
     return total;
   }
 };
-  
+
 template<typename T>
 struct Vector<T, 3>
 {
+  typedef T type;
   static constexpr int N = 3;
   union { struct { T x, y, z; }; std::array<T, N> data; };
 
@@ -307,7 +311,7 @@ struct Vector<T, 3>
   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; }    return *this; }
   Vector<T, N>& operator=(const float3 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
   Vector<T, N>& operator=(const double3 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; return *this; }
-  
+
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
 
@@ -321,7 +325,7 @@ struct Vector<T, 3>
   Vector<T, 3> xyz() const { return Vector<T, 3>(x, y, z); } Vector<T, 3> xzy() const { return Vector<T, 3>(x, z, y); }
   Vector<T, 3> yxz() const { return Vector<T, 3>(y, x, z); } Vector<T, 3> yzx() const { return Vector<T, 3>(y, z, x); }
   Vector<T, 3> zxy() const { return Vector<T, 3>(z, x, y); } Vector<T, 3> zyx() const { return Vector<T, 3>(z, y, x); }
-  
+
   Vector<T, 3> xxy() const { return Vector<T, 3>(x, x, y); } Vector<T, 3> xyx() const { return Vector<T, 3>(x, y, x); }
   Vector<T, 3> yxx() const { return Vector<T, 3>(y, x, x); } Vector<T, 3> xxz() const { return Vector<T, 3>(x, x, z); }
   Vector<T, 3> xzx() const { return Vector<T, 3>(x, z, x); } Vector<T, 3> zxx() const { return Vector<T, 3>(z, x, x); }
@@ -329,11 +333,11 @@ struct Vector<T, 3>
   Vector<T, 3> yyx() const { return Vector<T, 3>(y, y, x); } Vector<T, 3> yxy() const { return Vector<T, 3>(y, x, y); }
   Vector<T, 3> xyy() const { return Vector<T, 3>(x, y, y); } Vector<T, 3> yyz() const { return Vector<T, 3>(y, y, z); }
   Vector<T, 3> yzy() const { return Vector<T, 3>(y, z, y); } Vector<T, 3> zyy() const { return Vector<T, 3>(z, y, y); }
-  
+
   Vector<T, 3> zzx() const { return Vector<T, 3>(z, z, x); } Vector<T, 3> zxz() const { return Vector<T, 3>(z, x, z); }
   Vector<T, 3> xzz() const { return Vector<T, 3>(x, z, z); } Vector<T, 3> zzy() const { return Vector<T, 3>(z, z, y); }
   Vector<T, 3> zyz() const { return Vector<T, 3>(z, y, z); } Vector<T, 3> yzz() const { return Vector<T, 3>(y, z, z); }
-    
+
   std::string toString() const            { std::ostringstream ss; ss << (*this); return ss.str(); }
   void fromString(const std::string &str) { std::istringstream ss(str); ss >> (*this); }
 
@@ -344,7 +348,7 @@ struct Vector<T, 3>
     return true;
   }
   bool operator!=(const Vector<T, N> &other) const { return !(*this == other); }
-  
+
   // <, > (AND)
   bool operator> (const Vector<T, N> &other) const { for(int i = 0; i < N; i++) { if(data[i] <= other.data[i]) { return false; } } return true; }
   bool operator< (const Vector<T, N> &other) const { for(int i = 0; i < N; i++) { if(data[i] >= other.data[i]) { return false; } } return true; }
@@ -369,7 +373,7 @@ struct Vector<T, 3>
     Vector<T, N> result(*this);
     for(int i = 0; i < N; i++) { result.data[i] -= other.data[i]; }
     return result;
-  }  
+  }
   Vector<T, N>& operator*=(const Vector<T, N> &other) { for(int i = 0; i < N; i++) { data[i] *= other.data[i]; } return *this; }
   Vector<T, N>  operator* (const Vector<T, N> &other) const
   {
@@ -399,7 +403,7 @@ struct Vector<T, 3>
     for(int i = 0; i < N; i++) { result.data[i] /= scalar; }
     return result;
   }
-  
+
 #ifndef __NVCC__
   Vector<T, N>& operator%=(const T &s)
   {
@@ -412,9 +416,9 @@ struct Vector<T, 3>
     return *this;
   }
   Vector<T, N> operator%(const T &s) const                { Vector<T, N> result(*this); return (result %= s); }
-  Vector<T, N> operator%(const Vector<T, N> &other) const { Vector<T, N> result(*this); return (result %= other); }  
+  Vector<T, N> operator%(const Vector<T, N> &other) const { Vector<T, N> result(*this); return (result %= other); }
 #endif
-  
+
   void ceil()                   { for(auto &d : data) { d = std::ceil(d);  } }
   void floor()                  { for(auto &d : data) { d = std::floor(d); } }
   Vector<T, N> getCeil() const  { Vector<T, N> v(*this); v.ceil();  return v; }
@@ -438,6 +442,7 @@ struct Vector<T, 3>
 template<typename T>
 struct Vector<T, 4>
 {
+  typedef T type;
   static constexpr int N = 4;
   union { struct { T x, y, z, w; }; std::array<T, N> data; };
 
@@ -458,10 +463,10 @@ struct Vector<T, 4>
   Vector<T, N>& operator=(T scalar)                  { for(int i = 0; i < N; i++) { data[i] = scalar; } return *this; }
   Vector<T, N>& operator=(const float4 &cv)  { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
   Vector<T, N>& operator=(const double4 &cv) { x = (T)cv.x; y = (T)cv.y; z = (T)cv.z; w = (T)cv.w; return *this; }
-  
+
   T& operator[](int dim)             { return data[dim]; }
   const T& operator[](int dim) const { return data[dim]; }
-  
+
   // swizzle (TODO: etc.)
   Vector<T,2> xx() const {return Vector<T, 2>(x, x);} Vector<T,2> yy() const {return Vector<T, 2>(y, y);} Vector<T,2> zz() const {return Vector<T, 2>(z, z);}
   Vector<T,2> xy() const {return Vector<T, 2>(x, y);} Vector<T,2> yx() const {return Vector<T, 2>(y, x);} Vector<T,2> zx() const {return Vector<T, 2>(z, x);}
@@ -472,7 +477,7 @@ struct Vector<T, 4>
   Vector<T, 3> xyz() const { return Vector<T, 3>(x, y, z); } Vector<T, 3> xzy() const { return Vector<T, 3>(x, z, y); }
   Vector<T, 3> yxz() const { return Vector<T, 3>(y, x, z); } Vector<T, 3> yzx() const { return Vector<T, 3>(y, z, x); }
   Vector<T, 3> zxy() const { return Vector<T, 3>(z, x, y); } Vector<T, 3> zyx() const { return Vector<T, 3>(z, y, x); }
-  
+
   Vector<T, 3> xxy() const { return Vector<T, 3>(x, x, y); } Vector<T, 3> xyx() const { return Vector<T, 3>(x, y, x); }
   Vector<T, 3> yxx() const { return Vector<T, 3>(y, x, x); } Vector<T, 3> xxz() const { return Vector<T, 3>(x, x, z); }
   Vector<T, 3> xzx() const { return Vector<T, 3>(x, z, x); } Vector<T, 3> zxx() const { return Vector<T, 3>(z, x, x); }
@@ -480,11 +485,11 @@ struct Vector<T, 4>
   Vector<T, 3> yyx() const { return Vector<T, 3>(y, y, x); } Vector<T, 3> yxy() const { return Vector<T, 3>(y, x, y); }
   Vector<T, 3> xyy() const { return Vector<T, 3>(x, y, y); } Vector<T, 3> yyz() const { return Vector<T, 3>(y, y, z); }
   Vector<T, 3> yzy() const { return Vector<T, 3>(y, z, y); } Vector<T, 3> zyy() const { return Vector<T, 3>(z, y, y); }
-  
+
   Vector<T, 3> zzx() const { return Vector<T, 3>(z, z, x); } Vector<T, 3> zxz() const { return Vector<T, 3>(z, x, z); }
   Vector<T, 3> xzz() const { return Vector<T, 3>(x, z, z); } Vector<T, 3> zzy() const { return Vector<T, 3>(z, z, y); }
   Vector<T, 3> zyz() const { return Vector<T, 3>(z, y, z); } Vector<T, 3> yzz() const { return Vector<T, 3>(y, z, z); }
-  
+
   std::string toString() const            { std::ostringstream ss; ss << (*this); return ss.str(); }
   void fromString(const std::string &str) { std::istringstream ss(str); ss >> (*this); }
 
@@ -495,7 +500,7 @@ struct Vector<T, 4>
     return true;
   }
   bool operator!=(const Vector<T, N> &other) const { return !(*this == other); }
-  
+
   // <, > (AND)
   bool operator> (const Vector<T, N> &other) const { for(int i = 0; i < N; i++) { if(data[i] <= other.data[i]) { return false; } } return true; }
   bool operator< (const Vector<T, N> &other) const { for(int i = 0; i < N; i++) { if(data[i] >= other.data[i]) { return false; } } return true; }
@@ -549,7 +554,7 @@ struct Vector<T, 4>
     for(int i = 0; i < N; i++) { result.data[i] /= scalar; }
     return result;
   }
-  
+
 #ifndef __NVCC__
   Vector<T, N>& operator%=(const T &s)
   {
@@ -563,8 +568,8 @@ struct Vector<T, 4>
   }
   Vector<T, N> operator%(const T &s) const                { Vector<T, N> result(*this); return (result %= s); }
   Vector<T, N> operator%(const Vector<T, N> &other) const { Vector<T, N> result(*this); return (result %= other); }
-#endif  
-  
+#endif
+
   void ceil()                   { for(auto &d : data) { d = std::ceil(d);  } }
   void floor()                  { for(auto &d : data) { d = std::floor(d); } }
   Vector<T, N> getCeil() const  { Vector<T, N> v(*this); v.ceil(); return v; }
@@ -572,7 +577,7 @@ struct Vector<T, 4>
 
   T length2() const { T sqsum = T(); for(auto d : data) { sqsum += d*d; } return sqsum; }
   T length()  const { return sqrt(length2()); }
-  
+
   void normalize()                { (*this) /= length(); }
   Vector<T, N> normalized() const { return Vector<T, N>(*this) / length(); }
 
@@ -585,7 +590,7 @@ struct Vector<T, 4>
   }
 };
 
-
+// friend operators
 template<typename T, int N>
 inline Vector<T, N> operator-(const Vector<T, N> &v)
 {
@@ -609,55 +614,12 @@ inline Vector<T, N> operator/(U scalar, const Vector<T, N> &v)
 }
 
 
-// extensions of Dim class from vector-operators.h
-template<typename T> struct Dim;
-template<> struct Dim<Vector<int,    1>> { static constexpr int N = 1; using BASE_T = int;    using LOWER = int;               using SIZE_T = int;            };
-template<> struct Dim<Vector<int,    2>> { static constexpr int N = 2; using BASE_T = int;    using LOWER = Vector<int,    2>; using SIZE_T = Vector<int, 2>; };
-template<> struct Dim<Vector<int,    3>> { static constexpr int N = 3; using BASE_T = int;    using LOWER = Vector<int,    3>; using SIZE_T = Vector<int, 3>; };
-template<> struct Dim<Vector<int,    4>> { static constexpr int N = 4; using BASE_T = int;    using LOWER = Vector<int,    4>; using SIZE_T = Vector<int, 4>; };
-template<> struct Dim<Vector<float,  1>> { static constexpr int N = 1; using BASE_T = float;  using LOWER = float;             using SIZE_T = int;            };
-template<> struct Dim<Vector<float,  2>> { static constexpr int N = 2; using BASE_T = float;  using LOWER = Vector<float,  2>; using SIZE_T = Vector<int, 2>; };
-template<> struct Dim<Vector<float,  3>> { static constexpr int N = 3; using BASE_T = float;  using LOWER = Vector<float,  3>; using SIZE_T = Vector<int, 3>; };
-template<> struct Dim<Vector<float,  4>> { static constexpr int N = 4; using BASE_T = float;  using LOWER = Vector<float,  4>; using SIZE_T = Vector<int, 4>; };
-template<> struct Dim<Vector<double, 1>> { static constexpr int N = 1; using BASE_T = double; using LOWER = double;            using SIZE_T = int;            };
-template<> struct Dim<Vector<double, 2>> { static constexpr int N = 2; using BASE_T = double; using LOWER = Vector<double, 2>; using SIZE_T = Vector<int, 2>; };
-template<> struct Dim<Vector<double, 3>> { static constexpr int N = 3; using BASE_T = double; using LOWER = Vector<double, 3>; using SIZE_T = Vector<int, 3>; };
-template<> struct Dim<Vector<double, 4>> { static constexpr int N = 4; using BASE_T = double; using LOWER = Vector<double, 4>; using SIZE_T = Vector<int, 4>; };
-
-// is_vec<T>::value (or) is_vec_v<T> --> true if T is a vector type (e.g. Vector)
-template<typename T> struct is_vec : std::false_type { };
-template<typename T, int N> struct is_vec<Vector<T, N>> : std::true_type { };
-template<typename T> constexpr bool is_vec_v = is_vec<T>::value; // (helper)
-
-// converts a vector to a string with specified precision
-template<typename T> std::enable_if_t<is_vec_v<T>, std::string> to_string(const T &val, const int precision=6)
-{
-  std::ostringstream out;
-  out.precision(precision);
-  out << std::fixed << val;
-  return out.str();
-}
-// converts given string to a vector (specify explicitly with template parameter)
-template<typename T> std::enable_if_t<is_vec_v<T>, T> from_string(const std::string &valStr)
-{ std::istringstream out(valStr); T val; out >> val; return val; }
-
-
-// SCALAR <, > VECTOR (AND)
-template<typename T, typename U, int N>
-inline bool operator> (U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <= v.data[i]) { return false; } } return true; }
-template<typename T, typename U, int N>
-inline bool operator< (U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar >= v.data[i]) { return false; } } return true; }
-template<typename T, typename U, int N>
-inline bool operator>=(U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar <  v.data[i]) { return false; } } return true; }
-template<typename T, typename U, int N>
-inline bool operator<=(U scalar, const Vector<T, N> &v) { for(int i = 0; i < N; i++) { if(scalar >  v.data[i]) { return false; } } return true; }
 
 // glsl/cuda-like functions
 template<typename T, int N> inline Vector<T, N> normalize(const Vector<T, N> &v) { return v.normalized(); }
 template<typename T, int N> inline T length2(const Vector<T, N> &v) { return v.length2(); }
 template<typename T, int N> inline T length (const Vector<T, N> &v) { return v.length(); }
 template<typename T, int N> inline T dot(const Vector<T, N> &v1, const Vector<T, N> &v2) { return v1.dot(v2); }
-
 template<typename T, int N> inline T isnan(const Vector<T, N> &v) { for(const auto &d : v.data) { if(std::isnan(d)) return true; } return false; }
 template<typename T, int N> inline T isinf(const Vector<T, N> &v) { for(const auto &d : v.data) { if(std::isinf(d)) return true; } return false; }
 
@@ -716,19 +678,61 @@ inline Vector<T, 3> rotate(const Vector<T, 3> &v, const Vector<T, 3> &ax, T thet
 }
 
 
-inline int2    to_cuda(const Vec2i &v) { return int2   {v.x, v.y}; }
-inline int3    to_cuda(const Vec3i &v) { return int3   {v.x, v.y, v.z}; }
-inline int4    to_cuda(const Vec4i &v) { return int4   {v.x, v.y, v.z, v.w}; }
-inline float2  to_cuda(const Vec2f &v) { return float2 {v.x, v.y}; }
-inline float3  to_cuda(const Vec3f &v) { return float3 {v.x, v.y, v.z}; }
-inline float4  to_cuda(const Vec4f &v) { return float4 {v.x, v.y, v.z, v.w}; }
-inline double2 to_cuda(const Vec2d &v) { return double2{v.x, v.y}; }
-inline double3 to_cuda(const Vec3d &v) { return double3{v.x, v.y, v.z}; }
-inline double4 to_cuda(const Vec4d &v) { return double4{v.x, v.y, v.z, v.w}; }
 
-// same syntax as CUDA structs, for template flexibility
+
+
+
+
+
+
+// is_vec<T>::value or is_vec_v<T> --> true if T is a Vector (non-cuda)
+template<typename T>         struct is_vec               : std::false_type { };
+template<typename T, int N>  struct is_vec<Vector<T, N>> : std::true_type  { };
+template<typename T> constexpr bool is_vec_v = is_vec<T>::value; // (helper)
+
+// is_any_vec<T>::value or is_any_vec_v<T> --> true if T is a vector type (Vector or cuda vector)
+template<typename T>         struct is_any_vec               : std::false_type { };
+template<typename T, int N>  struct is_any_vec<Vector<T, N>> : std::true_type  { };
+template<typename T> constexpr bool is_any_vec_v = is_any_vec<T>::value; // (helper)
+
+// compile-time info struct --> vec<Vector<T,N>, 1>
+template<typename T, int N_=1>
+struct vec
+{
+  static constexpr int N = (is_vec_v<T> && std::greater<int>{}(T::N, 1)) ? T::N : N_;
+  typedef typename std::conditional<is_vec_v<T> && std::greater<int>{}(T::N, 1), typename T::type, T>::type BASE;  // single dimension type
+  typedef Vector<BASE, N>   VT;    // main vector type
+  typedef Vector<int,  N>   IT;    // iterator/size type
+  typedef Vector<BASE, N-1> LOWER; // vector with one fewer dimensions
+};
+
+// generalized vector access struct
+template<typename T, typename T2=void> struct any_vec { };
+template<typename T> struct any_vec<T, typename std::enable_if_t<is_vec_v<T>>> : vec<T,1> { };
+
+// same access syntax as cuda vectors, for template flexibility
 template<typename T, int N>  T*       arr(      Vector<T, N> &v) { return v.data.data(); }
 template<typename T, int N>  const T* arr(const Vector<T, N> &v) { return v.data.data(); }
+
+
+
+
+
+
+
+
+
+// converts a vector to a string with specified precision
+template<typename T> std::enable_if_t<is_vec_v<T>, std::string> to_string(const T &val, const int precision=6)
+{
+  std::ostringstream out;
+  out.precision(precision);
+  out << std::fixed << val;
+  return out.str();
+}
+// converts given string to a vector (specify explicitly with template parameter)
+template<typename T> std::enable_if_t<is_vec_v<T>, T> from_string(const std::string &valStr)
+{ std::istringstream out(valStr); T val; out >> val; return val; }
 
 
 #endif //VECTOR_HPP

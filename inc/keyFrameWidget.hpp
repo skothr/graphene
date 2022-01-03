@@ -34,7 +34,7 @@ struct KeyEventWidget
 // represents a persistent signal source
 struct SignalSource
 {
-  typedef typename DimType<CFT,3>::VEC_T VT3;
+  typedef typename cuda_vec<CFT,3>::VT VT3;
   VT3 pos;
   SignalPen<CFT> pen;
   double start  = -1.0;
@@ -47,7 +47,7 @@ struct SignalSource
 // represents placement of material at some location
 struct MaterialPlaced
 {
-  typedef typename DimType<CFT,3>::VEC_T VT3;
+  typedef typename cuda_vec<CFT,3>::VT VT3;
   VT3 pos;
   MaterialPen<CFT> pen;
 };
@@ -57,7 +57,7 @@ struct MaterialPlaced
 
 class KeyFrameWidget
 {
-  typedef typename DimType<CFT,3>::VEC_T VT3;
+  typedef typename cuda_vec<CFT,3>::VT VT3;
   
 private:
   // SignalPen<CFT>   *mSigPen = nullptr; // global signal pen

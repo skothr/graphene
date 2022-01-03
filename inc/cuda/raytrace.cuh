@@ -18,8 +18,8 @@
 #define MAX_ITER  16 // (prevents infinite loops to some extent)
 
 // render 3D --> raytrace field
-template<typename T, typename VT2=typename DimType<T,2>::VEC_T, typename VT3=typename DimType<T,3>::VEC_T, typename VT4=typename DimType<T,4>::VEC_T>
-__device__ typename DimType<T,4>::VEC_T rayTraceField(FluidField<T> &src, Ray<T> ray, const RenderParams<T> &rp, const FluidParams<T> &cp)
+template<typename T, typename VT2=typename cuda_vec<T,2>::VT, typename VT3=typename cuda_vec<T,3>::VT, typename VT4=typename cuda_vec<T,4>::VT>
+__device__ typename cuda_vec<T,4>::VT rayTraceField(FluidField<T> &src, Ray<T> ray, const RenderParams<T> &rp, const FluidParams<T> &cp)
 {
   const T   tol = TOL;
   const VT3 fPos    = VT3{(T)cp.fp.x,    (T)cp.fp.y,    (T)(cp.fp.z + rp.zRange.x) + tol};

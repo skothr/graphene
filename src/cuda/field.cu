@@ -65,7 +65,7 @@ __global__ void fillFieldMaterial_k(Field<Material<T>> dst, CudaExpression<T> *d
 
 // fills field via given math expression
 template<typename T> __global__ void fillField_k(Field<T> dst, CudaExpression<T> *expr);
-template<typename T> __global__ void fillFieldChannel_k(Field<T> dst, CudaExpression<typename Dim<T>::BASE_T> *expr, int channel=-1);
+template<typename T> __global__ void fillFieldChannel_k(Field<T> dst, CudaExpression<typename cuda_vec<T>::BASE> *expr, int channel=-1);
 template<> __global__ void fillField_k<float>(Field<float> dst, CudaExpression<float> *expr)
 {
   unsigned long ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -116,8 +116,8 @@ template<> __global__ void fillField_k<float3>(Field<float3> dst, CudaExpression
       vars[1] = s;               // "s" -- size
       vars[2] = c;               // "r" -- radius (position from center)
       vars[3] = n;               // "n" -- normalized radius
-      vars[4] = float3{t, t, t}; // "t" -- theta from center
-      // vars[4] = float3{atan2(n.z, n.y), atan2(n.x, n.z), atan2(n.y, n.x)}; // t alternative?
+      //vars[4] = float3{t, t, t}; // "t" -- theta from center
+      vars[4] = float3{atan2(n.y, n.x), atan2(n.z, n.y), atan2(n.x, n.z)}; // theta alternative?
       dst[i] = expr->calculate(vars);
     }
 }
@@ -206,7 +206,7 @@ void fillFieldMaterial<T>(Field<Material<T>> &dst, CudaExpression<T> *dExprEp, C
 }
 
 template<typename T>
-void fillFieldChannel(Field<T> &dst, CudaExpression<typename Dim<T>::BASE_T> *dExpr, int channel)
+void fillFieldChannel(Field<T> &dst, CudaExpression<typename cuda_vec<T>::BASE> *dExpr, int channel)
 {
   if(dst.size.x > 0 && dst.size.y > 0 && dst.size.z > 0)
     {

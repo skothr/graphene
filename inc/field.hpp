@@ -29,13 +29,13 @@ struct FieldInit
 template<typename T>
 struct FieldInterface : public SettingForm
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
+  typedef typename cuda_vec<T, 3>::VT VT3;
 
   int2 texRes2D = int2{1024, 1024};  // desired resolution (number of cells/pixels) of rendered texture
   int2 texRes3D = int2{1024, 1024};  // desired resolution (number of cells/pixels) of rendered texture
   bool texRes3DMatch = true;         // if true, overrides to match current view resolution (depends on size of window)
 
-  FluidParams<T> *cp;       // cuda field params
+  FluidParams<T> *cp;         // cuda field params
 
   // physics toggles
   bool running       = false; // toggle all physics (play/pause)
@@ -54,7 +54,7 @@ struct FieldInterface : public SettingForm
   bool updateAdvect  = true;  //    parameter advection
   bool updateVisc    = false; //    viscosity solve
   bool updateP2      = true;  //    post-advect pressure solve
-
+  
   // initialization expressions
   FieldInit<VT3>   initV;   // fluid velocity field
   FieldInit<float> initP;   // fluid pressure field
@@ -68,6 +68,8 @@ struct FieldInterface : public SettingForm
   FieldInit<float> initMu;  // material mu      (permeability)
   FieldInit<float> initSig; // material sigma   (conductivity)
 
+  int uSteps = 1; // number of microsteps performed between each rendered frame
+  
   std::function<void()> fieldResCallback; // callback when field resolution is changed
   std::function<void()> texRes2DCallback; // callback when 2D texture resolution is changed
   std::function<void()> texRes3DCallback; // callback when 3D texture resolution is changed
@@ -134,23 +136,16 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   SettingGroup *edgeGroup   = new SettingGroup("",           "edgeParams");  edgeWrapper->add(edgeGroup);
   edgeGroup->setColumns(2); edgeGroup->setHorizontal(true);
   edgeGroup->setHelp("Boundary conditions for each field edge (TODO: fix/validate):\n"
-                     "   Wrap:      Edge wraps around to opposite side of field\n"
-                     "   Void:      Edge acts as if nothing is there (WARNING: energy/mass will be \"lost\"\n"
-                     "   Free-Slip: Edge acts as a barrier -- velocity can slide perpendicularly to edge normal\n"
-                     "   No-Slip:   (TODO: impement) Edge acts as a barrier -- velocity (TODO: charge gets stuck...?)");
-  // edgeGroup->setColumnLabels(std::vector<std::string> {"+ Side", "- Side"}); // edgeGroup->setRowLabels   (std::vector<std::string> {"X", "Y", "Z"});
-  // edgeWrapper->setHelp("Boundary conditions for each field edge (TODO: fix/validate):\n"
-  //                      "   Wrap:      Edge wraps around to opposite side of field\n"
-  //                      "   Void:      Edge acts as if nothing is there (WARNING: energy/mass will be \"lost\"\n"
-  //                      "   Free-Slip: Edge acts as a hard barrier -- velocity can slide perpendicularly to edge normal\n"
-  //                      "   No-Slip:   (TODO: impement) Edge acts as a hard barrier -- velocity (TODO: charge gets stuck...?)");
+                     "   Wrap:      Edge of field wraps around to opposite side of field\n"
+                     "   Void:      Edge of field acts as if nothing is there (WARNING: energy/mass will be \"lost\"\n"
+                     "   Free-Slip: Edge of field acts as a barrier -- velocity can slide perpendicularly to edge normal\n"
+                     "   No-Slip:   Edge of field acts as a barrier -- velocity  (TODO)");
   auto *sREENX = new ComboSetting("-X", "edgeNX", (int*)&cp->edgeNX, g_edgeNames); sREENX->setHelp("Negative X Edge"); edgeGroup->add(sREENX);
   auto *sREEPX = new ComboSetting("+X", "edgePX", (int*)&cp->edgePX, g_edgeNames); sREEPX->setHelp("Positive X Edge"); edgeGroup->add(sREEPX);
   auto *sREENY = new ComboSetting("-Y", "edgeNY", (int*)&cp->edgeNY, g_edgeNames); sREENY->setHelp("Negative Y Edge"); edgeGroup->add(sREENY);
   auto *sREEPY = new ComboSetting("+Y", "edgePY", (int*)&cp->edgePY, g_edgeNames); sREEPY->setHelp("Positive Y Edge"); edgeGroup->add(sREEPY);
   auto *sREENZ = new ComboSetting("-Z", "edgeNZ", (int*)&cp->edgeNZ, g_edgeNames); sREENZ->setHelp("Negative Z Edge"); edgeGroup->add(sREENZ);
   auto *sREEPZ = new ComboSetting("+Z", "edgePZ", (int*)&cp->edgePZ, g_edgeNames); sREEPZ->setHelp("Positive Z Edge"); edgeGroup->add(sREEPZ);
-  
 
   // integration methods
   auto *sIV = new ComboSetting("Fluid Integration",  "vIntegration", (int*)(&cp->vIntegration), g_integrationNames); simGroup->add(sIV);
@@ -159,17 +154,23 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sIQ->setHelp("Integration method used for charge advection (Qnv, Qpv))\n"
                "  (Charge velocities defined relative to fluid motion)");
 
+  auto *sUDT    = new Setting<int>  ("uSteps", "uSteps",  &uSteps);  simGroup->add(sUDT);
+  sUDT->setHelp("Number of microsteps between each frame");
+  sUDT->setFormat(1, 10); sUDT->setMin(1); sUDT->setMax(32);
   
   // auto *sREF = new Setting<bool> ("Reflective Bounds (EM)", "reflectEM", &cp->reflect); paramGroup->add(sREF);  
   auto *sSD    = new Setting<T>  ("Input Decay", "decay",  &cp->decay);  simGroup->add(sSD);
   sSD->setHelp("Input signal field is multiplied by decay^dt each frame to prevent stuck vectors");
   sSD->setToggle(&inputDecay);
   sSD->setFormat(0.01f, 0.1f); sSD->setMin(-2.0f); sSD->setMax(2.0f);
-
+  
   auto *sFG   = new Setting<VT3> ("Gravity", "gravity", &cp->gravity); simGroup->add(sFG);
   sFG->setFormat(VT3{0.01, 0.01, 0.01}, VT3{0.1, 0.1, 0.1}, "%4f");
   sFG->setToggle(&applyGravity);
   sFG->setHelp("(vector) Force of gravity applied to fluid");
+
+  auto *sCP = new Setting<bool>("Clear Pressure", "clearPressure", &cp->clearPressure); simGroup->add(sCP);
+  sCP->setHelp("If set, pressure is cleared to zero each step before projection.");
 
   //// step group
   SettingGroup *stepGroup  = new SettingGroup("Physics Steps", "physicsSteps"); add(stepGroup);
@@ -203,7 +204,7 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
   sUB->setEnabledCallback([this]() { return updateEM; });
 
   // (∇·B) --> Bp --> B (remove divergence from B field)
-  auto *bpGroup = new SettingGroup  (" --> ∇·B = 0", "updateDivB"); stepGroup->add(bpGroup); bpGroup->setHorizontal(true); bpGroup->setColumns(2);
+  auto *bpGroup = new SettingGroup(" --> ∇·B = 0", "updateDivB"); stepGroup->add(bpGroup); bpGroup->setHorizontal(true); bpGroup->setColumns(2);
   bpGroup->setHelp("Removes divergence from");
   bpGroup->setEnabledCallback([this]() { return updateEM; });
   auto *sUBpE = new Setting<bool>("",           "bpEnable",  &updateDivB);   bpGroup->add(sUBpE);
@@ -264,37 +265,37 @@ FieldInterface<T>::FieldInterface(FluidParams<T> *cp_, const std::function<void(
                      "   [...?]\n"
                      "  Scalar field:\n"
                      ">>TODO: improve parameters available, finish help [...]");
-  auto *sVINIT   = new Setting<std::string>("V  init (fluid)",    "VInit",   &initV.str);   initGroup->add(sVINIT);
+  auto *sVINIT   = new Setting<std::string>("V   (fluid)",    "VInit",   &initV.str);   initGroup->add(sVINIT);
   sVINIT->setUpdateCallback(  [&]() { initStrUpdateCb(&initV);   });
   sVINIT->setToggle(&initV.active);
-  auto *sPINIT   = new Setting<std::string>("P  init (fluid)",    "PInit",   &initP.str);   initGroup->add(sPINIT);
+  auto *sPINIT   = new Setting<std::string>("P   (fluid)",    "PInit",   &initP.str);   initGroup->add(sPINIT);
   sPINIT->setUpdateCallback(  [&]() { initStrUpdateCb(&initP);   });
   sPINIT->setToggle(&initP.active);
-  auto *sQNINIT  = new Setting<std::string>("Q- init (EM)",       "QnInit",  &initQn.str);  initGroup->add(sQNINIT);
+  auto *sQNINIT  = new Setting<std::string>("Q-  (em)",       "QnInit",  &initQn.str);  initGroup->add(sQNINIT);
   sQNINIT->setUpdateCallback( [&]() { initStrUpdateCb(&initQn);  });
   sQNINIT->setToggle(&initQn.active);
-  auto *sQPINIT  = new Setting<std::string>("Q+ init (em)",       "QpInit",  &initQp.str);  initGroup->add(sQPINIT);
+  auto *sQPINIT  = new Setting<std::string>("Q+  (em)",       "QpInit",  &initQp.str);  initGroup->add(sQPINIT);
   sQPINIT->setUpdateCallback( [&]() { initStrUpdateCb(&initQp);  });
   sQPINIT->setToggle(&initQp.active);
-  auto *sQNVINIT = new Setting<std::string>("Qnv init (em)",      "QnvInit", &initQnv.str); initGroup->add(sQNVINIT);
+  auto *sQNVINIT = new Setting<std::string>("Qnv (em)",      "QnvInit", &initQnv.str); initGroup->add(sQNVINIT);
   sQNVINIT->setUpdateCallback([&]() { initStrUpdateCb(&initQnv); });
   sQNVINIT->setToggle(&initQnv.active);
-  auto *sQPVINIT = new Setting<std::string>("Qpv init (em)",      "QpvInit", &initQpv.str); initGroup->add(sQPVINIT);
+  auto *sQPVINIT = new Setting<std::string>("Qpv (em)",      "QpvInit", &initQpv.str); initGroup->add(sQPVINIT);
   sQPVINIT->setUpdateCallback([&]() { initStrUpdateCb(&initQpv); });
   sQPVINIT->setToggle(&initQpv.active);
-  auto *sEINIT   = new Setting<std::string>("E  init (em)",       "EInit",   &initE.str);   initGroup->add(sEINIT);
+  auto *sEINIT   = new Setting<std::string>("E   (em)",       "EInit",   &initE.str);   initGroup->add(sEINIT);
   sEINIT->setUpdateCallback(  [&]() { initStrUpdateCb(&initE);   });
   sEINIT->setToggle(&initE.active);
-  auto *sBINIT   = new Setting<std::string>("B  init (em)",       "BInit",   &initB.str);   initGroup->add(sBINIT);
+  auto *sBINIT   = new Setting<std::string>("B   (em)",       "BInit",   &initB.str);   initGroup->add(sBINIT);
   sBINIT->setUpdateCallback(  [&]() { initStrUpdateCb(&initB);   });
   sBINIT->setToggle(&initB.active);
-  auto *sEPINIT  = new Setting<std::string>("ε  init (material)", "epInit",  &initEp.str);  initGroup->add(sEPINIT);
+  auto *sEPINIT  = new Setting<std::string>("ε   (material)", "epInit",  &initEp.str);  initGroup->add(sEPINIT);
   sEPINIT->setUpdateCallback( [&]() { initStrUpdateCb(&initEp);  });
   sEPINIT->setToggle(&initEp.active);
-  auto *sMUINIT  = new Setting<std::string>("μ  init (material)", "muInit",  &initMu.str);  initGroup->add(sMUINIT);
+  auto *sMUINIT  = new Setting<std::string>("μ   (material)", "muInit",  &initMu.str);  initGroup->add(sMUINIT);
   sMUINIT->setUpdateCallback( [&]() { initStrUpdateCb(&initMu);  });
   sMUINIT->setToggle(&initMu.active);
-  auto *sSIGINIT = new Setting<std::string>("σ  init (material)", "sigInit", &initSig.str); initGroup->add(sSIGINIT);
+  auto *sSIGINIT = new Setting<std::string>("σ   (material)", "sigInit", &initSig.str); initGroup->add(sSIGINIT);
   sSIGINIT->setUpdateCallback([&]() { initStrUpdateCb(&initSig); });
   sSIGINIT->setToggle(&initSig.active);
 }

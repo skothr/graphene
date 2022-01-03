@@ -14,7 +14,7 @@ using json = nlohmann::json;
 #include "matrix.hpp"
 #include "imtools.hpp"
 #include "glfwKeys.hpp"
-#include "settings-new.hpp"
+#include "ui.hpp"
 
 #define DEFAULT_STEP       1
 #define DEFAULT_STEP_FAST 10
@@ -251,7 +251,7 @@ inline bool Setting<T>::fromJSON(const json &js)
 template<typename T>
 inline void Setting<T>::setFormat(const T &step, const T &step_fast, const std::string &format)
 {
-  if constexpr(std::is_arithmetic_v<typename Dim<T>::BASE_T>)
+  if constexpr(std::is_arithmetic_v<typename cuda_vec<T>::BASE>)
     { mStep = step; mFastStep = step_fast; mFormat = format; }
   fixFormat();
 }
@@ -263,9 +263,9 @@ inline void Setting<T>::fixFormat()
     { // scalar types
       if(mStep == T(0)) { mStep = T(1); } if(mFastStep == T(0)) { mFastStep = T(10); }
     }
-  else if constexpr(std::is_arithmetic_v<typename Dim<T>::BASE_T>)
+  else if constexpr(std::is_arithmetic_v<typename cuda_vec<T>::BASE>)
     { // vector types
-      for(int i = 0; i < Dim<T>::N; i++)
+      for(int i = 0; i < cuda_vec<T>::N; i++)
         {
           if(VElement<T>::get(mStep,     i) == 0) { VElement<T>::get(mStep,     i) = DEFAULT_STEP;      }
           if(VElement<T>::get(mFastStep, i) == 0) { VElement<T>::get(mFastStep, i) = DEFAULT_STEP_FAST; }
@@ -273,14 +273,14 @@ inline void Setting<T>::fixFormat()
     }
   else
     {
-      for(int i = 0; i < Dim<T>::N; i++)
+      for(int i = 0; i < cuda_vec<T>::N; i++)
         {
           if(mStep[i]     == 0) { mStep[i]     = DEFAULT_STEP;      }
           if(mFastStep[i] == 0) { mFastStep[i] = DEFAULT_STEP_FAST; }
         }
     }
   // printf format only needed for floatN/doubleN
-  if constexpr(std::is_floating_point_v<typename Dim<T>::BASE_T>)
+  if constexpr(std::is_floating_point_v<typename cuda_vec<T>::BASE>)
     { if(mFormat.empty()) { mFormat = DEFAULT_FORMAT; } }
 }
 
@@ -519,7 +519,7 @@ inline bool ColorSetting::onDraw()
 /////////////////////////////////////////////
 // TODO: rename RangeSetting
 // TODO: SliderSetting --> single slider position (OR: combine? multi-sliders)?
-template<typename T, typename VT2=typename DimType<T,2>::VEC_T>
+template<typename T, typename VT2=typename cuda_vec<T,2>::VT>
 class SliderSetting : public Setting<VT2>
 {
 // public:

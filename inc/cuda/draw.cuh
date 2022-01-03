@@ -19,7 +19,7 @@ template<typename T> class  FluidField;
 
 
 // overlap helpers
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __device__ inline bool penOverlaps(VT3 &pCell, VT3 &mpos, VT3 &diff,  VT3 &dist_2, const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
   const VT3 rMult = pen->sizeMult*pen->xyzMult;
@@ -41,7 +41,7 @@ __device__ inline bool penOverlaps(VT3 &pCell, VT3 &mpos, VT3 &diff,  VT3 &dist_
            (r1.x <= 0 || r1.y <= 0 || r1.z <= 0 || (abs(diff1.x) <= r1.x+0.5f && abs(diff1.y) <= r1.y+0.5f && abs(diff1.z) <= r1.z+0.5f))));
 }
 
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __device__ inline bool penOverlaps2(VT3 &pCell,  VT3 &mpos, VT3 &diff,   VT3 &diff0,   VT3 &diff1, VT3 &dist_2, VT3 &dist0_2, VT3 &dist1_2,
                                     const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
@@ -65,12 +65,12 @@ __device__ inline bool penOverlaps2(VT3 &pCell,  VT3 &mpos, VT3 &diff,   VT3 &di
 }
 
 // returns true if point with given distances are at the edge of the pen (hollow shell)
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __device__ inline bool penBorder(VT3 &diff0, VT3 &dist1, const Pen<T> *pen, T width)
 { return (abs(pen->radius0 - diff0) <= width) || (pen->radius1 > 0.0 && abs(pen->radius1 - dist1) <= width); }
 
 // returns true if point with given offsets are at the edge of each axis plane cross-section
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __device__ inline bool penAxisBorder(const VT3 &mpos, const VT3 &diff0, const VT3 &diff1, const Pen<T> *pen, T width)
 {
   VT3 dist0XY = VT3{diff0.x, diff0.y, 0.0f};
@@ -90,7 +90,7 @@ __device__ inline bool penAxisBorder(const VT3 &mpos, const VT3 &diff0, const VT
 // { float3 d = p - cp; return dot(d, d) <= cr*cr;  }
 
 // returns intersections
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 inline __device__ bool lineIntersectSphere(const VT3 &p1, const VT3 &p2, const VT3 &cp, T cr, 
                                            VT3 &i1, VT3 &i2, // (OUT) cube-sphere intersection points
                                            int &np) // (OUT) number of cube points contained in sphere
@@ -103,7 +103,7 @@ inline __device__ bool lineIntersectSphere(const VT3 &p1, const VT3 &p2, const V
 }
 
 
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __device__ inline T penOverlap3(VT3 &pCell, VT3 &mpos, VT3 &diff, VT3 &dist_2, const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
   const VT3 rMult = pen->sizeMult*pen->xyzMult;
@@ -164,7 +164,7 @@ __device__ inline T penOverlap3(VT3 &pCell, VT3 &mpos, VT3 &diff, VT3 &dist_2, c
   else { return 0.0; }
 }
 
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __device__ inline T penOverlap3(VT3 &pCell,  VT3 &mpos, VT3 &diff, VT3 &diff0, VT3 &diff1, VT3 &dist_2, VT3 &dist0_2, VT3 &dist1_2,
                                 const Pen<T> *pen, const FieldParams<T> &cp, T radOffset)
 {
@@ -228,9 +228,9 @@ __device__ inline T penOverlap3(VT3 &pCell,  VT3 &mpos, VT3 &diff, VT3 &diff0, V
 // add signal from source field
 template<typename T> void addSignal(Field<T> &signal, Field<T> &dst, const FieldParams<T> &cp, T mult=1.0);
 template<typename T> void addSignal(Field<T> &signal, Field<T> &dst, const FluidParams<T> &cp, T mult=1.0);
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 void addSignal(Field<VT3> &signal, Field<VT3> &dst, const FieldParams<T> &cp, T mult=1.0);
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 void addSignal(Field<VT3> &signal, Field<VT3> &dst, const FluidParams<T> &cp, T mult=1.0);
 template<typename T>
 void addSignal(EMField<T> &signal, EMField<T> &dst, const FieldParams<T> &cp, T mult=1.0);
@@ -238,23 +238,23 @@ template<typename T>
 void addSignal(FluidField<T> &signal, FluidField<T> &dst, const FluidParams<T> &cp, T mult=1.0);
 
 // add signal from mouse position/pen
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 void addSignal(const VT3 &mpos, Field<VT3> &dstV, Field<T> &dstP, Field<T> &dstQn, Field<T> &dstQp,
                Field<VT3> &dstQnv, Field<VT3> &dstQpv, Field<VT3> &dstE, Field<VT3> &dstB,
                const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0);
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 void addSignal(const VT3 &mpos, EMField<T> &dst, const SignalPen<T> &pen, const FieldParams<T> &cp, T mult=1.0); // EMField
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 void addSignal(const VT3 &mpos, FluidField<T> &dst, const SignalPen<T> &pen, const FluidParams<T> &cp, T mult=1.0); // FluidField
 
 // signal decay
 template<typename T>
 void decaySignal(Field<T> &src, FieldParams<T> &cp);
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 void decaySignal(Field<VT3> &src, FieldParams<T> &cp);
 
 // add material from mouse position/pen
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 void addMaterial(const VT3 &mpos, EMField<T> &dst, const MaterialPen<T> &pen, const FieldParams<T> &cp);
 
 

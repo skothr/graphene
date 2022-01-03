@@ -18,8 +18,8 @@ protected:
 public:
   
   cudaGraphicsResource *mPboResource = nullptr;
-  GLuint glTex  = 0;
-  GLuint glPbo  = 0;
+  GLuint glTex = 0;
+  GLuint glPbo = 0;
   bool mapped = false;
   bool bound  = false;
 

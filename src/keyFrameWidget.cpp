@@ -27,7 +27,7 @@ inline json viewToJSON(const Rect<T> &view)
 template<typename T>
 inline bool viewFromJSON(const json &js, Rect<T> &viewOut)
 {
-  using VT2 = typename DimType<CFT,2>::VEC_T;
+  using VT2 = typename cuda_vec<CFT,2>::VT;
   bool success = true;
   if(js.contains("pos"))   { viewOut.p1 = from_string<VT2>(js["p1"]);   }
   if(js.contains("dir"))   { viewOut.p2 = from_string<VT2>(js["p2"]);   }
@@ -142,7 +142,7 @@ json KeyFrameWidget::toJSON()
 
 bool KeyFrameWidget::fromJSON(const json &js)
 {
-  using VT3 = typename DimType<CFT,3>::VEC_T;
+  using VT3 = typename cuda_vec<CFT,3>::VT;
   bool success = true;
   // TODO: load initial state
   // if(js.contains("initSources")
@@ -658,7 +658,7 @@ void KeyFrameWidget::addEvent(KeyEventBase *e, bool force)
         case KEYEVENT_SETTING:
           {
             auto e2 = e->sub<KEYEVENT_SETTING>();
-            std::cout << "(" << e->type() << ") --> " << e2->id << " = " << std::any_cast<typename DimType<CFT,3>::VEC_T>(e2->value) << " (" <<  e2->value.type().name()<< ")\n";
+            std::cout << "(" << e->type() << ") --> " << e2->id << " = " << std::any_cast<typename cuda_vec<CFT,3>::VT>(e2->value) << " (" <<  e2->value.type().name()<< ")\n";
           } break;
           
         case KEYEVENT_INVALID:
@@ -676,7 +676,7 @@ void KeyFrameWidget::addEvent(KeyEventBase *e, bool force)
 
 bool KeyFrameWidget::processEvents(double t0, double t1)
 {
-  using VT3 = typename DimType<CFT,3>::VEC_T;
+  using VT3 = typename cuda_vec<CFT,3>::VT;
   // mPlaced.clear();
 
   // remove invalid events
@@ -906,7 +906,7 @@ void KeyFrameWidget::clear()
 
 void KeyFrameWidget::drawTimeline()
 {
-  using VT3 = typename DimType<CFT,3>::VEC_T;
+  using VT3 = typename cuda_vec<CFT,3>::VT;
   ImGuiIO    &io    = ImGui::GetIO();
   ImGuiStyle &style = ImGui::GetStyle();
 

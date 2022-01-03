@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(graphene VERSION 0.1.2)
+set(TARGET graphene)
+project(${TARGET} VERSION 0.1.2)
 configure_file(inc/version/version.hpp.in ../inc/version/version.hpp)
 
-set(TARGET graphene)
-set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-11.2") # set to location of CUDA source
-set(GRPH_CUDA_ARCH        "sm_75")                # set for specific graphics card
+# CUDA config
+set(CUDA_TOOLKIT_VERSION  "11.4")  # CUDA version
+set(GRPH_CUDA_ARCH        "sm_75") # GPU architecture (https://arnon.dk/matching-sm-architectures-arch-and-gencode-for-various-nvidia-cards/)
+set(GRPH_CUDA_CODE        "compute_86") # GPU code (?)
+set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-${CUDA_TOOLKIT_VERSION}" ) # CUDA source root
 
-# verbose Makefile for debug build
+# create verbose Makefile for debug build
 if(("${CMAKE_BUILD_TYPE}" MATCHES "DEBUG") OR ("${CMAKE_BUILD_TYPE}" MATCHES "RELWITHDEBINFO")) # verbose builds
   set(CMAKE_VERBOSE_MAKEFILE 1)
 endif()
@@ -38,10 +41,20 @@ add_library(grphcuda STATIC
   src/cuda/vlines.cu
   )
 
-set_target_properties(grphcuda PROPERTIES CXX_STANDARD 17)
+set_target_properties(grphcuda PROPERTIES CXX_STANDARD 20)
 set(CUDA_LIBRARIES grphcuda)
 
-set(GRPH_CUDA_FLAGS_GLOBAL -arch ${GRPH_CUDA_ARCH} --expt-relaxed-constexpr -use_fast_math) # flags for all CUDA builds
+set(GRPH_CUDA_FLAGS_GLOBAL --expt-relaxed-constexpr -use_fast_math --std=c++17 # flags for all CUDA builds
+  -arch ${GRPH_CUDA_ARCH} # set architecture and compute code
+  # -gencode=arch=compute_52,code=sm_52
+  # -gencode=arch=compute_60,code=sm_60
+  # -gencode=arch=compute_61,code=sm_61
+  # -gencode=arch=compute_70,code=sm_70
+  -gencode=arch=compute_75,code=sm_75
+  #-gencode=arch=compute_80,code=sm_80
+  # -gencode=arch=compute_86,code=sm_86
+  # -gencode=arch=compute_86,code=compute_86
+  )
 
 if     ("${CMAKE_BUILD_TYPE}" MATCHES "DEBUG")          # DEBUG
   target_compile_options(grphcuda PRIVATE ${GRPH_CUDA_FLAGS_GLOBAL} -O0 -pg -g)
@@ -110,7 +123,6 @@ add_executable(${TARGET}
   src/keyManager.cpp
   src/output.cpp
   src/frameWriter.cpp
-  src/simulation.cpp
   src/simWindow.cpp
   src/ui/settingForm.cpp
   src/ui/tabMenu.cpp

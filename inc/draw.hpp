@@ -41,7 +41,7 @@ template<typename T> void DrawInterface<T>::setMatPen(MaterialPen<T> *mPen) { ne
 template<typename T>
 void DrawInterface<T>::makeSettings()
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
+  typedef typename cuda_vec<T, 3>::VT VT3;
   
   SettingForm::cleanup(); // destroy old settings
   if(sigPen)

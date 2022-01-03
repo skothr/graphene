@@ -32,7 +32,7 @@ __global__ void addSignal_k(Field<T> signal, Field<T> dst, FieldParams<T> cp, T 
       dst[i] += signal[i]*mult;
     }
 }
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __global__ void addSignal_k(Field<VT3> signal, Field<VT3> dst, FieldParams<T> cp, T mult)
 {
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -87,7 +87,7 @@ __global__ void addSignal_k(FluidField<T> signal, FluidField<T> dst, FluidParams
 
 
 // draw in signals based on pen location and parameters
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __global__ void addSignal_k(VT3 mpos, EMField<T> dst, SignalPen<T> pen, FieldParams<T> cp, T mult)
 {
   unsigned long ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -143,7 +143,7 @@ __global__ void addSignal_k(VT3 mpos, EMField<T> dst, SignalPen<T> pen, FieldPar
 }
 
 // draw in signals based on pen location and parameters
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __global__ void addSignal_k(VT3 mpos, FluidField<T> dst, SignalPen<T> pen, FluidParams<T> cp, T mult)
 {
   unsigned long ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -209,7 +209,7 @@ __global__ void addSignal_k(VT3 mpos, FluidField<T> dst, SignalPen<T> pen, Fluid
 // { return ((pen.p.multR ? rMult : 1)*(pen.p.multR_2 ? r2Mult : 1)*(pen.p.multR_2 ? tMult : 1) * (pen.p.multCos ? cosMult : 1)*(pen.p.multSin ? sinMult : 1)); }
 
 // draw in signals based on pen location and parameters
-template<typename T, typename VT3=typename DimType<T, 3>::VEC_T>
+template<typename T, typename VT3=typename cuda_vec<T, 3>::VT>
 __global__ void addSignal_k(VT3 mpos, Field<VT3> dstV, Field<T> dstP, Field<T> dstQn, Field<T> dstQp, Field<VT3> dstQnv, Field<VT3> dstQpv,
                             Field<VT3> dstE, Field<VT3> dstB, SignalPen<T> pen, FluidParams<T> cp, T mult)
 {
@@ -490,7 +490,7 @@ template void addMaterial<float>(const float3 &mpos, EMField<float> &dst, const 
 template<typename T>
 __global__ void decaySignal_k(Field<T> src, FieldParams<T> cp)
 {
-  using VT3 = typename DimType<T, 3>::VEC_T;
+  using VT3 = typename cuda_vec<T, 3>::VT;
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
   int iy = blockIdx.y*blockDim.y + threadIdx.y;
   int iz = blockIdx.z*blockDim.z + threadIdx.z;
@@ -501,9 +501,9 @@ __global__ void decaySignal_k(Field<T> src, FieldParams<T> cp)
     }
 }
 template<typename T>
-__global__ void decaySignal_k(Field<typename DimType<T, 3>::VEC_T> src, FieldParams<T> cp)
+__global__ void decaySignal_k(Field<typename cuda_vec<T, 3>::VT> src, FieldParams<T> cp)
 {
-  using VT3 = typename DimType<T, 3>::VEC_T;
+  using VT3 = typename cuda_vec<T, 3>::VT;
   int ix = blockIdx.x*blockDim.x + threadIdx.x;
   int iy = blockIdx.y*blockDim.y + threadIdx.y;
   int iz = blockIdx.z*blockDim.z + threadIdx.z;

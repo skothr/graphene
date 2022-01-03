@@ -1,7 +1,7 @@
 #include "render.cuh"
 
 #include <cuda_runtime.h>
-#include <cufft.h>
+// #include <cufft.h>
 #include <helper_cuda.h>
 
 #include "vector-operators.h"
@@ -9,7 +9,7 @@
 #include "raytrace.cuh"
 #include "cuda-vbo.cuh"
 #include "camera.cuh"
-#include "physics.h"
+// #include "physics.h"
 #include "draw.cuh"
 
 #define BLOCKDIM_X 16
@@ -23,8 +23,8 @@
 template<typename T>
 __global__ void renderFieldEM_k(FluidField<T> src, CudaTexture dst, RenderParams<T> rp, FluidParams<T> cp)
 {
-  typedef typename DimType<T,3>::VEC_T VT3;
-  typedef typename DimType<T,4>::VEC_T VT4;
+  typedef typename cuda_vec<T,3>::VT VT3;
+  typedef typename cuda_vec<T,4>::VT VT4;
   long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -62,8 +62,8 @@ __global__ void renderFieldEM_k(FluidField<T> src, CudaTexture dst, RenderParams
 template<typename T>
 __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, RenderParams<T> rp, FluidParams<T> cp)
 {
-  typedef typename DimType<T,3>::VEC_T VT3;
-  typedef typename DimType<T,4>::VEC_T VT4;
+  typedef typename cuda_vec<T,3>::VT VT3;
+  typedef typename cuda_vec<T,4>::VT VT4;
   long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -105,8 +105,8 @@ __global__ void renderFieldMat_k(Field<Material<T>> src, CudaTexture dst, Render
 template<typename T>
 __global__ void rtRenderFieldEM_k(FluidField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FluidParams<T> cp)
 {
-  typedef typename DimType<T,2>::VEC_T VT2;
-  typedef typename DimType<T,4>::VEC_T VT4;
+  typedef typename cuda_vec<T,2>::VT VT2;
+  typedef typename cuda_vec<T,4>::VT VT4;
   long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -122,8 +122,8 @@ __global__ void rtRenderFieldEM_k(FluidField<T> src, CudaTexture dst, CameraDesc
 template<typename T>
 __global__ void rtRenderFieldMat_k(FluidField<T> src, CudaTexture dst, CameraDesc<T> cam, RenderParams<T> rp, FluidParams<T> cp)
 {
-  typedef typename DimType<T,2>::VEC_T VT2;
-  typedef typename DimType<T,4>::VEC_T VT4;
+  typedef typename cuda_vec<T,2>::VT VT2;
+  typedef typename cuda_vec<T,4>::VT VT4;
   long ix = blockIdx.x*blockDim.x + threadIdx.x;
   long iy = blockIdx.y*blockDim.y + threadIdx.y;
   if(ix < dst.size.x && iy < dst.size.y)
@@ -172,7 +172,7 @@ void renderFieldMat(Field<Material<T>> &src, CudaTexture &dst, const RenderParam
 template<typename T>
 void raytraceFieldEM(FluidField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FluidParams<T> &cp)
 {
-  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename cuda_vec<T,2>::VT VT2;
   if(dst.size.x > 0 && dst.size.y > 0)
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);
@@ -189,7 +189,7 @@ void raytraceFieldEM(FluidField<T> &src, CudaTexture &dst, const Camera<T> &came
 template<typename T>
 void raytraceFieldMat(FluidField<T> &src, CudaTexture &dst, const Camera<T> &camera, const RenderParams<T> &rp, const FluidParams<T> &cp)
 {
-  typedef typename DimType<T,2>::VEC_T VT2;
+  typedef typename cuda_vec<T,2>::VT VT2;
   if(dst.size.x > 0 && dst.size.y > 0)
     {
       dim3 threads(BLOCKDIM_X, BLOCKDIM_Y);

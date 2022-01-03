@@ -82,7 +82,7 @@ __host__ __device__ inline double3 currentDensity(double qd, const double3 &v) {
 template<typename VT=float3, typename ST=float> __device__ VT coulombForce(ST q0, ST q1, const VT &n);
 
 template<> __device__ inline float3  coulombForce<float3,  float> (float  q0, float  q1, const float3  &n)
-{ float  dist = length(n); return (dist != 0.0f ? (M_Ke*(q0*q1*n) / (dist*dist*dist)) : float3{0.0f, 0.0f, 0.0f}); }
+{ float  dist = length(n); return (dist != 0.0f ? (((float)M_Ke)*(q0*q1*n) / (dist*dist*dist)) : float3{0.0f, 0.0f, 0.0f}); }
 
 template<> __device__ inline double3 coulombForce<double3, double>(double q0, double q1, const double3 &n)
 { double dist = length(n); return (dist != 0.0f ? (M_Ke*(q0*q1*n) / (dist*dist*dist)) : double3{0.0f, 0.0f, 0.0f}); }
@@ -136,13 +136,13 @@ __host__ __device__ inline double3 lorentzForce_p(double qd, const double3 &v, c
 // calculates divergence of vector E at a field cell given charge density
 //  qd --> (rho) charge density at cell (total charge per unit volume)            (C/m^3)
 /////////////////////////////////////////////////////////////////////////////////////////////
-__host__ __device__ inline float  gausssLaw_divE(float  qd) { return (qd / M_ep0); }
+__host__ __device__ inline float  gausssLaw_divE(float  qd) { return (qd / (float)M_ep0); }
 __host__ __device__ inline double gausssLaw_divE(double qd) { return (qd / M_ep0); }
 /////////////////////////////////////////////////////////////////////////////////////////////
 // calculates charge density at a field cell given gradient of vector E (converts to divergence)
 //  gE  --> gradient of electric field vector at cell (dE/dx, dE/dy, dE/dz)  (V/m <=> N/C)
 /////////////////////////////////////////////////////////////////////////////////////////////
-__host__ __device__ inline float  gausssLaw_qd(const float3  &gE) { return ((gE.x + gE.y + gE.z) * M_ep0); }
+__host__ __device__ inline float  gausssLaw_qd(const float3  &gE) { return ((gE.x + gE.y + gE.z) * (float)M_ep0); }
 __host__ __device__ inline double gausssLaw_qd(const double3 &gE) { return ((gE.x + gE.y + gE.z) * M_ep0); }
 
 

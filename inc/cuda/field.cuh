@@ -10,36 +10,27 @@
 #include "units.cuh"
 #include "draw.cuh"
 
-enum EdgeType  // boundary conditions
+enum BoundType  // boundary conditions
   {
-    EDGE_WRAP   =  0, // boundaries wrap to opposite side (2D --> torus?)
-    EDGE_VOID,        // forces and material properties pass through boundary (lost)
-    EDGE_FREESLIP,    // layer of material at boundary can move parallel to boundary edge
-    EDGE_NOSLIP,      // layer of material at boundary sticks to surface (vNormal = 0)
+    BOUND_VOID = 0, // no boundary (forces/etc. pass normally, discarded if passing edge of field)
+    BOUND_WRAP,     // boundaries at edge of field wrap to opposite side (hypertorus manifold?)
+    BOUND_SLIP,     // layer of material at boundary can move parallel to boundary edge
+    BOUND_NOSLIP,   // layer of material at boundary sticks to surface (vNormal = 0) [bounce off/reflect?]
   };
 enum IntegrationType  // integration for advection step(s)
   {
     INTEGRATION_FORWARD_EULER =  0,
-    INTEGRATION_BACKWARD_EULER,
+    INTEGRATION_BACKWARD_EULER, // (TODO: fix)
     INTEGRATION_RK4,
     // TODO: others?
-
     INTEGRATION_COUNT,
   };
-
-__host__ __device__ inline bool isImplicit(IntegrationType it)
-{
-  switch(it)
-    {
-    case INTEGRATION_BACKWARD_EULER: return true;  // implicit methods
-    default:                         return false; // explicit methods
-    }
-}
+__host__ __device__ inline bool isImplicit(IntegrationType it) { return (it == INTEGRATION_BACKWARD_EULER); }
 
 #ifndef __NVCC__
 #include <vector>
 #include <string>
-static const std::vector<std::string> g_edgeNames {{"Wrap", "Void", "Free-Slip", "No-Slip"}};
+static const std::vector<std::string> g_edgeNames       {{ "Void", "Wrap", "Slip", "No Slip" }};
 static const std::vector<std::string> g_integrationNames{{ "Forward Euler", "Backward Euler", "RK4" }};
 #endif // __NVCC__
 
@@ -49,14 +40,14 @@ static const std::vector<std::string> g_integrationNames{{ "Forward Euler", "Bac
 template<typename T>
 struct FieldParams
 {
-  typedef typename DimType<T, 3>::VEC_T VT3;
-  Units<T> u; // units
-  T t = 0.0f; // current simulation time
-  
+  typedef typename cuda_vec<T, 3>::VT VT3;
   VT3  fp;                     // field position
   int3 fs = int3{256, 256, 8}; // size of field (number of cells)
-  T    decay   = 0.10f;        // source decay
-  VT3  gravity = VT3{0,0,0};   // force of gravity
+
+  Units<T> u;      // field units
+  T t     = 0.0f;  // current simulation time  
+  T decay = 0.10f; // source decay
+  VT3 gravity = VT3{0,0,0}; // force of gravity
 };
 
 
@@ -75,7 +66,7 @@ public:
   __host__ __device__ unsigned long idx(const int3  &p) const { return idx((unsigned long)p.x, (unsigned long)p.y, (unsigned long)p.z); }
   __host__ __device__ unsigned long idx(const Vec3i &p) const { return idx((unsigned long)p.x, (unsigned long)p.y, (unsigned long)p.z); }
   __host__ __device__ unsigned long idx(const Vec3f &p) const { return idx((unsigned long)p.x, (unsigned long)p.y, (unsigned long)p.z); }
-  
+    
   virtual bool create(int3 sz) = 0;
   virtual void destroy()  = 0;
   virtual void pullData() = 0;
@@ -83,7 +74,23 @@ public:
   virtual void clear()    = 0;
   virtual void pullData(unsigned long i0, unsigned long i1) { }
   virtual bool allocated() const { return (gCudaInitialized && size.x > 0 && size.y > 0 && size.z > 0); }
+
+  virtual FieldBase* makeCopy() const = 0;
 };
+
+
+// byte index and bit offset for a boolean field -- handles boolean compression (bitwise)
+struct BitBool
+{
+  unsigned char mask  = 0u;
+  unsigned char *byte = nullptr;
+
+  BitBool& operator=(const BitBool &b) = default;
+  BitBool& operator=(bool b) { *byte = ((*byte) & ~mask) + ((*byte) | (b ? mask : 0)); return *this; }
+
+  operator bool() const { return ((*byte) & mask); }
+};
+
 
 
 //// FIELD -- handles host/device data ////
@@ -95,12 +102,38 @@ public:
   T *dData   = nullptr;
 
 #ifdef __NVCC__
+  // (T != bool)
+  template<typename T_=T, typename std::enable_if<!std::is_same<bool, T_>::value>::type* = nullptr>
   __device__ const T& operator[](unsigned long i) const { return dData[i]; }
+  template<typename T_=T, typename std::enable_if<!std::is_same<bool, T_>::value>::type* = nullptr>
   __device__       T& operator[](unsigned long i)       { return dData[i]; }
+  // (T == bool)
+  template<typename T_=T, typename std::enable_if< std::is_same<T_, bool>::value>::type* = nullptr>
+  __device__  BitBool operator[](unsigned long i)
+  {
+    const int byte = i/8; const int offset = i%8;
+    return BitBool{(0x1 << offset), (unsigned char*)&dData[i]};
+  }
 #else
+  // (T != bool)
+  template<typename T_=T, typename std::enable_if<!std::is_same<bool, T_>::value>::type* = nullptr>
   __host__ const T& operator[](unsigned long i) const { return hData[i]; }
+  template<typename T_=T, typename std::enable_if<!std::is_same<bool, T_>::value>::type* = nullptr>
   __host__       T& operator[](unsigned long i)       { return hData[i]; }
+  // (T == bool)
+  template<typename T_=T, typename std::enable_if< std::is_same<T_, bool>::value>::type* = nullptr>
+  __host__  BitBool operator[](unsigned long i)
+  {
+    const int byte = i/8; const int offset = i%8;
+    return BitBool{(0x1 << offset), (unsigned char*)&hData[i]};
+  }
 #endif
+  
+  Field()  = default;
+  ~Field() = default;
+  Field(const Field &other) = default;
+  Field& operator=(const Field &other) = default;
+  
   virtual bool create(int3 sz) override;
   virtual void destroy()  override;
   virtual void pullData() override;
@@ -109,6 +142,7 @@ public:
   virtual bool allocated() const override;
   virtual void pullData(unsigned long i0, unsigned long i1) override;
   void copyTo(Field<T> &other) const;
+  virtual FieldBase* makeCopy() const override;
 };
 
 template<typename T>
@@ -120,9 +154,11 @@ bool Field<T>::create(int3 sz)
       if(sz == this->size) { return true; }
       else { destroy(); }
       
-      unsigned long nCells = (unsigned long)sz.x*(unsigned long)sz.y*(unsigned long)sz.z;
-      unsigned long tSize  = sizeof(T);
-      unsigned long dSize  = tSize*nCells;
+      const unsigned long nCells = (unsigned long)sz.x*(unsigned long)sz.y*(unsigned long)sz.z;
+      const unsigned long tSize  = sizeof(T);
+      unsigned long       dSize  = tSize*nCells;
+      if constexpr (std::is_same<T, bool>::value) { dSize = std::max(1ul, dSize/8ul); } // bool --> stored bitwise
+      
       if(nCells <= 0) { std::cout << "======> ERROR: Could not create Field with size " << sz << "\n"; return false; }
       else
         {
@@ -183,8 +219,12 @@ void Field<T>::pullData(unsigned long i0, unsigned long i1)
   if(allocated())
     {
       if(!hData) { hData = (T*)malloc(dataSize); }
-      cudaMemcpy(&hData[i0], dData+i0, (i1-i0)*sizeof(T), cudaMemcpyDeviceToHost);
-      getLastCudaError(("Field::pullData(" + std::to_string(i0) + ":" + std::to_string(i1) + ")\n").c_str());
+      
+      unsigned long byte0 = i0; unsigned long byte1 = i1;
+      if constexpr (std::is_same<T, bool>::value) { byte0 /= 8; byte1 /= 8; } // bool --> stored bitwise
+
+      cudaMemcpy(hData+byte0, dData+byte0, (byte1-byte0)*typeSize, cudaMemcpyDeviceToHost);
+      getLastCudaError(("Field::pullData(" + std::to_string(i0) + ":" + std::to_string(i1) + " / " + std::to_string(dataSize) + ")\n").c_str());
     }
   else { std::cout << "======> WARNING(Field::pullData): Field not allocated!\n"; }
 }
@@ -215,6 +255,115 @@ void Field<T>::copyTo(Field<T> &other) const
     { std::cout << "======> WARNING(Field::copyTo): Field not allocated!\n"; }
 }
 
+template<typename T>
+FieldBase* Field<T>::makeCopy() const
+{
+  Field<T> *cf = nullptr;
+  if(allocated())
+    {
+      cf = new Field<T>();
+      if(cf->create(size))
+        { this->copyTo(*cf); getLastCudaError("Field::makeCopy() --> cudaMemcpy\n"); }
+    }
+  else
+    { std::cout << "======> WARNING(Field::makeCopy): Field not allocated!\n"; }
+  return cf;
+}
+
+
+
+// handles boundaries between each cell and field edges
+//  NOTE: encapsulates extra element in each dimension -- pass unmodified sizes and indices
+class FieldBounds : public FieldBase
+{
+public:
+  Field<unsigned char> bx; // boundaries planes along X axis (each parallel to YZ plane)
+  Field<unsigned char> by; // boundaries planes along Y axis (each parallel to ZX plane)
+  Field<unsigned char> bz; // boundaries planes along Z axis (each parallel to XY plane)
+
+#ifdef __NVCC__
+  __device__ BoundType nx(const int3 &p) { return static_cast<BoundType>(bx[bx.idx(p)]); }             // lower -X bound of cell at p (p.x + 0)
+  __device__ BoundType ny(const int3 &p) { return static_cast<BoundType>(by[by.idx(p)]); }             // lower -Y bound of cell at p (p.y + 0)
+  __device__ BoundType nz(const int3 &p) { return static_cast<BoundType>(bz[bz.idx(p)]); }             // lower -Z bound of cell at p (p.z + 0)
+  __device__ BoundType px(const int3 &p) { return static_cast<BoundType>(bx[bx.idx(p+int3{1,0,0})]); } // upper +X bound of cell at p (p.x + 1)
+  __device__ BoundType py(const int3 &p) { return static_cast<BoundType>(by[by.idx(p+int3{0,1,0})]); } // upper +Y bound of cell at p (p.y + 1)
+  __device__ BoundType pz(const int3 &p) { return static_cast<BoundType>(bz[bz.idx(p+int3{0,0,1})]); } // upper +Z bound of cell at p (p.z + 1)
+#else
+  __host__   BoundType nx(const int3 &p) { return static_cast<BoundType>(bx[bx.idx(p)]); }             // lower -X bound of cell at p (p.x + 0)
+  __host__   BoundType ny(const int3 &p) { return static_cast<BoundType>(by[by.idx(p)]); }             // lower -Y bound of cell at p (p.y + 0)
+  __host__   BoundType nz(const int3 &p) { return static_cast<BoundType>(bz[bz.idx(p)]); }             // lower -Z bound of cell at p (p.z + 0)
+  __host__   BoundType px(const int3 &p) { return static_cast<BoundType>(bx[bx.idx(p+int3{1,0,0})]); } // upper +X bound of cell at p (p.x + 1)
+  __host__   BoundType py(const int3 &p) { return static_cast<BoundType>(by[by.idx(p+int3{0,1,0})]); } // upper +Y bound of cell at p (p.y + 1)
+  __host__   BoundType pz(const int3 &p) { return static_cast<BoundType>(bz[bz.idx(p+int3{0,0,1})]); } // upper +Z bound of cell at p (p.z + 1)
+#endif // __NVCC__
+  
+  FieldBounds() = default;
+  virtual bool create(int3 sz) override;
+  virtual void destroy()   override;
+  virtual void pullData()  override;
+  virtual void pushData()  override;
+  virtual void clear()     override;
+  virtual bool allocated() const override;
+  virtual void pullData(unsigned long i0, unsigned long i1) override;
+  void copyTo(FieldBounds &other) const;
+  virtual FieldBase* makeCopy() const override;
+};
+
+inline bool FieldBounds::create(int3 sz)
+{
+  if(sz > int3{0,0,0} && size != sz)
+    {
+      destroy();
+      sz += 1; // boundaries between cells -- 1 extra in each dimension
+      if(!bx.create(sz+int3{1,0,0})) { return false; }
+      if(!by.create(sz+int3{0,1,0})) { bx.destroy(); return false; }
+      if(!bz.create(sz+int3{0,0,1})) { bx.destroy(); by.destroy(); return false; }
+      this->size     = sz;
+      return true;
+    }
+  else { return false; }
+}
+
+inline void FieldBounds::destroy()         { bx.destroy();  by.destroy();  bz.destroy(); this->size = int3{0,0,0}; }
+inline void FieldBounds::pullData()        { bx.pullData(); by.pullData(); bz.pullData(); }
+inline void FieldBounds::pushData()        { bx.pushData(); by.pushData(); bz.pushData(); }
+inline bool FieldBounds::allocated() const { return (bx.allocated() && by.allocated() && bz.allocated()); }
+inline void FieldBounds::clear()           { bx.clear(); by.clear(); bz.clear(); }
+inline void FieldBounds::pullData(unsigned long i0, unsigned long i1)
+{ bx.pullData(i0, i1); by.pullData(i0, i1); bz.pullData(i0, i1); }
+
+inline void FieldBounds::copyTo(FieldBounds &other) const
+{
+  if(allocated())
+    {
+      if(other.size != this->size) { other.create(this->size); }
+      bx.copyTo(other.bx); by.copyTo(other.by); bz.copyTo(other.bz);
+    }
+  else { std::cout << "====> WARNING(FieldBounds::copyTo): Field not allocated!\n"; }
+}
+
+
+inline FieldBase* FieldBounds::makeCopy() const
+{
+  FieldBounds *cf = nullptr;
+  if(allocated())
+    {
+      cf = new FieldBounds();
+      if(cf->create(size)) { this->copyTo(*cf); getLastCudaError("FieldBounds::makeCopy() --> cudaMemcpy\n"); }
+    }
+  else { std::cout << "======> WARNING(FieldBounds::makeCopy): Field not allocated!\n"; }
+  return cf;
+}
+
+
+
+
+
+
+
+
+
+
 
 // forward declarations
 template<typename T> class CudaExpression;
@@ -223,7 +372,7 @@ template<typename T> class CudaExpression;
 template<typename T> void fillFieldMaterial(Field<Material<T>> &dst, CudaExpression<T> *dExprEp, CudaExpression<T> *dExprMu, CudaExpression<T> *dExprSig);
 template<typename T> void fillFieldValue   (Field<T> &dst, const T & val);
 template<typename T> void fillField        (Field<T> &dst, CudaExpression<T> *dExpr);
-template<typename T> void fillFieldChannel (Field<T> &dst, CudaExpression<typename Dim<T>::BASE_T> *dExpr, int channel);
+template<typename T> void fillFieldChannel (Field<T> &dst, CudaExpression<typename cuda_vec<T>::BASE> *dExpr, int channel);
 
 
 #endif // FIELD_CUH

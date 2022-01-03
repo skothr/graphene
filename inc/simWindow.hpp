@@ -10,6 +10,8 @@ namespace fs = std::filesystem;
 
 #include <misc/freetype/imgui_freetype_test.h>
 
+#include "fpsCounter.hpp"
+#include "simulation.hpp"
 #include "vector.hpp"
 #include "rect.hpp"
 #include "display.hpp"
@@ -31,16 +33,15 @@ namespace fs = std::filesystem;
 #define SETTINGS_SAVE_FILE (fs::current_path() / ".settings.conf")
 #define JSON_SPACES 4
 
-#define FPS_UPDATE_INTERVAL 0.1 // FPS update interval (seconds)
 #define CLOCK_T std::chrono::steady_clock
 #define RENDER_BASE_PATH (fs::current_path() / "rendered")
 
 #define CFT float // field base type (float/double (/int?))
-#define CFV2 typename DimType<CFT, 2>::VEC_T
-#define CFV3 typename DimType<CFT, 3>::VEC_T
-#define CFV4 typename DimType<CFT, 4>::VEC_T
+#define CFV2 typename cuda_vec<CFT, 2>::VT
+#define CFV3 typename cuda_vec<CFT, 3>::VT
+#define CFV4 typename cuda_vec<CFT, 4>::VT
 #define STATE_BUFFER_SIZE  2
-#define DESTROY_LAST_STATE false //(STATE_BUFFER_SIZE <= 1)
+#define DESTROY_LAST_STATE true //(STATE_BUFFER_SIZE <= 1)
 
 // font settings
 #define MAIN_FONT_HEIGHT  14.0f
@@ -48,8 +49,9 @@ namespace fs = std::filesystem;
 #define TITLE_FONT_HEIGHT 19.0f
 #define SUPER_FONT_HEIGHT 10.5f
 #define TINY_FONT_HEIGHT   9.0f
-#define FONT_OVERSAMPLE   1 //4
+#define FONT_OVERSAMPLE 2 //4
 #define FONT_PATH (fs::current_path() / "res/fonts/")
+//#define FONT_NAME "DejaVuSansMono"
 #define FONT_NAME "UbuntuMono"
 #define FONT_PATH_REGULAR     (FONT_PATH / (FONT_NAME "-R.ttf" ))
 #define FONT_PATH_ITALIC      (FONT_PATH / (FONT_NAME "-RI.ttf"))
@@ -75,7 +77,6 @@ class  SettingForm;
 class  TabMenu;
 class  Toolbar;
 class  FrameWriter;
-class  Simulation;
 template<typename T> class DrawInterface;
 template<typename T> class DisplayInterface;
 
@@ -99,22 +100,8 @@ struct SimParams
   RenderParams<CFT>      rp; // cuda render params
   VectorFieldParams<CFT> vp; // vector draw params
   OutputParams           op; // file output params
-
-  ////////////////////////////////////////
-  // microstepping (not implemented)
-  ////////////////////////////////////////
-  int uSteps  = 1;   // number of microsteps performed between each rendered frame
-  CFT dtFrame = 0.1; // total timestep over one frame
 };
 
-
-struct SimInfo
-{
-  CFT t     = 0.0f; // simulation time passed since initial state
-  CFT fps   = 0.0f; // render fps
-  int frame = 0;    // number of frames rendered since initial state
-  int uStep = 0;    // keeps track of microsteps betweeen frames
-};
 
 struct FVector
 {
@@ -125,62 +112,6 @@ struct FVector
   Vec3f vQpv; // Qpv sim vector
   Vec3f vE;   // E  sim vector
   Vec3f vB;   // B  sim vector
-};
-
-
-struct FpsCounter
-{
-  CLOCK_T::time_point tLast;   // last frame time
-  double updateInterval = 0.1; // seconds over which to average
-  int    nFrames        = 0;   // number of frames this interval
-  double dtAcc          = 0.0; // dt accumulator
-  double fps            = 0.0; // most recent FPS value
-
-  double update()
-  {
-    auto tNow  = CLOCK_T::now();
-    double dt = std::chrono::duration_cast<std::chrono::nanoseconds>(tNow - tLast).count()/1000000000.0;
-    tLast = tNow;
-
-    dtAcc += dt;
-    nFrames++;
-    if(dtAcc > FPS_UPDATE_INTERVAL)
-      {
-        fps     = nFrames / dtAcc;
-        dtAcc   = 0.0;
-        nFrames = 0;
-      }
-    return fps;
-  }
-
-  bool update(double limit, CLOCK_T::time_point tNow=CLOCK_T::now())
-  {
-    //auto tNow  = CLOCK_T::now();
-    double dt = std::chrono::duration_cast<std::chrono::nanoseconds>(tNow - tLast).count()/1000000000.0;
-    tLast = tNow;
-
-    int    framesPassed = 0;
-    double frameTime = 1.0/limit;
-    dtAcc += dt;
-    if(limit >= 0.0)
-      {
-        if(dtAcc >= frameTime)
-          {
-            framesPassed = 1;
-            fps = 1.0 / dtAcc;
-            dtAcc = fmod(dtAcc, frameTime);
-          }
-      }
-    else
-      {
-        update();
-        framesPassed = 1;
-        // framesPassed = 1;
-        // fps = 1.0 / dt;
-        // dtAcc = 0.0;
-      }
-    return framesPassed > 0;
-  }
 };
 
 
@@ -205,22 +136,24 @@ private:
   bool mNewFrameOut   = false; // new simulation frame available
   bool mNewSimFrame   = false; // new rendered frame available for output
 
-  FpsCounter mMainFps;
-  FpsCounter mPhysicsFps;
-  FpsCounter mRenderFps;
-  FpsCounter mUpdateFps;
-  
-  CFT mSingleStepMult = 0.0; // used to single step with up/down arrow keys while paused
-  
+  FpsCounter<double, CLOCK_T> mMainFps;
+  FpsCounter<double, CLOCK_T> mPhysicsFps;
+  FpsCounter<double, CLOCK_T> mRenderFps;
+  FpsCounter<double, CLOCK_T> mUpdateFps;
+
+  Simulation<CFT> *mSim = nullptr;
+    
   // parameters
   SimParams  mParams;
   Units<CFT> mUnits;
-  SimInfo    mInfo;
+  SimInfo<CFT>    mInfo;
   FluidParams<CFT> cpCopy;
   
   CudaTexture mEMTex; CudaTexture mMatTex; CudaTexture m3DTex;
-  std::deque<FieldBase*> mStates; // N-buffered states (e.g. for RK4 integration (TODO))
+  std::deque<FieldBase*> mStates; // N-buffered states
   FluidField<CFT> *mTempState = nullptr; // temp state (avoids destroying input source state)
+
+  CFT mSingleStepMult = 0.0; // used to single step with up/down arrow keys while paused
 
   // accumulation fields for user-added inputs
   Field<float3> *mInputV   = nullptr;
@@ -276,10 +209,8 @@ private:
   Vec2f mMouseSimPosLast;
   CFV3  mSigMPos; // 3D pos of active signal pen
   CFV3  mMatMPos; // 3D pos of active material pen
-
-
+  
   FrameWriter *mFrameWriter = nullptr;
-
   
   SignalPen<CFT>*   activeSigPen();
   MaterialPen<CFT>* activeMatPen();
@@ -341,8 +272,8 @@ public:
   SimWindow(GLFWwindow *window);
   ~SimWindow();
   
-  bool init();
-  void cleanup();
+  bool create();
+  void destroy();
   void quit()          { mClosing = true; }
   bool closing() const { return mClosing; }
 

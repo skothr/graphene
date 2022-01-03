@@ -203,7 +203,7 @@ int main(int argc, char* argv[])
 
   // initialize simulation
   std::cout << "\n";
-  simWindow->init(); initialized = true;
+  simWindow->create(); initialized = true;
   
   // main loop
   Vec2i frameSize(WINDOW_W, WINDOW_H); // size of current frame

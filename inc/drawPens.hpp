@@ -14,7 +14,7 @@
 template<typename T>
 struct Pen
 {
-  using VT3 = typename DimType<T, 3>::VEC_T;
+  using VT3 = typename cuda_vec<T, 3>::VT;
   bool active    = true;  // pen always active
   bool cellAlign = false; // snap offset to center of cell
   bool square    = false; // draw with square pen
@@ -101,7 +101,7 @@ struct SigFieldParams
 template<typename T>
 struct SignalPen : public Pen<T>
 {
-  using VT3 = typename DimType<T, 3>::VEC_T;
+  using VT3 = typename cuda_vec<T, 3>::VT;
   T wavelength = 12.0;           // in dL units (cells per period)
   T frequency  = 1.0/wavelength; // Hz(c/t in sim time) for sin/cos mult flags (c --> speed in vacuum = vMat.c())
   SigFieldParams<VT3> pV;
@@ -310,7 +310,7 @@ inline json matPenToJSON(const MaterialPen<T> &pen)
 template<typename T>
 inline bool matPenFromJSON(const json &js, MaterialPen<T> &penOut)
 {
-  using VT3 = typename DimType<T, 3>::VEC_T;
+  using VT3 = typename cuda_vec<T, 3>::VT;
   bool success = penFromJSON(js, &penOut);
   if(js.contains("material"))
     {

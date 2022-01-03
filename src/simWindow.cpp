@@ -26,7 +26,6 @@ using json = nlohmann::json;
 #include "tabMenu.hpp"
 #include "toolbar.hpp"
 #include "frameWriter.hpp"
-#include "simulation.hpp"
 
 #include "draw.hpp"
 #include "display.hpp"
@@ -99,18 +98,20 @@ SimWindow::SimWindow(GLFWwindow *window)
 
 SimWindow::~SimWindow()
 {
-  cleanup();
+  destroy();
   if(mKeyManager) { delete mKeyManager; mKeyManager = nullptr; }
 }
 
 
 bool SimWindow::preFrame() { return (ftDemo ? ftDemo->PreNewFrame() : false); }
 
-bool SimWindow::init()
+bool SimWindow::create()
 {
   if(!mInitialized)
     {
       std::cout << "= Creating SimWindow...\n";
+      mSim = new Simulation<CFT>();
+      mSim->create();
 
       // set up fonts
       std::cout << "========================================================================================\n"
@@ -122,14 +123,11 @@ bool SimWindow::init()
 
       std::cout << "====   Default flags: " << fontConfig->FontBuilderFlags << "\n";
       io.Fonts->FontBuilderFlags |= (ImGuiFreeTypeBuilderFlags_LightHinting |
-                                     ImGuiFreeTypeBuilderFlags_LoadColor    |
-                                     ImGuiFreeTypeBuilderFlags_Bitmap);
+                                     ImGuiFreeTypeBuilderFlags_LoadColor); //    | ImGuiFreeTypeBuilderFlags_Bitmap);
+      fontBuilder.AddRanges(io.Fonts->GetGlyphRangesDefault());  // Add one of the default ranges
       fontBuilder.AddText("ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσΤτΥυΦφΧχΨψΩω");
       fontBuilder.AddText("₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹");
-      fontBuilder.AddText("°∥∇‖"); // NOTE: '∥' not working?
-      fontBuilder.AddRanges(io.Fonts->GetGlyphRangesDefault());  // Add one of the default ranges
-      fontBuilder.AddChar(0x2207);                               // ∇ (del/nambla)
-      fontBuilder.AddChar(0x2016);                               // ‖ (vector norm)
+      fontBuilder.AddText("°∇‖∫");
       fontBuilder.BuildRanges(&fontRanges);                      // Build the final result (ordered ranges with all the unique characters submitted)
       fontConfig->GlyphRanges = fontRanges.Data;
       fontConfig->SizePixels  = MAIN_FONT_HEIGHT;
@@ -353,13 +351,15 @@ bool SimWindow::init()
   return true;
 }
 
-void SimWindow::cleanup()
+void SimWindow::destroy()
 {
   if(mInitialized)
     {
-      std::cout << "== SimWindow cleanup...\n";
+      std::cout << "== Destroying SimWindow...\n";
       saveSettings();
       cudaDeviceSynchronize();
+
+      if(mSim) { mSim->destroy(); delete mSim; }
       
       std::cout << "==== Destroying CUDA field states...\n";
       std::vector<FieldBase*> deleted;
@@ -424,7 +424,6 @@ void SimWindow::saveSettings(const fs::path &path)
   json sim = json::object();
   sim["Field"]      = mFieldUI->toJSON();
   sim["Units"]      = mUnitsUI->toJSON();
-  // sim["Draw"]       = mDrawUI->toJSON();
   sim["Display"]    = mDisplayUI->toJSON();
   sim["FileOutput"] = mFileOutUI->toJSON();
   sim["Other"]      = mOtherUI->toJSON();
@@ -816,267 +815,234 @@ void SimWindow::update()
   
   mUpdateFps.update();
   auto t = CLOCK_T::now();
-  bool newFramePhysics = mPhysicsFps.update(mParams.limitPhysicsFps ? mParams.maxPhysicsFps : -1.0f, t);
-  bool newFrameRender  = mRenderFps.update (mParams.limitRenderFps  ? mParams.maxRenderFps  : -1.0f, t);
+  bool newFramePhysics = mPhysicsFps.update(t, mParams.limitPhysicsFps ? mParams.maxPhysicsFps : -1.0f);
+  bool newFrameRender  = mRenderFps.update (t, mParams.limitRenderFps  ? mParams.maxRenderFps  : -1.0f);
 
-  mParams.cp.t = mInfo.t; cpCopy = mParams.cp; cpCopy.u = mUnits;
+  mParams.cp.t = mInfo.t;
+  cpCopy = mParams.cp;
+  cpCopy.u = mUnits;
+  
+  bool singleStep = false;
+  if(mSingleStepMult != 0.0f)
+    {
+      cpCopy.u.dt *= mSingleStepMult;
+      mSingleStepMult = 0.0f;
+      singleStep = true;
+    }
+
+  //// USER INPUT UPDATES
+  if(mNeedResetSim)                 { resetSim(true); }
+  else
+    {
+      if(mNewResize > Vec3i(0,0,0)) { resizeFields(mNewResize, true); }
+      if(mNeedResetSignals)         { resetSignals(true); }
+      if(mNeedResetMaterials)       { resetMaterials(true); }
+      if(mNeedResetFluid)           { resetFluid(true); }
+    }
+  if(mNeedResetViews)               { resetViews(true); }
+
+  
   if(mParams.cp.fs.x > 0 && mParams.cp.fs.y > 0 && mParams.cp.fs.z > 0)
     {
-      if(newFramePhysics)
+      FluidField<CFT> *src  = reinterpret_cast<FluidField<CFT>*>(mStates.back());  // previous field state
+      FluidField<CFT> *dst  = reinterpret_cast<FluidField<CFT>*>(mStates.front()); // oldest state (recycle)
+      FluidField<CFT> *temp = reinterpret_cast<FluidField<CFT>*>(mTempState);      // temp intermediate state
+
+      // apply external forces from user (TODO: handle input separately)
+      bool newInput = false;
+      CFV3 mposSim = CFV3{NAN, NAN, NAN};
+      if     (mEMView.hovered)  { mposSim = to_cuda(mEMView.mposSim);  }
+      else if(mMatView.hovered) { mposSim = to_cuda(mMatView.mposSim); }
+      else if(m3DView.hovered)  { mposSim = to_cuda(m3DView.mposSim);  }
+      float  cs = mUnits.dL;
+      CFV3 fs = CFV3{(float)mParams.cp.fs.x, (float)mParams.cp.fs.y, (float)mParams.cp.fs.z};
+      CFV3 mpfi = (mposSim) / cs;
+
+      SignalPen<CFT>   *sigPen = activeSigPen();
+      MaterialPen<CFT> *matPen = activeMatPen();
+  
+      // add signals
+      std::vector<SignalSource> sources = mKeyFrameUI->sources(mKeyFrameUI->cursor());
+      mParams.rp.sigPenHighlight = false; mEMView.rp.sigPenHighlight = false; mMatView.rp.sigPenHighlight = false;
+      CFV3 mposLast = mSigMPos;
+      mSigMPos = CFV3{NAN, NAN, NAN};
+      bool active = false;
+      if(!mParams.op.lockViews && !mForcePause && io.KeyCtrl)
         {
-          bool singleStep = false;
-          if(mSingleStepMult != 0.0f)
+          bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
+          bool apply = false;
+          CFV3 p = CFV3{NAN, NAN, NAN};
+          if(m3DView.hovered)
             {
-              cpCopy.u.dt *= mSingleStepMult;
-              mSingleStepMult = 0.0f;
-              singleStep = true;
+              p = to_cuda(m3DView.mposSim - m3DView.mposFace*sigPen->depth);
+              apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_CONTROL));
+            }
+          if(mEMView.hovered || mMatView.hovered)
+            {
+              mpfi.z = mParams.cp.fs.z - 1 - sigPen->depth; // Z depth relative to top visible layer
+              p = CFV3{mpfi.x, mpfi.y, mpfi.z};
+              apply = (( mEMView.clickBtns(MOUSEBTN_LEFT) && (sigPen->active || mEMView.clickMods(GLFW_MOD_CONTROL))) ||
+                       (mMatView.clickBtns(MOUSEBTN_LEFT) && (sigPen->active || mMatView.clickMods(GLFW_MOD_CONTROL))));
             }
 
-          if(mNeedResetSim)           { resetSim(true); }
+          if(hover)
+            {
+              mSigMPos = p;
+              sigPen->mouseSpeed = length(mSigMPos - mposLast);
+              mParams.rp.penPos          = p;       mEMView.rp.penPos          = p;
+              mParams.rp.sigPenHighlight = true;    mEMView.rp.sigPenHighlight = true;
+              mParams.rp.sigPen          = *sigPen; mEMView.rp.sigPen          = *sigPen;
+
+              if(apply && !isnan(mSigMPos))
+                { // draw signal to intermediate E/B fields (needs to be blended to avoid peristent blobs)
+                  active = true;
+                  if(sigPen->startTime <= 0.0) // set signal start time
+                    { sigPen->startTime = cpCopy.t; }
+
+                  sources.push_back(SignalSource{p, *sigPen, -1.0, 0.0});
+                  mNewSimFrame = true; // new frame even if paused
+                }
+            }
+        }
+      if(!active) { sigPen->startTime = -1.0; } // reset start time
+
+      // add signals to field
+      for(const auto &s : sources)
+        {
+          if((mFieldUI->running || singleStep) && mFieldUI->inputDecay && !mForcePause)
+            { // add to intermediary source fields
+              addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB,
+                        s.pen, cpCopy, cpCopy.u.dt);
+            }
           else
-            {
-              if(mNewResize > Vec3i(0,0,0)) { resizeFields(mNewResize, true); }
-              if(mNeedResetSignals)   { resetSignals(true); }
-              if(mNeedResetMaterials) { resetMaterials(true); }
-              if(mNeedResetFluid)     { resetFluid(true); }
-            }
-          if(mNeedResetViews)         { resetViews(true); }
-
-          FluidField<CFT> *src  = reinterpret_cast<FluidField<CFT>*>(mStates.back());  // previous field state
-          FluidField<CFT> *dst  = reinterpret_cast<FluidField<CFT>*>(mStates.front()); // oldest state (recycle)
-          FluidField<CFT> *temp = reinterpret_cast<FluidField<CFT>*>(mTempState);      // temp intermediate state
-
-          // apply external forces from user (TODO: handle input separately)
-          bool newInput = false;
-          CFV3 mposSim = CFV3{NAN, NAN, NAN};
-          if     (mEMView.hovered)  { mposSim = to_cuda(mEMView.mposSim);  }
-          else if(mMatView.hovered) { mposSim = to_cuda(mMatView.mposSim); }
-          else if(m3DView.hovered)  { mposSim = to_cuda(m3DView.mposSim);  }
-          float  cs = mUnits.dL;
-          CFV3 fs = CFV3{(float)mParams.cp.fs.x, (float)mParams.cp.fs.y, (float)mParams.cp.fs.z};
-          CFV3 mpfi = (mposSim) / cs;
-
-          SignalPen<CFT>   *sigPen = activeSigPen();
-          MaterialPen<CFT> *matPen = activeMatPen();
-          
-          // draw signal
-          mParams.rp.sigPenHighlight = false; mEMView.rp.sigPenHighlight = false; mMatView.rp.sigPenHighlight = false;
-          CFV3 mposLast = mSigMPos;
-          mSigMPos = CFV3{NAN, NAN, NAN};
-          bool active = false;
-          if(!mParams.op.lockViews && !mForcePause && io.KeyCtrl)
-            {
-              bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
-              bool apply = false;
-              CFV3 p = CFV3{NAN, NAN, NAN};
-              if(m3DView.hovered)
+            { // add directly to field
+              addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB, s.pen, cpCopy, cpCopy.u.dt);
+              addSignal(*mInputV,   src->v,   cpCopy, cpCopy.u.dt); addSignal(*mInputP,   src->p,   cpCopy, cpCopy.u.dt);
+              addSignal(*mInputQn,  src->Qn,  cpCopy, cpCopy.u.dt); addSignal(*mInputQp,  src->Qp,  cpCopy, cpCopy.u.dt);
+              addSignal(*mInputQnv, src->Qnv, cpCopy, cpCopy.u.dt); addSignal(*mInputQpv, src->Qpv, cpCopy, cpCopy.u.dt);
+              addSignal(*mInputE,   src->E,   cpCopy, cpCopy.u.dt); addSignal(*mInputB,   src->B,   cpCopy, cpCopy.u.dt);
+              if(mFieldUI->inputDecay)
                 {
-                  p = to_cuda(m3DView.mposSim - m3DView.mposFace*sigPen->depth);
-                  apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_CONTROL));
-                }
-              if(mEMView.hovered || mMatView.hovered)
-                {
-                  mpfi.z = mParams.cp.fs.z - 1 - sigPen->depth; // Z depth relative to top visible layer
-                  p = CFV3{mpfi.x, mpfi.y, mpfi.z};
-                  apply = (( mEMView.clickBtns(MOUSEBTN_LEFT) && (sigPen->active || mEMView.clickMods(GLFW_MOD_CONTROL))) ||
-                           (mMatView.clickBtns(MOUSEBTN_LEFT) && (sigPen->active || mMatView.clickMods(GLFW_MOD_CONTROL))));
-                }
-
-              if(hover)
-                {
-                  mSigMPos = p;
-                  sigPen->mouseSpeed = length(mSigMPos - mposLast);
-                  mParams.rp.penPos          = p;       mEMView.rp.penPos          = p;
-                  mParams.rp.sigPenHighlight = true;    mEMView.rp.sigPenHighlight = true;
-                  mParams.rp.sigPen          = *sigPen; mEMView.rp.sigPen          = *sigPen;
-
-                  if(apply && !isnan(mSigMPos))
-                    { // draw signal to intermediate E/B fields (needs to be blended to avoid peristent blobs)
-                      active = true;
-                      if(sigPen->startTime <= 0.0) // set signal start time
-                        { sigPen->startTime = cpCopy.t; }
-
-                      if((mFieldUI->running || singleStep) && !mForcePause && mFieldUI->inputDecay)
-                        { // add to intermediary source fields
-                          addSignal(p, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB, *sigPen, cpCopy, cpCopy.u.dt);
-                        }
-                      else
-                        { // add directly to field
-                          addSignal(p, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB, *sigPen, cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputV,   src->v,   cpCopy, cpCopy.u.dt); addSignal(*mInputP,   src->p,   cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputQn,  src->Qn,  cpCopy, cpCopy.u.dt); addSignal(*mInputQp,  src->Qp,  cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputQnv, src->Qnv, cpCopy, cpCopy.u.dt); addSignal(*mInputQpv, src->Qpv, cpCopy, cpCopy.u.dt);
-                          addSignal(*mInputE,   src->E,   cpCopy, cpCopy.u.dt); addSignal(*mInputB,   src->B,   cpCopy, cpCopy.u.dt);
-                          if(mFieldUI->inputDecay)
-                            {
-                              decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
-                              decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
-                            }
-                          else
-                            {
-                              mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
-                              mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
-                            }
-                        }
-                      mNewSimFrame = true; // new frame even if paused
-                    }
-                }
-            }
-          if(!active) { sigPen->startTime = -1.0; } // reset start time
-
-          // add keyframe signals to field
-          std::vector<SignalSource> sources = mKeyFrameUI->sources(mKeyFrameUI->cursor());//, mKeyFrameUI->cursor()+cpCopy.u.dt);
-          for(const auto &s : sources)
-            {
-              if((mFieldUI->running || singleStep) && !mForcePause && mFieldUI->inputDecay)
-                { // add to intermediary source fields
-                  addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB,
-                            s.pen, cpCopy, cpCopy.u.dt);
+                  decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
+                  decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
                 }
               else
-                { // add directly to field
-                  addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB, s.pen, cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputV,   src->v,   cpCopy, cpCopy.u.dt); addSignal(*mInputP,   src->p,   cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputQn,  src->Qn,  cpCopy, cpCopy.u.dt); addSignal(*mInputQp,  src->Qp,  cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputQnv, src->Qnv, cpCopy, cpCopy.u.dt); addSignal(*mInputQpv, src->Qpv, cpCopy, cpCopy.u.dt);
-                  addSignal(*mInputE,   src->E,   cpCopy, cpCopy.u.dt); addSignal(*mInputB,   src->B,   cpCopy, cpCopy.u.dt);
-                  if(mFieldUI->inputDecay)
-                    {
-                      decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
-                      decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
-                    }
-                  else
-                    {
-                      mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
-                      mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
-                    }
+                {
+                  mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
+                  mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
                 }
             }
+        }
 
-          // add material
-          mParams.rp.matPenHighlight = false; mMatView.rp.sigPenHighlight = false;
-          mMatMPos = CFV3{NAN, NAN, NAN};
-          active = false;
-          if(!mParams.op.lockViews && !mForcePause && io.KeyAlt)
+      // add material
+      std::vector<MaterialPlaced> &placed = mKeyFrameUI->placed();
+      mParams.rp.matPenHighlight = false; mMatView.rp.sigPenHighlight = false;
+      mMatMPos = CFV3{NAN, NAN, NAN};
+      active = false;
+      if(!mParams.op.lockViews && !mForcePause && io.KeyAlt)
+        {
+          bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
+          CFV3 p = CFV3{NAN, NAN, NAN};
+          bool apply = false;
+          if(m3DView.hovered)
             {
-              bool hover = m3DView.hovered || mEMView.hovered || mMatView.hovered;
-              CFV3 p = CFV3{NAN, NAN, NAN};
-              bool apply = false;
-              if(m3DView.hovered)
+              CFV3 fp = to_cuda(m3DView.mposSim);
+              p = to_cuda(m3DView.mposSim - m3DView.mposFace*matPen->depth);
+              apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_ALT));
+            }
+          if(mEMView.hovered || mMatView.hovered)
+            {
+              mpfi.z = mParams.cp.fs.z-1-matPen->depth; // Z depth relative to top visible layer
+              p = CFV3{mpfi.x, mpfi.y, mpfi.z};
+              apply = ((mEMView.clickBtns(MOUSEBTN_LEFT)  && mEMView.clickMods(GLFW_MOD_ALT)) ||
+                       (mMatView.clickBtns(MOUSEBTN_LEFT) && mMatView.clickMods(GLFW_MOD_ALT)));
+            }
+          if(hover)
+            {
+              mMatMPos = p;
+              mParams.rp.penPos          = p;       mMatView.rp.penPos          = p;
+              mParams.rp.matPenHighlight = true;    mMatView.rp.sigPenHighlight = true;
+              mParams.rp.matPen          = *matPen; mMatView.rp.sigPen          = *sigPen;
+              if(apply && !isnan(mMatMPos))
                 {
-                  CFV3 fp = to_cuda(m3DView.mposSim);
-                  p = to_cuda(m3DView.mposSim - m3DView.mposFace*matPen->depth);
-                  apply = (m3DView.clickBtns(MOUSEBTN_LEFT) && m3DView.clickMods(GLFW_MOD_ALT));
-                }
-              if(mEMView.hovered || mMatView.hovered)
-                {
-                  mpfi.z = mParams.cp.fs.z-1-matPen->depth; // Z depth relative to top visible layer
-                  p = CFV3{mpfi.x, mpfi.y, mpfi.z};
-                  apply = ((mEMView.clickBtns(MOUSEBTN_LEFT)  && mEMView.clickMods(GLFW_MOD_ALT)) ||
-                           (mMatView.clickBtns(MOUSEBTN_LEFT) && mMatView.clickMods(GLFW_MOD_ALT)));
-                }
-              if(hover)
-                {
-                  mMatMPos = p;
-                  mParams.rp.penPos          = p;       mMatView.rp.penPos          = p;
-                  mParams.rp.matPenHighlight = true;    mMatView.rp.sigPenHighlight = true;
-                  mParams.rp.matPen          = *matPen; mMatView.rp.sigPen          = *sigPen;
-                  if(apply && !isnan(mMatMPos)) { addMaterial(p, *src, *matPen, cpCopy); mNewSimFrame = true; active = true; } // new frame even if paused
+                  // addMaterial(p, *src, *matPen, cpCopy);
+                  placed.push_back(MaterialPlaced{mMatMPos, *matPen});
+                  mNewSimFrame = true; active = true;
                 }
             }
-          if(!active) { mMatMPos = CFV3{NAN, NAN, NAN}; }
+        }
+      if(!active) { mMatMPos = CFV3{NAN, NAN, NAN}; }
+          
+      // add materials to field
+      for(const auto &m : placed) { addMaterial(m.pos, *src, m.pen, cpCopy); }
+      placed.clear();
 
-          // add keyframe materials to field
-          std::vector<MaterialPlaced> &placed = mKeyFrameUI->placed();
-          for(const auto &m : placed) { addMaterial(m.pos, *src, m.pen, cpCopy); }
-          placed.clear();
+      
 
-
+      //// STEP SIMULATION
+      if(newFramePhysics || singleStep)
+        {
           if((mFieldUI->running || singleStep) && !mForcePause)
-            { // step simulation
+            {
               if(!mFieldUI->running) { std::cout << "==== SIM STEP --> dt = " << cpCopy.u.dt << "\n"; }
               if(DESTROY_LAST_STATE) { std::swap(temp, src); } // overwrite source state
               else                   { src->copyTo(*temp); }   // don't overwrite previous state (use temp)
 
-              //// INPUTS
-              // (NOTE: remove added sources to avoid persistent lumps building up)
-              // fluid input
-              addSignal(*mInputV,   temp->v,   cpCopy, cpCopy.u.dt); // add V input signal
-              addSignal(*mInputP,   temp->p,   cpCopy, cpCopy.u.dt); // add P input signal
-              // EM input
-              addSignal(*mInputQn,  temp->Qn,  cpCopy, cpCopy.u.dt); // add Qn input signal
-              addSignal(*mInputQp,  temp->Qp,  cpCopy, cpCopy.u.dt); // add Qp input signal
-              addSignal(*mInputQnv, temp->Qnv, cpCopy, cpCopy.u.dt); // add Qnv input signal
-              addSignal(*mInputQpv, temp->Qpv, cpCopy, cpCopy.u.dt); // add Qpv input signal
-              addSignal(*mInputE,   temp->E,   cpCopy, cpCopy.u.dt); // add E input signal
-              addSignal(*mInputB,   temp->B,   cpCopy, cpCopy.u.dt); // add B input signal
-
-              //// EM STEP (Q/Qv/E/B)
-              if(mFieldUI->updateEM)
-                {
-                  if(mFieldUI->updateCoulomb) { updateCoulomb(*temp, *dst, cpCopy);                   std::swap(temp, dst); } // ∇·E = Q/ε₀
-                  if(mFieldUI->updateQ)       { updateCharge  (*temp, *dst, cpCopy);                  std::swap(temp, dst); } // Q,Qv --> Q (advect Q within fluid)
-                  if(mFieldUI->updateE)       { updateElectric(*temp, *dst, cpCopy);                  std::swap(temp, dst); } // δE/δt = (∇×B - J)
-                  if(mFieldUI->updateB)       { updateMagnetic(*temp, *dst, cpCopy);                  std::swap(temp, dst); } // δB/δt = -(∇×E)
-                  if(mFieldUI->updateDivB)    { updateDivB    (*temp, *dst, cpCopy, cpCopy.divBIter); std::swap(temp, dst); } // ∇·B = 0
-                }
-              //// FLUID STEP (V/P)
-              if(mFieldUI->updateFluid) // V, P
-                {
-                  if(mFieldUI->updateP1)      { fluidPressure (*temp, *dst, cpCopy, cpCopy.pIter1);   std::swap(temp, dst); } // PRESSURE SOLVE (1)
-                  if(mFieldUI->updateAdvect)  { fluidAdvect   (*temp, *dst, cpCopy);                  std::swap(temp, dst); } // ADVECT
-                  if(mFieldUI->updateVisc)    { fluidViscosity(*temp, *dst, cpCopy, cpCopy.vIter);    std::swap(temp, dst); } // VISCOSITY SOLVE
-                  if(mFieldUI->applyGravity)  { fluidExternalForces(*temp, cpCopy); }                                         // EXTERNAL FORCES (in-place)
-                  if(mFieldUI->updateP2)      { fluidPressure (*temp, *dst, cpCopy, cpCopy.pIter2);   std::swap(temp, dst); } // PRESSURE SOLVE (2)
-                }
-  
-              // decay input signals (blend over tim)e
+              // microstepping
+              cpCopy.u.dt /= (CFT)mFieldUI->uSteps;
               
-              std::swap(temp, dst); // (un-)swap final result back into dst
-              if(!DESTROY_LAST_STATE) { std::swap(mTempState, temp); } // use other state as new temp (pointer changes if number of steps is odd)}
-              else                    { std::swap((FluidField<CFT>*&)mStates.back(), temp); }
-              mStates.pop_front(); mStates.push_back(dst);
-
-              // increment time/frame info
-              mInfo.t += mUnits.dt;
-              mInfo.uStep++;
-              if(mInfo.uStep >= mParams.uSteps) { mInfo.frame++; mInfo.uStep = 0; mNewSimFrame = true; }
-              mKeyFrameUI->nextFrame(cpCopy.u.dt);
-            }
-          else
-            {
-              // mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
-              // mInputQnv->clear(); mInputQpv->clear(); mInputE->clear(); mInputB->clear();
-              
-              if(!mForcePause && mFieldUI->inputDecay)
-              //   { // add to intermediary source fields
-              //     addSignal(s.pos, *mInputV, *mInputP, *mInputQn, *mInputQp, *mInputQnv, *mInputQpv, *mInputE, *mInputB,
-              //               s.pen, cpCopy, cpCopy.u.dt);
-              //   }
-              // else
+              for(int i = 0; i < mFieldUI->uSteps; i++)
                 {
-                  // (NOTE: remove added sources to avoid persistent lumps building up)
-                  // fluid input
+                  // inputs
                   addSignal(*mInputV,   temp->v,   cpCopy, cpCopy.u.dt); // add V input signal
                   addSignal(*mInputP,   temp->p,   cpCopy, cpCopy.u.dt); // add P input signal
-                  // EM input
                   addSignal(*mInputQn,  temp->Qn,  cpCopy, cpCopy.u.dt); // add Qn input signal
                   addSignal(*mInputQp,  temp->Qp,  cpCopy, cpCopy.u.dt); // add Qp input signal
                   addSignal(*mInputQnv, temp->Qnv, cpCopy, cpCopy.u.dt); // add Qnv input signal
                   addSignal(*mInputQpv, temp->Qpv, cpCopy, cpCopy.u.dt); // add Qpv input signal
                   addSignal(*mInputE,   temp->E,   cpCopy, cpCopy.u.dt); // add E input signal
                   addSignal(*mInputB,   temp->B,   cpCopy, cpCopy.u.dt); // add B input signal
+
+                  // step
+                  mSim->step(temp, dst, cpCopy, mFieldUI); std::swap(temp, dst);
+
+                  mKeyFrameUI->nextFrame(cpCopy.u.dt);
+
+                  // increment time/frame info
+                  mInfo.t += cpCopy.u.dt;
+                  mInfo.uStep++;
+                  // if(mInfo.uStep >= mFieldUI->uSteps) { mInfo.frame++; mInfo.uStep = 0; mNewSimFrame = true; }
+              
                   if(mFieldUI->inputDecay)
                     {
-                      decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn,  cpCopy); decaySignal(*mInputQp,  cpCopy);
-                      decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,   cpCopy); decaySignal(*mInputB,   cpCopy);
-                    }
-                  else
-                    {
-                      mInputV->clear();  mInputP->clear(); mInputQn->clear(); mInputQp->clear();
-                      mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
+                      // (NOTE: remove added sources to avoid persistent lumps building up)
+                      // fluid input
+                      addSignal(*mInputV,   temp->v,   cpCopy, cpCopy.u.dt); // add V input signal
+                      addSignal(*mInputP,   temp->p,   cpCopy, cpCopy.u.dt); // add P input signal
+                      // EM input
+                      addSignal(*mInputQn,  temp->Qn,  cpCopy, cpCopy.u.dt); // add Qn input signal
+                      addSignal(*mInputQp,  temp->Qp,  cpCopy, cpCopy.u.dt); // add Qp input signal
+                      addSignal(*mInputQnv, temp->Qnv, cpCopy, cpCopy.u.dt); // add Qnv input signal
+                      addSignal(*mInputQpv, temp->Qpv, cpCopy, cpCopy.u.dt); // add Qpv input signal
+                      addSignal(*mInputE,   temp->E,   cpCopy, cpCopy.u.dt); // add E input signal
+                      addSignal(*mInputB,   temp->B,   cpCopy, cpCopy.u.dt); // add B input signal
+                  
+                      decaySignal(*mInputV,   cpCopy); decaySignal(*mInputP,   cpCopy); decaySignal(*mInputQn, cpCopy); decaySignal(*mInputQp, cpCopy);
+                      decaySignal(*mInputQnv, cpCopy); decaySignal(*mInputQpv, cpCopy); decaySignal(*mInputE,  cpCopy); decaySignal(*mInputB,  cpCopy);
                     }
                 }
+              
+              if(!mFieldUI->inputDecay)
+                {
+                  mInputV->clear();   mInputP->clear();   mInputQn->clear(); mInputQp->clear();
+                  mInputQnv->clear(); mInputQpv->clear(); mInputE->clear();  mInputB->clear();
+                }              
+              std::swap(temp, dst); // (un-)swap final result back into dst
+              if(!DESTROY_LAST_STATE) { std::swap(mTempState, temp); } // use other state as new temp (pointer changes if number of steps is odd)}
+              else                    { std::swap((FluidField<CFT>*&)mStates.back(), temp); }
+              mStates.pop_front(); mStates.push_back(dst);
+              
+              mInfo.frame++; mInfo.uStep = 0; mNewSimFrame = true;
             }
         }
       if(newFrameRender) { cudaRender(cpCopy); }
@@ -1180,7 +1146,7 @@ void SimWindow::handleInput2D(ScreenView<CFT> &view, Rect<CFT> &simView)
     {
       float2 fs = float2{(float)mParams.cp.fs.x, (float)mParams.cp.fs.y};
       float2 cs = float2{mUnits.dL, mUnits.dL};
-      Vec2i fi    = makeV<int2>(floor((float2{mposSim.x, mposSim.y} / cs)));
+      Vec2i fi    = makeV<int2>(to_cuda(floor(mposSim / cs)));
       Vec2i fiAdj = Vec2i(std::max(0, std::min(mParams.cp.fs.x-1, fi.x)), std::max(0, std::min(mParams.cp.fs.y-1, fi.y)));
 
       int zi = mDisplayUI->rp->zRange.y;
@@ -2052,7 +2018,9 @@ void SimWindow::draw(const Vec2f &frameSize)
 {
   if(frameSize.x <= 0 || frameSize.y <= 0) { return; }
   mFrameSize = frameSize;
-  mInfo.fps  = mMainFps.update();
+  
+  mMainFps.update();
+  mInfo.fps = mMainFps.fps;
 
   ImGuiStyle &style = ImGui::GetStyle();
 
